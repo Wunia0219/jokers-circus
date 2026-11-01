@@ -4,7 +4,11 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 const require=createRequire(import.meta.url);
 export const browserOptions=()=>{
   const channel=process.env.PLAYWRIGHT_BROWSER_CHANNEL;
-  return {channel:channel==='bundled'?undefined:channel||(process.platform==='win32'?'msedge':undefined),headless:true,args:['--mute-audio']};
+  // Use the same pinned Chromium in its full new-headless mode on Windows.
+  // The separate headless shell stalled control commands during animated QA
+  // on Windows ARM running x64 Chromium. Keep all input checks unchanged.
+  const bundledChannel=process.platform==='win32'?'chromium':undefined;
+  return {channel:channel==='bundled'?bundledChannel:channel||(process.platform==='win32'?'msedge':undefined),headless:true,args:['--mute-audio']};
 };
 
 export async function launchBrowser(){

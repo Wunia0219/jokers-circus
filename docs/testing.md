@@ -31,7 +31,9 @@
 
 `npm ci` 會執行 Discord SDK 的相容安全修補；不可略過專案 `postinstall`。使用 `--ignore-scripts` 安裝時，必須另執行 `node scripts/security/patch-discord-sdk.js`，再以 `--check` 核對。完整驗證與正式建置會拒絕未修補或未知的 SDK 內容；細節見[資料保護](security.md#discord-sdkzod-修補)。
 
-瀏覽器測試使用鎖定的 Playwright 開發相依；一般驗證在 Windows 預設 Edge、Linux 預設 Chromium。`verify:ci` 在兩個平台都預設使用 Playwright 隨附的 Chromium，先執行 `npx playwright install chromium`（Linux 加 `--with-deps`）。可用 `PLAYWRIGHT_MODULE_PATH` 指定既有模組目錄、`PLAYWRIGHT_BROWSER_CHANNEL` 指定測試通道；`bundled` 表示鎖定版本的 Chromium。實際 Node／瀏覽器／Playwright 版本寫入 `test-results/browser-runtime.json`；同版瀏覽器仍不能取代遠端 Linux CI 驗證。
+瀏覽器測試使用鎖定的 Playwright 開發相依；一般驗證在 Windows 預設 Edge、Linux 預設 Chromium。`verify:ci` 在兩個平台都預設使用 Playwright 隨附的 Chromium，先執行 `npx playwright install chromium`（Linux 加 `--with-deps`）。可用 `PLAYWRIGHT_MODULE_PATH` 指定既有模組目錄、`PLAYWRIGHT_BROWSER_CHANNEL` 指定測試通道；`bundled` 表示鎖定版本的 Chromium，Windows 使用完整 Chromium 的新 headless 模式（`channel: 'chromium'`），Linux 沿用 headless shell，兩者由同一份 Playwright browser revision 鎖定。Windows ARM 執行 x64 headless shell 時曾在動畫與資源載入期間發生控制命令延遲；同版完整 Chromium 的對照測試保留真實輸入、可操作性及反向案例。此模式也由上述安裝指令準備，不需額外相依。[Playwright 新 headless 模式](https://playwright.dev/docs/browsers#chromium-new-headless-mode)
+
+實際 Node／瀏覽器／Playwright 版本與啟動 channel 寫入 `test-results/browser-runtime.json`；同版瀏覽器仍不能取代遠端 Linux CI 驗證。
 
 數字測試以 `willReadFrequently: true` 固定 Canvas 軟體繪製，避免 GPU／CPU 切換造成像素雜湊差異；此設定僅限隔離測試頁，正式遊戲不受影響。固定基準位於 `tests/fixtures/number-rendering.json`，仍逐一核對像素、尺寸及無障礙文字。僅在有意更改字型／外觀，或已證實需要統一測試繪圖路徑時，用 `npm run test:numbers -- --baseline` 更新並審查差異；失敗時也會保存 `test-results/number-rendering/after.json`。
 
