@@ -18,8 +18,8 @@ const save=(name,value)=>{
 function output(name,value,env){if(env.GITHUB_OUTPUT)appendFileSync(env.GITHUB_OUTPUT,`${name}=${value}\n`);}
 
 export async function previousUsageArtifact(env,{fetchImpl=globalThis.fetch.bind(globalThis)}={}){
-  const repository=env.GITHUB_REPOSITORY,branch=env.GITHUB_DEFAULT_BRANCH;
-  if(!/^[\w.-]+\/[\w.-]+$/.test(repository||'')||!branch||env.GITHUB_REF!==`refs/heads/${branch}`||!env.GITHUB_TOKEN||!/^\d+$/.test(env.GITHUB_RUN_ID||'')||!/^\d+$/.test(env.GITHUB_RUN_ATTEMPT||''))throw new Error('Trusted default-branch Actions context required');
+  const repository=env.GITHUB_REPOSITORY,repositoryId=env.GITHUB_REPOSITORY_ID,branch=env.GITHUB_DEFAULT_BRANCH;
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repository||'')||!(/^[1-9]\d*$/.test(repositoryId||''))||!Number.isSafeInteger(Number(repositoryId))||!branch||env.GITHUB_REF!==`refs/heads/${branch}`||!env.GITHUB_TOKEN||!/^\d+$/.test(env.GITHUB_RUN_ID||'')||!/^\d+$/.test(env.GITHUB_RUN_ATTEMPT||''))throw new Error('Trusted default-branch Actions context required');
   const get=async path=>{
     const response=await fetchImpl(`https://api.github.com/repos/${repository}/${path}`,{headers:{Authorization:'Bearer '+env.GITHUB_TOKEN,Accept:'application/vnd.github+json','User-Agent':'circus-usage-monitor'},redirect:'error',signal:AbortSignal.timeout(15000)});
     if(!response.ok)throw new Error('Cannot restore usage notification history');
@@ -27,7 +27,7 @@ export async function previousUsageArtifact(env,{fetchImpl=globalThis.fetch.bind
   };
   const body=await get(`actions/workflows/${WORKFLOW}/runs?branch=${encodeURIComponent(branch)}&per_page=100`);
   if(!Array.isArray(body.workflow_runs))throw new Error('Invalid usage workflow history');
-  const runs=body.workflow_runs.filter(run=>run.head_branch===branch&&run.head_repository?.full_name===repository&&run.path===`.github/workflows/${WORKFLOW}`&&['schedule','workflow_dispatch'].includes(run.event)&&Number.isSafeInteger(run.id));
+  const runs=body.workflow_runs.filter(run=>run.head_branch===branch&&run.head_repository?.id===Number(repositoryId)&&run.path===`.github/workflows/${WORKFLOW}`&&['schedule','workflow_dispatch'].includes(run.event)&&Number.isSafeInteger(run.id));
   if(Number(env.GITHUB_RUN_ATTEMPT)>1&&runs.some(run=>run.id>Number(env.GITHUB_RUN_ID)))throw new Error('Start a new workflow run instead of rerunning older notification history');
   for(const run of runs){
     const current=String(run.id)===env.GITHUB_RUN_ID;

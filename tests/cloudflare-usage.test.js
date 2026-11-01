@@ -174,8 +174,8 @@ test('webhook validation and delivery classification preserve safe retry behavio
   }
 });
 
-const context={GITHUB_REPOSITORY:'owner/repo',GITHUB_DEFAULT_BRANCH:'main',GITHUB_REF:'refs/heads/main',GITHUB_TOKEN:'fixture-github-token',GITHUB_RUN_ID:'300',GITHUB_RUN_ATTEMPT:'2'};
-const run=(id,extra={})=>({id,head_branch:'main',head_repository:{full_name:'owner/repo'},path:'.github/workflows/cloudflare-usage.yml',event:'schedule',status:'completed',conclusion:'success',...extra});
+const context={GITHUB_REPOSITORY:'owner/repo',GITHUB_REPOSITORY_ID:'123',GITHUB_DEFAULT_BRANCH:'main',GITHUB_REF:'refs/heads/main',GITHUB_TOKEN:'fixture-github-token',GITHUB_RUN_ID:'300',GITHUB_RUN_ATTEMPT:'2'};
+const run=(id,extra={})=>({id,head_branch:'main',head_repository:{id:123,full_name:'owner/repo'},path:'.github/workflows/cloudflare-usage.yml',event:'schedule',status:'completed',conclusion:'success',...extra});
 const artifact=(runId,attempt,kind='state',extra={})=>({id:runId*10+attempt,name:`cf-usage-${kind}-${runId}-${attempt}`,expired:false,size_in_bytes:1000,...extra});
 function history(runs,artifacts){
   return async(url,options)=>{
@@ -185,10 +185,18 @@ function history(runs,artifacts){
   };
 }
 test('artifact restore ignores fork, PR and non-default-branch runs and prefers final state from latest attempt',async()=>{
-  const fetchImpl=history([run(400,{event:'pull_request'}),run(399,{head_repository:{full_name:'fork/repo'}}),run(398,{head_branch:'other'}),run(300),run(299)],{300:[artifact(300,1,'intent'),artifact(300,1),artifact(300,2)],299:[artifact(299,1)]});
+  const fetchImpl=history([run(400,{event:'pull_request'}),run(399,{head_repository:{id:456,full_name:'owner/repo'}}),run(398,{head_branch:'other'}),run(300),run(299)],{300:[artifact(300,1,'intent'),artifact(300,1),artifact(300,2)],299:[artifact(299,1)]});
   assert.deepEqual(await previousUsageArtifact(context,{fetchImpl}),{id:3001,runId:300,attempt:1,final:true});
   await assert.rejects(previousUsageArtifact({...context,GITHUB_REF:'refs/heads/other'},{fetchImpl}),/default-branch/);
   await assert.rejects(previousUsageArtifact({...context,GITHUB_RUN_ID:'299'},{fetchImpl:history([run(300),run(299)],{})}),/new workflow run/);
+});
+
+test('artifact restore preserves notification history across a repository rename and requires its stable ID',async()=>{
+  const fetchImpl=history([run(299)],{299:[artifact(299,1,'intent')]});
+  assert.deepEqual(await previousUsageArtifact({...context,GITHUB_REPOSITORY:'owner/jokers-circus'},{fetchImpl}),{id:2991,runId:299,attempt:1,final:false});
+  for(const repositoryId of [undefined,'','0','not-an-id','1e2','9007199254740992']){
+    await assert.rejects(previousUsageArtifact({...context,GITHUB_REPOSITORY_ID:repositoryId},{fetchImpl}),/default-branch/);
+  }
 });
 
 test('failed notification runs restore persisted intent; lost state and unavailable history never bootstrap as healthy',async()=>{
@@ -242,6 +250,8 @@ test('workflow keeps monitoring outside Cloudflare, restricts credentials and pe
   assert.match(workflow,/digest-mismatch: error/);assert.match(workflow,/vars.CF_ACCOUNT_ID/);
   assert.match(workflow,/secrets.CF_ANALYTICS_TOKEN/);assert.match(workflow,/steps.intent.outputs.artifact-id/);
   assert.match(workflow,/CLOUD_PLAN: paid/);
+  assert.match(workflow,/github\.repository_id == '1424023431'/);
+  assert.match(workflow,/github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
   assert.ok(workflow.indexOf('Persist intent before Discord POST')<workflow.indexOf('Notify maintenance channel'));
   assert.ok([...workflow.matchAll(/uses: ([^\s]+)/g)].every(match=>/@[a-f0-9]{40}$/.test(match[1])));
 });

@@ -9,7 +9,7 @@
 
 ## 外部排程設定
 
-在 [GitHub Actions 設定](https://github.com/Wunia0219/discord-bot/settings/secrets/actions) 配置：
+在 [GitHub Actions 設定](https://github.com/Wunia0219/jokers-circus/settings/secrets/actions) 配置：
 
 | 類型 | 名稱 | 值 |
 |---|---|---|
@@ -20,6 +20,8 @@
 Workflow 的 `CLOUD_PLAN` 已設 `paid`（2026-10-31 使用者確認）；CLI 必須明確提供 `CLOUD_PLAN=free|paid`，不猜測方案。`node scripts/cloud/cloudflare-usage.js dry-run` 只查詢與輸出摘要，不發通知。憑證不得放入 Git、聊天、前端，亦不可用 Wrangler OAuth 代替長期監控 token。[token 權限](https://developers.cloudflare.com/analytics/graphql-api/getting-started/authentication/api-token-auth/)
 
 排程只在預設分支執行，PR 不取得 Secrets。合併後用 **Actions → Cloudflare usage → Run workflow** 驗證；正常狀態安靜，表格保存在 run Summary。Secrets 存在不代表內容或權限已驗證。
+
+監控以固定 repository ID `1424023431` 限定原儲存庫，歷史通知附件也以 ID 核對來源，改名後沿用同一份通知狀態，fork 不能冒用。GitHub 改名為 `jokers-circus` 前，須先將此修正合併至預設分支，避免排程仍用舊名稱判斷而跳過。改名後更新本機 `origin` 並確認新的預設分支監控執行成功；不重建儲存庫、不重設通知狀態，也不變更正式 Worker、Discord 入口或資料庫。
 
 ## Free 與 Paid 判斷
 
