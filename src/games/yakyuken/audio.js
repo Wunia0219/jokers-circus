@@ -1,6 +1,15 @@
-// Preview-only musical feedback. Does not import the slot game's audio cues.
+import {MUSIC_SOURCE} from '../../ui/audio/audio-cues.js';
+// Independent preview effects; background music uses the existing circus track.
 export class PreviewAudio {
   muted = true;
+  musicMuted = true;
+  async toggleMusic(){
+    if(!this.music){this.music=new Audio(MUSIC_SOURCE);this.music.loop=true;this.music.volume=.25;}
+    if(this.musicMuted){await this.music.play();this.musicMuted=false;}else{this.music.pause();this.musicMuted=true;}
+    return this.musicMuted;
+  }
+  pauseMusic(){this.music?.pause();}
+  resumeMusic(){if(!this.musicMuted && !document.hidden)void this.music?.play().catch(()=>{this.musicMuted=true;});}
   async toggle() {
     this.context ??= new AudioContext();
     await this.context.resume(); this.muted = !this.muted; return this.muted;
@@ -19,5 +28,5 @@ export class PreviewAudio {
       oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
     });
   }
-  destroy() { void this.context?.close(); }
+  destroy() { void this.context?.close();if(this.music){this.music.pause();this.music.removeAttribute('src');this.music.load();} }
 }

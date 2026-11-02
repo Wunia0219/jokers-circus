@@ -29,6 +29,7 @@ try {
   });
   const page=await context.newPage();page.on('pageerror',error => errors.push(error.message));page.on('request',request => requests.push(request.url()));
   await page.goto(`${origin}/yakyuken-preview.html`);await phase(page,'selecting');await frame(page);
+  assert.equal((await canvasState(page)).dealerFrontCount,'0','all three dealer cards start face down');
   assert.equal(await page.locator('#yakyuken-app canvas').count(),1);
   assert.equal(await page.locator('body').innerText(),'');
   assert.equal(await page.locator('dialog,img,main,h1,header').count(),0);
@@ -44,12 +45,16 @@ try {
   await page.getByRole('button',{name:'選擇剪刀',exact:true}).click();
   assert.equal((await canvasState(page)).selected,'scissors');
   await page.evaluate(() => {
-    window.__dealerStages=[];
-    new MutationObserver(() => {const stage=document.querySelector('canvas').dataset.dealerStage;if(!window.__dealerStages.includes(stage))window.__dealerStages.push(stage);}).observe(document.querySelector('canvas'),{attributes:true,attributeFilter:['data-dealer-stage']});
+    window.__dealerStages=[];window.__dealerFaces=[];
+    new MutationObserver(() => {const data=document.querySelector('canvas').dataset;if(!window.__dealerStages.includes(data.dealerStage))window.__dealerStages.push(data.dealerStage);window.__dealerFaces.push({stage:data.dealerStage,fronts:data.dealerFrontCount});}).observe(document.querySelector('canvas'),{attributes:true,attributeFilter:['data-dealer-stage','data-dealer-front-count']});
   });
   await page.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(page,'presenting');
   await page.keyboard.press('Enter');await phase(page,'confirmed');
   assert.deepEqual(await page.evaluate(() => window.__dealerStages),['thinking','playing','shown']);
+  const flips=await page.evaluate(()=>window.__dealerFaces);
+  assert.ok(flips.some(event=>event.stage==='playing' && event.fronts==='0'),'playing starts on the back');
+  assert.ok(flips.some(event=>event.stage==='playing' && event.fronts==='1'),'the chosen front appears during the flip');
+  assert.ok(flips.every(event=>Number(event.fronts)<=1),'unplayed cards never reveal');
   assert.deepEqual([(await canvasState(page)).dealerMove,(await canvasState(page)).outcome,(await canvasState(page)).round],['scissors','draw','1']);
   await page.mouse.click(l.playerCards.x+l.playerCards.gap,l.playerCards.y);
   assert.equal((await canvasState(page)).selected,'scissors','locked cards cannot replace a confirmed choice');
@@ -57,6 +62,7 @@ try {
   await page.getByRole('button',{name:'下一局',exact:true}).click();await phase(page,'selecting');
   assert.equal((await canvasState(page)).selected,'');
   assert.equal((await canvasState(page)).dealerMove,'');
+  assert.equal((await canvasState(page)).dealerFrontCount,'0','next round restores all backs');
   checks.push('player confirmation triggers thinking, dealer card play and result; duplicate input cannot repeat the round');
 
   await page.keyboard.press('3');assert.equal((await canvasState(page)).selected,'paper');
@@ -64,7 +70,7 @@ try {
   assert.deepEqual([(await canvasState(page)).dealerMove,(await canvasState(page)).outcome],['rock','win']);
   await page.keyboard.press('Escape');await page.waitForFunction(() => document.querySelector('canvas').dataset.modal==='menu');
   await page.keyboard.press('1');assert.equal((await canvasState(page)).selected,'paper');
-  await page.getByRole('button',{name:'遊戲說明',exact:true}).click();
+  await page.getByRole('button',{name:'遊戲規則',exact:true}).click();
   await page.waitForFunction(() => document.querySelector('canvas').dataset.modal==='help');
   await page.screenshot({path:`${output}/help.png`});await page.keyboard.press('Escape');
   checks.push('keyboard selection and confirm; Pixi modal blocks underlying input and closes with Escape');
@@ -80,6 +86,13 @@ try {
   await page.getByRole('button',{name:'切換音效',exact:true}).click();
   await page.getByRole('button',{name:'切換動態效果',exact:true}).click();
   await page.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  await page.getByRole('button',{name:'關閉音效',exact:true}).waitFor();
+  await page.getByRole('button',{name:'開啟音樂',exact:true}).click();
+  await page.getByRole('button',{name:'關閉音樂',exact:true}).click();
+  await page.getByRole('button',{name:'開啟音樂',exact:true}).waitFor();
+  await page.getByRole('button',{name:'遊玩紀錄',exact:true}).click();
+  await page.waitForFunction(() => document.querySelector('canvas').dataset.modal==='history');
+  await page.screenshot({path:`${output}/history.png`});await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'下一局',exact:true}).click();
   await page.getByRole('button',{name:'選擇布',exact:true}).focus();
   await page.keyboard.press('Enter');assert.equal((await canvasState(page)).selected,'paper');
@@ -90,8 +103,9 @@ try {
     const phoneContext=await browser.newContext({viewport:{width,height},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
     const phone=await phoneContext.newPage();phone.on('pageerror',error => errors.push(error.message));
     await phone.goto(`${origin}/yakyuken-preview.html`);await phase(phone,'selecting');await frame(phone);
+    assert.equal((await canvasState(phone)).dealerFrontCount,'0',`${name}: reduced-motion game starts on backs`);
     assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth===innerWidth && document.documentElement.scrollHeight===innerHeight),true);
-    for(const control of ['開啟選單','開啟設定','遊戲說明']){
+    for(const control of ['開啟選單','開啟設定','遊戲規則']){
       const target=await phone.getByRole('button',{name:control,exact:true}).boundingBox();
       assert.ok(target.width>=43.9 && target.height>=43.9,`${name}: ${control} has a 44px touch target`);
     }
@@ -100,7 +114,13 @@ try {
     await card.tap();assert.equal((await canvasState(phone)).selected,'rock');
     await phone.getByRole('button',{name:'確認出牌',exact:true}).tap();await phase(phone,'confirmed');
     assert.deepEqual([(await canvasState(phone)).dealerStage,(await canvasState(phone)).dealerMove,(await canvasState(phone)).outcome],['shown','scissors','win']);
+    assert.equal((await canvasState(phone)).dealerFrontCount,'1',`${name}: reduced-motion game reveals one card`);
     await phone.screenshot({path:`${output}/${name}.png`});
+    if(name==='mobile-landscape'){
+      await phone.getByRole('button',{name:'遊戲規則',exact:true}).tap();
+      await phone.waitForFunction(() => document.querySelector('canvas').dataset.modal==='help');
+      await phone.screenshot({path:`${output}/mobile-landscape-help.png`});await phone.keyboard.press('Escape');
+    }
     await phone.getByRole('button',{name:'開啟選單',exact:true}).tap();
     await phone.getByRole('button',{name:'荷官與造型',exact:true}).tap();
     await phone.getByRole('button',{name:'預覽漸入佳境造型',exact:true}).tap();
@@ -129,6 +149,7 @@ try {
   await resizing.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(resizing,'presenting');
   await resizing.setViewportSize({width:390,height:844});await phase(resizing,'confirmed');
   assert.deepEqual([(await canvasState(resizing)).dealerMove,(await canvasState(resizing)).outcome,(await canvasState(resizing)).round],['scissors','loss','1']);
+  assert.equal((await canvasState(resizing)).dealerFrontCount,'1','resize preserves only the chosen front');
   checks.push('resize during dealer presentation reveals the same round once, including a losing result');
 
   const failure=await context.newPage();failure.on('pageerror',error => errors.push(error.message));
