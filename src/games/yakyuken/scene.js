@@ -1,160 +1,283 @@
-import {CHARACTERS, DEALER, ENTRY_FEE} from './characters.js';
+import {Application,Assets,Container,FillGradient,Graphics,Rectangle,Sprite} from 'pixi.js';
+import 'pixi.js/unsafe-eval';
+import backgroundUrl from '../../../images/jokers-circus/circus-background.webp';
 import {DEALER_ART} from './assets.js';
-import {challengeOdds, MOVES, MOVE_NAMES} from './rules.js';
-import {handIcon, soundIcon} from './icons.js';
-import {changeWardrobe, pause} from './presentation.js';
+import {PreviewAudio} from './audio.js';
+import {HandCard} from './pixi/card.js';
+import {tableLayout,TABLE_MOVES,TABLE_MOVE_NAMES} from './pixi/layout.js';
+import {Motion} from './pixi/motion.js';
+import {demoDuel} from './pixi/demo-duel.js';
+import {createTable} from './pixi/table.js';
+import {diamond,label,panel,PALETTE,PixiButton} from './pixi/ui.js';
 
-const fmt = value => value.toLocaleString('en-US');
-const pct = value => `${(value * 100).toFixed(2).replace(/\.00$/,'')}%`;
-const copy = {win:['你贏了這一拳','好眼光。再靠近勝利一步。'],loss:['荷官拿下這一拳','別急，下一拳也許就能逆轉。'],draw:['默契，平手','不扣機會，再出一拳。']};
+// Fixed demonstration choreography; no probability or wallet dependency.
+export class YakyukenScene {
+  app = new Application();
+  motion = new Motion();
+  audio = new PreviewAudio();
+  abort = new AbortController();
+  loaded = new Set();
+  phase = 'selecting';
+  selected = null;
+  duel = null;
+  completedRounds = 0;
+  dealerStage = 'idle';
+  pose = 0;
+  modal = null;
+  epoch = 0;
+  disposed = false;
 
-export function mountScene(root, audio) {
-  const events = new AbortController();
-  root.innerHTML = `
-    <a class="skip-link" href="#duel-panel">跳到出拳區</a>
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="Joker’s Circus 首頁"><span class="brand-mark" aria-hidden="true">J</span><span>JOKER’S CIRCUS<small>命運馬戲團</small></span></a>
-      <span class="preview-label">獨立試玩 <span>PREVIEW</span></span>
-      <div class="top-actions"><button id="sound-toggle" class="icon-button" aria-label="開啟音效" aria-pressed="false">${soundIcon(true)}</button><div class="preview-wallet"><span>試玩戲籌</span><strong id="balance">10,000</strong></div></div>
-    </header>
-    <main>
-      <section class="theatre" aria-labelledby="game-title">
-        <div class="stage-copy">
-          <p class="eyebrow"><span></span> AN ENCOUNTER WITH FATE</p>
-          <p class="act-number">第一幕 <span>NO. 01</span></p>
-          <h1 id="game-title">野球拳<span>命運荷官</span></h1>
-          <div class="title-rule" aria-hidden="true"><i></i><b>◆</b><i></i></div>
-          <p class="intro">一拳，試探命運。<br>兩次勝利，揭開終幕。</p>
-          <dl class="prize-summary"><div><dt>每次挑戰</dt><dd>1,000 <small>戲籌</small></dd></div><div><dt>通關獎勵</dt><dd>2,000 <small>戲籌</small></dd></div></dl>
-          <p class="stage-quote">「準備好了嗎？<br>讓我看看你的運氣。」</p>
-          <span class="signature">The Dealer</span>
-        </div>
-        <figure class="portrait" id="portrait" aria-label="命運荷官造型">
-          <div class="portrait-halo" aria-hidden="true"></div>
-          <div class="portrait-number" aria-hidden="true">01</div>
-          <img id="dealer-art" src="${DEALER_ART[0].url}" alt="命運荷官：${DEALER_ART[0].description}" width="1024" height="1536" fetchpriority="high" />
-          <figcaption><span id="art-stage">邀你入局</span><div class="art-dots" aria-hidden="true"><i class="active"></i><i></i><i></i></div><small>THE DEALER · 命運荷官</small></figcaption>
-        </figure>
-        <section class="duel-panel" id="duel-panel" aria-labelledby="duel-title" tabindex="-1" aria-busy="true">
-          <div class="panel-heading"><span class="eyebrow">THE CHALLENGE</span><button class="text-button" id="show-rules">遊戲說明 <span aria-hidden="true">↗</span></button></div>
-          <h2 id="duel-title">這一局，由你出手。</h2>
-          <p class="panel-intro">累積 2 勝通關，輸第 2 次挑戰結束。</p>
-          <div class="progress-row"><div><span>你的勝場</span><div id="wins-progress" class="progress-marks" aria-label="目前 0 勝，共需 2 勝"><i></i><i></i></div></div><div><span>剩餘機會</span><div id="lives-progress" class="progress-marks lives" aria-label="剩餘 2 次機會"><i class="filled"></i><i class="filled"></i></div></div></div>
-          <div class="duel-arena"><div class="hand-side"><span>YOU <small>你</small></span><div class="hand-face" id="player-hand">${handIcon(null)}</div><strong id="player-move">等待出拳</strong></div><span class="versus">VS</span><div class="hand-side"><span>DEALER <small>荷官</small></span><div class="hand-face dealer-hand" id="dealer-hand">${handIcon(null)}</div><strong id="dealer-move">等待出拳</strong></div></div>
-          <div id="round-feedback" class="round-feedback" role="status" aria-live="polite" aria-atomic="true"><strong id="feedback-title">舞台準備中</strong><p id="feedback-detail">正在準備三階段角色原畫。</p></div>
-          <div class="move-buttons" role="group" aria-label="選擇出拳">${MOVES.map((move,index) => `<button class="move-button" data-move="${move}" disabled aria-label="出${MOVE_NAMES[move]}">${handIcon(move)}<span>${MOVE_NAMES[move]}</span><kbd>${index + 1}</kbd></button>`).join('')}</div>
-          <button class="enter-button" id="enter-challenge" disabled><span id="enter-label">準備舞台中…</span><span class="button-arrow" aria-hidden="true">↗</span></button>
-          <p class="panel-footnote" id="panel-footnote">每次挑戰扣 1,000 · 平手不扣機會</p>
-        </section>
-      </section>
-      <section class="cast-section" aria-label="角色名單"><div class="cast-heading"><span>選擇你的對手</span><small>THE CAST</small></div><div class="cast-list">${CHARACTERS.map((character,index) => `<button class="cast-member ${character.enabled?'selected':''}" ${character.enabled?'aria-pressed="true"':'disabled'} aria-label="${character.name}${character.enabled?'，已選擇':'，尚未開放'}"><span class="cast-index">0${index + 1}</span>${character.enabled?`<span class="cast-avatar"><img src="${DEALER_ART[0].url}" alt="" /></span>`:'<span class="cast-seal" aria-hidden="true">◇</span>'}<span class="cast-name">${character.enabled?character.name:'神秘來賓'}<small>${character.winsRequired} 勝 · ${fmt(character.reward)} 戲籌</small></span><span class="cast-state">${character.enabled?'登場':'待登場'}</span></button>`).join('')}</div></section>
-      <footer class="preview-footer"><p>本機獨立試玩 · 戲籌與進度僅保存在此分頁 · 未連接正式錢包</p><div><button class="text-button" id="show-art">三階段原畫</button><button class="text-button" id="show-odds">機會次數試算</button><button class="text-button" id="reset-preview" disabled>重設試玩</button></div></footer>
-      <p id="storage-warning" class="storage-warning" hidden>此瀏覽器無法儲存試玩進度，重新整理後將重置。</p>
-    </main>
-    <div id="victory-overlay" class="victory-overlay" aria-hidden="true" hidden><div class="victory-emblem"><div class="victory-star"><svg viewBox="0 0 160 160" fill="none" aria-hidden="true"><path d="M80 4 95 54 146 29 108 71 156 80 108 89 146 131 95 106 80 156 65 106 14 131 52 89 4 80 52 71 14 29 65 54Z"/><path d="m80 28 39 52-39 52-39-52Z"/><circle cx="80" cy="80" r="28"/></svg><b>勝</b></div><p class="victory-count"></p><strong class="victory-title"></strong><span class="victory-prize"></span></div></div>
-    <dialog id="review-dialog" aria-labelledby="dialog-title"><div class="dialog-heading"><h2 id="dialog-title"></h2><button id="close-dialog" class="icon-button" aria-label="關閉視窗">×</button></div><div id="dialog-body"></div></dialog>`;
-  const $ = selector => root.querySelector(selector);
-  const on = (element,type,callback) => element.addEventListener(type,callback,{signal:events.signal});
-  let controller, stage = 0, ready = false;
-  const openDialog = (title,html) => { $('#dialog-title').textContent = title; $('#dialog-body').innerHTML = html; $('#review-dialog').showModal(); };
-  const closeDialog = () => $('#review-dialog').close();
-  on($('#close-dialog'),'click',closeDialog);
-  on($('#review-dialog'),'click',event => { if (event.target === $('#review-dialog')) { const rect = event.target.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeDialog(); } });
-  on($('#show-rules'),'click',() => openDialog('遊戲說明',`<p class="dialog-lead">先贏兩拳，揭開荷官的終幕。</p><ol class="rules-list"><li>每次挑戰支付 <b>1,000 戲籌</b>，挑戰中的每次出拳不另外收費。</li><li>石頭勝剪刀、剪刀勝布、布勝石頭。平手重猜，不扣機會。</li><li>勝場採累積制；落敗不會扣掉已獲得的勝場。</li><li>累積 <b>2 勝</b>即通關；輸第 <b>2 次</b>挑戰結束，可承受 1 次落敗。</li><li>通關發放 <b>2,000 戲籌</b>，包含入場成本的回收；淨增加 1,000 戲籌。失敗不發放獎勵。</li><li>開場、1 勝、2 勝對應三張完整人物圖。</li></ol><p class="dialog-note">本版為獨立本機試玩，未連接 Discord 或正式錢包。猜拳採等機率獨立出拳，平手不設次數上限。</p>`));
-  on($('#show-art'),'click',() => openDialog('荷官 · 三階段原畫',`<p>同一位荷官，隨階段改變服裝、動作與髮型。勝利徽章在畫面中央登場時切換造型。</p><div class="art-gallery">${DEALER_ART.map((art,index) => `<figure><img src="${art.url}" width="1024" height="1536" alt="${art.description}"/><figcaption><span>0${index + 1} · ${art.name}</span><small>${index === 0?'開場':`${index} 勝`}</small></figcaption></figure>`).join('')}</div>`));
-  on($('#show-odds'),'click',() => openDialog('機會次數 · 精確試算',`<p>假設公平且獨立猜拳、平手重猜不扣機會、累積勝場，入場費統一為 1,000。獎勵為通關總入帳。</p><div class="odds-scroll"><table><caption>每格依序為通關率／理論返還率</caption><thead><tr><th>角色門檻與獎勵</th>${[1,2,3].map(n => `<th>輸第 ${n} 次結束</th>`).join('')}</tr></thead><tbody>${CHARACTERS.map(character => `<tr><th>${character.winsRequired} 勝<small>${fmt(character.reward)} 戲籌</small></th>${[1,2,3].map(l => {const {clear} = challengeOdds(character.winsRequired,l);return `<td>${pct(clear)}<small>${pct(clear * character.reward / ENTRY_FEE)}</small></td>`;}).join('')}</tr>`).join('')}</tbody></table></div><p class="dialog-note">理論返還率＝通關率 × 獎勵 ÷ 入場費；不代表單次結果。荷官暫採輸第 2 次結束：通關率 50%，理論返還率 100%，平均 3.75 次出拳。其餘角色的失敗門檻尚未定案，獎勵倍率差距使整數機會次數無法保證相同返還率。正式經濟目標確認後再決定。</p>`));
-  on($('#sound-toggle'),'click',async () => {
-    try { const muted = await audio.toggle(); $('#sound-toggle').innerHTML = soundIcon(muted); $('#sound-toggle').setAttribute('aria-pressed',String(!muted)); $('#sound-toggle').setAttribute('aria-label',muted?'開啟音效':'關閉音效'); }
-    catch { $('#sound-toggle').setAttribute('aria-label','此裝置無法啟用音效'); }
-  });
-
-  function setArt(next) {
-    stage = Math.min(next,DEALER_ART.length - 1);
-    const art = DEALER_ART[stage];
-    $('#dealer-art').src = art.url; $('#dealer-art').alt = `命運荷官：${art.description}`;
-    $('#portrait').dataset.stage = String(stage);
-    $('#art-stage').textContent = art.name;
-    $('.art-dots').querySelectorAll('i').forEach((dot,index) => dot.classList.toggle('active',index === stage));
-  }
-  function setBusy(busy) {
-    const playing = controller?.state.session?.status === 'playing';
-    $('#duel-panel').setAttribute('aria-busy',String(busy || !ready));
-    root.querySelectorAll('[data-move]').forEach(button => { button.disabled = !ready || busy || !playing; });
-    $('#enter-challenge').disabled = !ready || busy || playing || (controller?.state.balance ?? 0) < ENTRY_FEE;
-    $('#reset-preview').disabled = !ready || busy || playing;
-  }
-  function feedback(title,detail,tone = '') {
-    $('#feedback-title').textContent = title; $('#feedback-detail').textContent = detail;
-    $('#round-feedback').dataset.tone = tone;
-  }
-  function renderProgress(state) {
-    $('#balance').textContent = fmt(state.balance);
-    const session = state.session, wins = session?.wins ?? 0, lives = DEALER.lossLimit - (session?.losses ?? 0);
-    $('#wins-progress').setAttribute('aria-label',`目前 ${wins} 勝，共需 2 勝`);
-    $('#lives-progress').setAttribute('aria-label',`剩餘 ${lives} 次機會`);
-    $('#wins-progress').querySelectorAll('i').forEach((mark,index) => mark.classList.toggle('filled',index < wins));
-    $('#lives-progress').querySelectorAll('i').forEach((mark,index) => mark.classList.toggle('filled',index < lives));
-  }
-  function renderHands(last) {
-    for (const side of ['player','dealer']) {
-      $(`#${side}-hand`).innerHTML = handIcon(last?.[side]);
-      $(`#${side}-move`).textContent = last ? MOVE_NAMES[last[side]] : '等待出拳';
+  async init(host) {
+    this.host = host;
+    await this.app.init({
+      width:Math.max(host.clientWidth,1),height:Math.max(host.clientHeight,1),
+      background:0x0b1122,antialias:true,autoDensity:true,resolution:Math.min(devicePixelRatio || 1,2),
+      preference:'webgl',autoStart:false,sharedTicker:false,
+      accessibilityOptions:{enabledByDefault:true,deactivateOnMouseMove:false},
+      eventFeatures:{move:true,click:true,globalMove:false,wheel:false},
+    });
+    this.initialized = true;
+    if(this.disposed){this.app.destroy({removeView:true},{children:true});return;}
+    host.replaceChildren(this.app.canvas);
+    this.app.canvas.setAttribute('role','application');
+    this.app.canvas.setAttribute('aria-label','野球拳：正在準備牌桌');
+    this.root = new Container({label:'yakyuken-scene'});this.app.stage.addChild(this.root);
+    const loading = label('正在點亮命運牌桌…',23,PALETTE.gold);
+    loading.position.set(this.app.screen.width/2,this.app.screen.height/2);this.app.stage.addChild(loading);this.app.render();
+    const resources = await Promise.allSettled([backgroundUrl,...DEALER_ART.map(art => art.url)].map(async url => {
+      const texture = await Assets.load(url);this.loaded.add(url);return texture;
+    }));
+    if(this.disposed){await this.unload();return;}
+    loading.destroy();
+    if(resources.some(value => value.status === 'rejected')) {
+      await this.unload();
+      const message = label('舞台素材載入失敗\n請重新載入試玩',24,PALETTE.gold,{lineHeight:40});
+      message.position.set(this.app.screen.width/2,this.app.screen.height/2-40);
+      const retry = new PixiButton({text:'重新載入',width:200,onPress:() => location.reload(),primary:true});
+      retry.position.set(this.app.screen.width/2,this.app.screen.height/2+65);
+      this.app.stage.addChild(message,retry);this.app.canvas.dataset.phase = 'error';this.app.render();return;
     }
+    this.backgroundTexture = resources[0].value;
+    this.dealerTextures = resources.slice(1).map(value => value.value);
+    this.media = matchMedia('(prefers-reduced-motion: reduce)');this.motion.reduced = this.media.matches;
+    this.media.addEventListener('change',() => {this.motion.reduced = this.media.matches || !!this.reducePreference;if(this.motion.reduced)this.motion.finish();},{signal:this.abort.signal});
+    this.app.ticker.maxFPS = 60;
+    this.app.ticker.add(ticker => this.motion.tick(ticker.elapsedMS));
+    this.observer = new ResizeObserver(() => this.resize());this.observer.observe(host);
+    document.addEventListener('keydown',event => this.keydown(event),{signal:this.abort.signal});
+    document.addEventListener('visibilitychange',() => {if(document.hidden)this.pause();else this.resume();},{signal:this.abort.signal});
+    this.resize();this.app.start();
   }
-  function render(state,{busy = false,storageUnavailable = false} = {}) {
-    const session = state.session, playing = session?.status === 'playing';
-    $('.theatre').classList.toggle('has-challenge',!!session);
-    renderProgress(state); setArt(session?.wins ?? 0); renderHands(session?.last);
-    $('#storage-warning').hidden = !storageUnavailable;
-    $('#enter-challenge').hidden = playing;
-    $('.move-buttons').classList.toggle('is-playing',playing);
-    $('#enter-label').textContent = state.balance < ENTRY_FEE ? '戲籌不足 · 可重設試玩' : session ? '再次挑戰 · 1,000 戲籌' : '開始挑戰 · 1,000 戲籌';
-    $('#panel-footnote').textContent = playing ? `第 ${session.rounds + 1} 拳 · 平手不扣機會 · 可用鍵盤 1 / 2 / 3 出拳` : '每次挑戰扣 1,000 · 平手不扣機會';
-    if (!ready) feedback('舞台準備中','正在準備三階段角色原畫。');
-    else if (session?.status === 'won') feedback('終幕，為你揭開',`通關獲得 ${fmt(DEALER.reward)} 戲籌 · 本次淨獲得 1,000`,'win');
-    else if (session?.status === 'lost') feedback('這次，命運站在他那邊','挑戰結束。準備好時，再赴一場約。','loss');
-    else if (session?.last) feedback(...copy[session.last.outcome],session.last.outcome);
-    else if (playing) feedback('你的第一拳','選擇石頭、布或剪刀。');
-    else feedback('命運，等你入席','準備好與荷官一較高下了嗎？');
-    setBusy(busy);
+
+  resize() {
+    if(this.disposed || !this.dealerTextures)return;
+    const width=Math.max(this.host.clientWidth,1),height=Math.max(this.host.clientHeight,1);
+    this.app.renderer.resize(width,height);this.layout = tableLayout(width,height);
+    this.motion.finish();this.epoch++;
+    if(this.phase === 'presenting'){this.phase = 'confirmed';this.dealerStage = 'shown';}
+    this.changing=false;
+    this.root.removeChildren().forEach(child => child.destroy({children:true}));
+    this.modalRoot=null;this.root.scale.set(this.layout.scale);
+    this.world = new Container({label:'table-world'});this.root.addChild(this.world);this.overlay = null;
+    this.buildRoom();this.buildCards();this.buildHud();this.updateControls();
+    if(this.modal)this.buildModal(this.modal);
+    this.app.render();
   }
-  const view = {
-    render,setBusy,
-    bind(value) {
-      controller = value;
-      on($('#enter-challenge'),'click',() => {
-        if (!controller.start()) return;
-        root.querySelector('[data-move]').focus({preventScroll:true});
-        if (matchMedia('(max-width:620px)').matches) window.scrollTo({top:0,behavior:'instant'});
+
+  buildRoom() {
+    const l=this.layout,{w,h}=l;
+    const background = new Sprite(this.backgroundTexture);
+    background.width=w;background.height=l.portrait?h*.59:h;background.eventMode='none';this.world.addChild(background);
+    const shade = new Graphics().rect(0,0,w,h).fill({color:0x070d1c,alpha:.16});shade.eventMode='none';this.world.addChild(shade);
+    this.dealer = new Sprite(this.dealerTextures[this.pose]);this.dealer.anchor.set(.5,0);
+    this.dealer.height=l.dealer.height;this.dealer.scale.x=this.dealer.scale.y;
+    this.dealer.position.set(l.dealer.x,l.dealer.y);this.dealer.eventMode='none';
+    this.world.addChild(this.dealer,createTable(l));
+    const name = label('命運荷官',l.portrait?28:25,PALETTE.bright,{letterSpacing:4});name.position.set(l.portrait?w*.17:w*.23,h*.275);
+    const tag = label('THE DEALER',13,PALETTE.gold,{letterSpacing:3});tag.position.set(name.x,name.y+32);this.world.addChild(name,tag);
+    if(!l.portrait){
+      const quote = label('「選一張，\n讓我看看你的運氣。」',24,0xe7cba2,{lineHeight:42,letterSpacing:2});
+      quote.position.set(w*.78,h*.28);quote.alpha=.9;this.world.addChild(quote,diamond(w*.78,h*.28-65,5));
+    }
+    const dealerLabel=label('荷 官 手牌',l.portrait?22:18,PALETTE.gold,{letterSpacing:3});
+    dealerLabel.position.set(w/2,l.dealerCards.y-94*l.dealerCards.scale-33);this.world.addChild(dealerLabel);
+  }
+
+  buildCards() {
+    const l=this.layout;
+    this.dealerCards=TABLE_MOVES.map((move,index) => {
+      const card = new HandCard({move,index,owner:'dealer',motion:this.motion});
+      card.place(l.dealerCards.x+(index-1)*l.dealerCards.gap,l.dealerCards.y,l.dealerCards.scale,(index-1)*.035);
+      const shown=this.dealerStage==='shown' || this.dealerStage==='playing';
+      card.selected=shown && this.duel?.dealer===move;card.highlight.visible=card.selected;
+      if(card.selected){card.y-=20;card.rotation=0;}
+      card.alpha=shown && !card.selected ? .45 : .94;
+      this.world.addChild(card);return card;
+    });
+    this.playerCards=TABLE_MOVES.map((move,index) => {
+      const card = new HandCard({move,index,owner:'player',motion:this.motion,onChoose:value => this.select(value)});
+      card.place(l.playerCards.x+(index-1)*l.playerCards.gap,l.playerCards.y,l.playerCards.scale,(index-1)*.055);
+      card.selected=move === this.selected;card.highlight.visible=card.selected;if(card.selected)card.y-=this.phase==='confirmed'?32:24;
+      card.lock(this.phase !== 'selecting');this.world.addChild(card);return card;
+    });
+  }
+
+  buildHud() {
+    const l=this.layout,{w,h,portrait}=l,height=Math.max(portrait?116:80,56/l.scale);
+    const gradient=new FillGradient({start:{x:0,y:0},end:{x:0,y:1},colorStops:[{offset:0,color:0x0c1020},{offset:1,color:0x1d1427}]});
+    const hud=new Graphics().rect(0,0,w,height).fill(gradient).stroke({color:0x987441,width:1});
+    hud.rect(0,h-(portrait?210:118),w,portrait?210:118).fill({color:0x0d1221,alpha:.91});
+    hud.moveTo(0,h-(portrait?210:118)).lineTo(w,h-(portrait?210:118)).stroke({color:PALETTE.gold,width:1,alpha:.5});this.world.addChild(hud);
+    const brand=label('JOKER’S CIRCUS',portrait?22:24,PALETTE.bright,{letterSpacing:3});brand.position.set(portrait?w/2:250,portrait?36:31);
+    const title=label('野 球 拳',portrait?32:29,PALETTE.cream,{letterSpacing:4});title.position.set(w/2,portrait?78:40);this.world.addChild(brand,title);
+    if(!portrait){const sub=label('命 運 馬 戲 團',12,PALETTE.gold,{letterSpacing:4});sub.position.set(250,58);this.world.addChild(sub);}
+    const size=Math.max(portrait?88:54,44/l.scale);
+    const menu=new PixiButton({text:'≡',name:'開啟選單',width:size,height:size,fontSize:portrait?45:33,onPress:() => this.openModal('menu')});menu.position.set(portrait?65:52,height/2);this.world.addChild(menu);
+    const info=new PixiButton({text:'?',name:'遊戲說明',width:size,height:size,fontSize:portrait?36:26,onPress:() => this.openModal('help')});info.position.set(w-(portrait?65:52),height/2);this.world.addChild(info);
+    const settings=new PixiButton({text:'設定',name:'開啟設定',width:Math.max(portrait?104:94,44/l.scale),height:size,fontSize:portrait?27:19,onPress:() => this.openModal('settings')});settings.position.set(w-(portrait?178:145),height/2);this.world.addChild(settings);
+    this.status=label('',portrait?28:23,PALETTE.cream,{letterSpacing:2});this.status.position.set(w/2,l.statusY);
+    this.statusDetail=label('',portrait?20:16,PALETTE.muted,{letterSpacing:1});this.statusDetail.position.set(w/2,l.statusY+35);this.statusDetail.visible=portrait;this.world.addChild(this.status,this.statusDetail);
+    const confirmHeight=Math.max(portrait?86:62,44/l.scale);
+    this.selectionLabel=label('',portrait?25:20,PALETTE.gold,{letterSpacing:2});this.selectionLabel.position.set(portrait?w/2:w*.25,portrait?l.actionY-Math.max(63,confirmHeight/2+28):l.actionY);this.world.addChild(this.selectionLabel);
+    this.confirmButton=new PixiButton({text:'確認出牌',name:'確認出牌',width:portrait?350:280,height:confirmHeight,fontSize:portrait?30:25,primary:true,onPress:() => this.confirm()});
+    this.confirmButton.position.set(w/2,l.actionY);this.world.addChild(this.confirmButton);
+    if(!portrait){const character=new PixiButton({text:'荷官與造型',name:'荷官與造型',width:220,height:Math.max(58,44/l.scale),fontSize:20,onPress:() => this.openModal('wardrobe')});character.position.set(w*.80,l.actionY);this.world.addChild(character);}
+    const foot=label('互動展示 · 固定出牌順序 · 不扣戲籌',portrait?17:12,PALETTE.muted,{letterSpacing:2});foot.position.set(w/2,h-28);this.world.addChild(foot);
+  }
+
+  select(move) {
+    if(this.disposed || this.modal || this.phase !== 'selecting' || !TABLE_MOVES.includes(move))return;
+    this.selected=move;this.playerCards.forEach(card => card.choose(card.move === move));this.audio.cue('draw');this.updateControls();
+  }
+  async confirm() {
+    if(this.disposed || this.modal || this.phase === 'presenting')return;
+    if(this.phase === 'confirmed'){
+      this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';
+      this.playerCards.forEach((card,index) => {card.lock(false);card.choose(false);card.rotation=(index-1)*.055;});
+      this.dealerCards.forEach((card,index) => {card.choose(false);card.alpha=.94;card.rotation=(index-1)*.035;});
+      this.updateControls();return;
+    }
+    if(!this.selected)return;
+    this.duel=demoDuel(this.completedRounds,this.selected);this.completedRounds++;
+    this.phase='presenting';this.dealerStage='thinking';this.playerCards.forEach(card => card.lock(true));this.updateControls();
+    const epoch=this.epoch,card=this.playerCards.find(value => value.move === this.selected);
+    await this.motion.to(card,{y:card.baseY-32,rotation:0},240);
+    if(this.disposed || epoch !== this.epoch)return;
+    await this.motion.to({time:0},{time:1},260);
+    if(this.disposed || epoch !== this.epoch)return;
+    this.dealerStage='playing';
+    const dealerCard=this.dealerCards.find(value => value.move===this.duel.dealer);
+    this.dealerCards.forEach(value => {value.selected=value===dealerCard;value.highlight.visible=value.selected;value.alpha=value.selected ? .94 : .45;});
+    this.updateControls();
+    await this.motion.to(dealerCard,{y:dealerCard.baseY-20,rotation:0},280);
+    if(this.disposed || epoch !== this.epoch)return;
+    this.phase='confirmed';this.dealerStage='shown';this.audio.cue(this.duel.outcome);this.updateControls();
+  }
+  updateControls() {
+    if(!this.confirmButton)return;
+    this.confirmButton.setText(this.phase === 'confirmed'?'下一局':this.phase === 'presenting'?'荷官出牌中…':'確認出牌');
+    const name=this.phase === 'confirmed'?'下一局':'確認出牌';this.confirmButton.accessibleTitle=name;this.confirmButton.accessibleHint=name;
+    this.confirmButton.setEnabled(this.phase === 'confirmed' || this.phase === 'selecting' && !!this.selected);
+    const result=this.duel?{win:'你贏了',loss:'荷官獲勝',draw:'平手'}[this.duel.outcome]:'';
+    this.selectionLabel.text=this.phase==='confirmed'?`${result} · 你出${TABLE_MOVE_NAMES[this.selected]}／荷官出${TABLE_MOVE_NAMES[this.duel.dealer]}`:this.phase==='presenting'?`你出${TABLE_MOVE_NAMES[this.selected]} · 荷官正在出牌`:this.selected?`你的選擇 · ${TABLE_MOVE_NAMES[this.selected]}`:'你的手牌 · 請選擇';
+    this.selectionLabel.style.fill=this.phase==='confirmed' && this.duel.outcome==='loss'?0xe6a8aa:PALETTE.gold;
+    this.status.text=this.phase==='confirmed'?this.selectionLabel.text:this.phase==='presenting'?'荷官正在出牌':this.selected?'準備好了，就出這一張。':'選一張牌，與荷官過招。';
+    this.statusDetail.text='拳頭 · 剪刀 · 布';
+    this.status.visible=!this.selected;this.statusDetail.visible=this.layout.portrait && this.layout.h>=1250 && !this.selected;
+    Object.assign(this.app.canvas.dataset,{phase:this.phase,selected:this.selected || '',pose:String(this.pose),scene:'yakyuken-table',dealerStage:this.dealerStage,
+      dealerMove:this.dealerStage==='playing' || this.dealerStage==='shown'?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds)});
+    this.app.canvas.setAttribute('aria-label',`野球拳第一人稱牌桌。${this.status.text}。雙方各三張手牌。`);
+  }
+
+  openModal(type) {
+    if(this.disposed || this.phase === 'presenting' || this.changing)return;
+    this.closeModal();this.modal=type;this.buildModal(type);
+  }
+  closeModal() {
+    this.modal=null;if(this.modalRoot){this.modalRoot.destroy({children:true});this.modalRoot=null;}
+    if(this.world){this.world.interactiveChildren=true;this.world.accessibleChildren=true;}
+    this.app.canvas.dataset.modal='';
+  }
+  buildModal(type) {
+    const l=this.layout,{w,h,portrait}=l;
+    this.world.interactiveChildren=false;this.world.accessibleChildren=false;
+    this.modalRoot=new Container({label:`modal:${type}`});this.root.addChild(this.modalRoot);
+    const shade=new Graphics().rect(0,0,w,h).fill({color:0x050710,alpha:.84});shade.eventMode='static';shade.hitArea=new Rectangle(0,0,w,h);shade.on('pointertap',() => this.closeModal());this.modalRoot.addChild(shade);
+    const mw=portrait?680:900,mh=type==='wardrobe'?(portrait?1000:600):type==='help'?(portrait?860:620):(portrait?760:580);
+    const body=new Container({label:'modal-panel'});body.position.set(w/2,h/2);body.scale.set(Math.min(1,(h-36)/mh));body.eventMode='static';body.hitArea=new Rectangle(-mw/2,-mh/2,mw,mh);body.on('pointertap',event => event.stopPropagation());this.modalRoot.addChild(body);body.addChild(panel(mw,mh));
+    const title=label({menu:'命運牌桌',help:'遊戲說明',settings:'遊戲設定',wardrobe:'荷官與造型'}[type],portrait?38:32,PALETTE.gold,{letterSpacing:4});title.y=-mh/2+58;body.addChild(title);
+    const modalTouchSize=Math.max(portrait?88:54,44/(l.scale*body.scale.x));
+    const close=new PixiButton({text:'×',name:'關閉視窗',width:modalTouchSize,height:modalTouchSize,fontSize:portrait?40:31,onPress:() => this.closeModal()});close.position.set(mw/2-(portrait?65:46),-mh/2+(portrait?62:45));body.addChild(close);
+    const addButton=(text,y,action,name=text,width=portrait?480:420) => {
+      const button=new PixiButton({text,name,width,height:Math.max(portrait?88:60,modalTouchSize),fontSize:portrait?29:22,onPress:action});button.y=y;body.addChild(button);return button;
+    };
+    if(type==='menu'){
+      addButton('返回牌桌',portrait?-145:-150,() => this.closeModal());
+      addButton('荷官與造型',portrait?-15:-48,() => this.openModal('wardrobe'));
+      addButton('遊戲說明',portrait?115:54,() => this.openModal('help'));
+      addButton('遊戲設定',portrait?245:156,() => this.openModal('settings'));
+    } else if(type==='help'){
+      const text=label('你坐在牌桌這端，命運荷官在對面。\n\n雙方各有拳頭、剪刀、布三張手牌。\n點選你面前的牌，再按「確認出牌」。\n\n可用鍵盤 1、2、3 選牌，Enter 確認。\nEsc 關閉視窗或返回選單。',portrait?27:23,PALETTE.cream,{lineHeight:portrait?48:40});text.y=portrait?-40:-15;body.addChild(text);
+      const note=label('展示模式：荷官依固定順序出牌，僅演示勝負，不扣戲籌。',portrait?23:19,PALETTE.muted,{wordWrap:true,wordWrapWidth:mw-100,lineHeight:34});note.y=mh/2-125;body.addChild(note);
+      addButton('回到牌桌',mh/2-(portrait?73:58),() => this.closeModal());
+    } else if(type==='settings'){
+      const audioButton=addButton(this.audio.muted?'音效：關閉':'音效：開啟',portrait?-155:-105,async () => {
+        try {await this.audio.toggle();if(!this.disposed && !audioButton.destroyed && this.modal==='settings')audioButton.setText(this.audio.muted?'音效：關閉':'音效：開啟');}
+        catch {if(!this.disposed && !audioButton.destroyed)audioButton.setText('此裝置無法啟用音效');}
+      },'切換音效');
+      const motionButton=addButton(this.motion.reduced?'動態效果：減少':'動態效果：標準',portrait?-25:-10,() => {
+        this.reducePreference=!this.motion.reduced;this.motion.reduced=!!this.reducePreference || this.media.matches;if(this.motion.reduced)this.motion.finish();this.openModal('settings');
+      },'切換動態效果');
+      if(this.media.matches){motionButton.setText('動態效果：跟隨系統減少');motionButton.setEnabled(false);}
+      const fullscreenButton=addButton(document.fullscreenElement?'離開全螢幕':'全螢幕',portrait?105:85,async () => {
+        try {if(document.fullscreenElement)await document.exitFullscreen();else await this.host.requestFullscreen();}
+        catch {if(!fullscreenButton.destroyed)fullscreenButton.setText('此視窗不支援全螢幕');return;}
+        if(!this.disposed && this.modal==='settings')this.openModal('settings');
+      },'切換全螢幕');
+    } else if(type==='wardrobe'){
+      const hint=label('命運荷官 · 造型圖鑑',portrait?26:20,PALETTE.muted);hint.y=-mh/2+120;body.addChild(hint);
+      const gap=portrait?202:245,artHeight=portrait?430:270;
+      DEALER_ART.forEach((art,index) => {
+        const image=new Sprite(this.dealerTextures[index]);image.anchor.set(.5,0);image.height=artHeight;image.scale.x=image.scale.y;image.position.set((index-1)*gap,-mh/2+(portrait?182:155));body.addChild(image);
+        const button=new PixiButton({text:art.name,name:`預覽${art.name}造型`,width:portrait?182:210,height:Math.max(portrait?88:58,modalTouchSize),fontSize:portrait?24:20,primary:index===this.pose,onPress:() => this.changePose(index)});button.position.set((index-1)*gap,portrait?218:mh/2-110);body.addChild(button);
       });
-      on($('#reset-preview'),'click',() => controller.reset());
-      const play = move => controller.play(move).catch(error => { if (!events.signal.aborted) feedback('演出暫停',error.message); });
-      root.querySelectorAll('[data-move]').forEach(button => on(button,'click',() => play(button.dataset.move)));
-      document.addEventListener('keydown',event => {
-        if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || $('#review-dialog').open || document.hidden || !ready) return;
-        if (['INPUT','SELECT','TEXTAREA'].includes(event.target?.tagName) || event.target?.isContentEditable) return;
-        const move = MOVES[Number(event.key) - 1];
-        if (move) { event.preventDefault(); void play(move); }
-      },{signal:events.signal});
-    },
-    ready() { ready = true; controller.render(); },
-    fail(message) { ready = false; feedback('舞台尚未就緒',message); setBusy(false); },
-    async presentRound(before,after,signal) {
-      const last = after.session.last;
-      $('.duel-arena').classList.add('revealing');
-      renderHands(null); feedback('石頭、剪刀、布——','雙方即將揭曉。');
-      try {
-        await pause(520,signal);
-        if (signal.aborted) return;
-        $('.duel-arena').classList.remove('revealing');
-        renderHands(last); renderProgress(after); feedback(...copy[last.outcome],last.outcome);
-        if (before.session.wins !== after.session.wins) {
-          await pause(220,signal);
-          await changeWardrobe({portrait:$('#portrait'),overlay:$('#victory-overlay'),setArt,stage:after.session.wins,signal,onReveal:() => audio.cue('win')});
-        } else { audio.cue(last.outcome); await pause(350,signal); }
-      } finally { $('.duel-arena').classList.remove('revealing'); }
-    },
-    destroy() { events.abort(); if ($('#review-dialog').open) closeDialog(); audio.destroy(); },
-  };
-  return view;
+      const future=label('其餘四位角色 · 敬請期待',portrait?23:18,PALETTE.muted,{letterSpacing:2});future.y=mh/2-(portrait?60:45);body.addChild(future);
+    }
+    this.app.canvas.dataset.modal=type;
+  }
+
+  async changePose(index) {
+    if(this.changing || this.disposed)return;
+    this.closeModal();if(index === this.pose)return;
+    this.changing=true;this.world.interactiveChildren=false;this.world.accessibleChildren=false;
+    const epoch=this.epoch,{w,h}=this.layout,overlay=new Container({label:'wardrobe-emblem'});overlay.alpha=0;
+    const shade=new Graphics().rect(0,0,w,h).fill({color:0x080b17,alpha:.96});shade.eventMode='static';shade.hitArea=new Rectangle(0,0,w,h);overlay.addChild(shade);
+    const emblem=new Container();emblem.position.set(w/2,h/2-30);
+    const star=new Graphics().star(0,0,8,120,68).fill({color:0x784b22,alpha:.3}).stroke({color:PALETTE.gold,width:2});
+    const frame=new Graphics().poly([0,-88,68,0,0,88,-68,0]).stroke({color:PALETTE.gold,width:1});emblem.addChild(star,frame,label('幕',68,PALETTE.bright));overlay.addChild(emblem);
+    const caption=label(DEALER_ART[index].name,34,PALETTE.gold,{letterSpacing:6});caption.position.set(w/2,h/2+150);overlay.addChild(caption);
+    this.root.addChild(overlay);this.overlay=overlay;
+    await this.motion.to(overlay,{alpha:1},220);
+    if(this.disposed || epoch !== this.epoch)return;
+    this.pose=index;this.dealer.texture=this.dealerTextures[index];this.app.canvas.dataset.pose=String(index);this.audio.cue('win');
+    await this.motion.to({time:0},{time:1},300);await this.motion.to(overlay,{alpha:0},320);
+    if(this.disposed || epoch !== this.epoch)return;
+    overlay.destroy({children:true});this.overlay=null;this.changing=false;this.world.interactiveChildren=true;this.world.accessibleChildren=true;
+  }
+  keydown(event) {
+    if(event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || this.disposed || document.hidden)return;
+    if(event.key==='Escape'){event.preventDefault();if(this.modal)this.closeModal();else if(!this.changing)this.openModal('menu');return;}
+    if(this.modal || this.changing)return;
+    const move=TABLE_MOVES[Number(event.key)-1];
+    if(move){event.preventDefault();this.select(move);}
+    else if(event.key==='Enter' && (event.target===document.body || event.target===this.app.canvas || this.selected && event.target?.getAttribute('aria-label')?.startsWith('選擇'))){event.preventDefault();void this.confirm();}
+  }
+  pause() {if(this.disposed || !this.initialized)return;this.motion.suspended=true;this.motion.finish();this.app.stop();}
+  resume() {if(!this.disposed && this.dealerTextures && !document.hidden){this.motion.suspended=false;this.app.start();}}
+  async unload() {const urls=[...this.loaded];this.loaded.clear();await Promise.allSettled(urls.map(url => Assets.unload(url)));}
+  async destroy() {
+    if(this.disposed)return;this.disposed=true;this.abort.abort();this.observer?.disconnect();this.motion.destroy();this.audio.destroy();
+    if(this.initialized){this.app.stop();this.app.destroy({removeView:true,releaseGlobalResources:true},{children:true});}
+    await this.unload();
+  }
 }

@@ -5,7 +5,10 @@ import {build, createServer} from 'vite';
 const root = fileURLToPath(new URL('../../',import.meta.url));
 const args = process.argv.slice(2);
 if (args.length > 1 || args.some(arg => arg !== '--build')) throw new Error('Use no arguments to serve or --build for isolated validation');
-const shared = {root,configFile:false,envDir:false};
+const shared = {root,configFile:false,envDir:false,
+  cacheDir:resolve(root,'test-results/yakyuken-vite-cache'),
+  optimizeDeps:{include:['pixi.js','pixi.js/unsafe-eval'],noDiscovery:true},
+};
 if (args.includes('--build')) {
   await build({...shared,build:{
     target:['chrome107','edge107','firefox104','safari16'],
