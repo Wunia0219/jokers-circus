@@ -1,4 +1,3 @@
-import './yakyuken.css';
 import {YakyukenScene} from './scene.js';
 
 const root=document.querySelector('#yakyuken-app');

@@ -24,6 +24,7 @@ import { installResponsiveLayout } from './ui/shared/responsive-layout.js';
 import { createWalletClient } from './platform/wallet-client.js';
 import {createCasinoPresence} from './platform/casino-presence.js';
 import {slotLobbyPath,canReturnToLobby} from './platform/game-navigation.js';
+import {fadeToLobby} from './platform/lobby-transition.js';
 import { BETS, SYMBOL_NAMES, MODEL_VERSION, drawStops, restoredStops, freshState, readState, createRound } from './game/index.js';
 
 const $ = s => document.querySelector(s);
@@ -56,12 +57,12 @@ installResponsiveLayout($('main'));
 const KEY='kemet-slot-preview-v2';
 let state, storageAvailable=true;
 try { state=readState(localStorage.getItem(KEY)); } catch { state=freshState();storageAvailable=false; }
-let bet=100, busy=false, presenting=false, ready=false, countAnimation=0, payoutAnimation=0, celebrationTimer=0;
+let bet=100, busy=false, presenting=false, ready=false, leavingLobby=false, countAnimation=0, payoutAnimation=0, celebrationTimer=0;
 const scene=new SlotScene(), sound=new Sound({musicUrl:MUSIC_SOURCE,onStateChange:renderAudio});
 const bigWin=new BigWinPresentation($('#app'));
 let activityMode='browser', activityUser=null, walletClient=null, claiming=false, toastTimer=0, historySync=null, checkinPanel=null;
 const controls=new SpinControls({
-  isReady:()=>ready&&!claiming&&!document.hidden&&!$('#dialog').open,
+  isReady:()=>ready&&!leavingLobby&&!claiming&&!document.hidden&&!$('#dialog').open,
   isBusy:()=>busy,
   startSpin:()=>spin(),
   stopReels:()=>scene.requestQuickStop(),
@@ -84,15 +85,15 @@ function renderAudio(){playerBar.audio(sound.state);}
 renderAudio();
 const stopDefaultMusic=startDefaultMusic(sound);
 addEventListener('pagehide',event=>{if(event.persisted)void sound.setVisible(false);else{stopDefaultMusic();sound.dispose();}});
-addEventListener('pageshow',event=>{if(event.persisted)void sound.setVisible(true);});
+addEventListener('pageshow',event=>{if(event.persisted){leavingLobby=false;void sound.setVisible(true);}});
 function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,checkinPreview:!!lobbyPath&&!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(state,{ready,busy,claiming});updateLobbyButton();}
 function updateLobbyButton(){
   const pending=walletClient?.hasPending()===true;
   playerBar.lobby({enabled:canReturnToLobby({ready,busy,claiming,pending}),note:busy||claiming?'正在完成這局或處理戲籌，完成後即可返回大廳。':pending?'上一局尚待確認，請先按 SPIN 找回結果。':'返回遊戲大廳'});
 }
 function returnToLobby(){
-  if(!lobbyPath || !canReturnToLobby({ready,busy,claiming,pending:walletClient?.hasPending()}))return;
-  controls.stopAuto();location.assign(lobbyPath);
+  if(leavingLobby || !lobbyPath || !canReturnToLobby({ready,busy,claiming,pending:walletClient?.hasPending()}))return;
+  leavingLobby=true;controls.stopAuto();void fadeToLobby($('#app'),lobbyPath);
 }
 function notifyPlayer(message,tone='success'){
   const toast=$('#player-toast');clearTimeout(toastTimer);

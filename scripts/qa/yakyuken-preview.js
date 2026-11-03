@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {createServer} from 'vite';
 import {launchBrowser} from './helpers/browser.js';
+import {ENTRY_TIMING} from '../../src/games/yakyuken/pixi/entry-state.js';
 import {slotHeaderLayout} from '../../src/games/yakyuken/pixi/header-layout.js';
 import {tableLayout,TABLE_MOVES} from '../../src/games/yakyuken/pixi/layout.js';
 
@@ -22,12 +23,16 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
   }}],
   server:{host:'127.0.0.1',port,strictPort:true,hmr:false,watch:{ignored:['**/test-results/**','**/data/**','**/backups/**']}},
 });
-const checks=[],errors=[],requests=[];
+const checks=[],errors=[],requests=[],entryEvidence=[],entryReleases=[];
 let browser;
-const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===14 && errors.length===0,checks,errors,requests},null,2));
+const watchEntryBindings=context=>context.on('page',page=>page.on('console',message=>{if(message.type()==='warning' && message.text().includes('[BindGroup]'))errors.push(message.text());}));
+const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===20 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => document.querySelector('canvas')?.dataset.phase===expected,value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
+const tickEntry=async(page,elapsed)=>page.evaluate(async ms=>{
+  const scene=window.__yakyukenTest;scene.entryOverlay.tick(ms);await Promise.resolve();scene.entryOverlay?.tick(0);scene.app.render();
+},elapsed);
 const openMenuItem=async(page,name)=>{
   await page.getByRole('button',{name:'遊戲規則',exact:true}).click();
   await page.getByRole('button',{name:'遊戲設定與造型',exact:true}).click();
@@ -75,7 +80,7 @@ const startTable=async(page,screenshots)=>{
 };
 try {
   await server.listen();browser=await launchBrowser();
-  const context=await browser.newContext({viewport:{width:1600,height:900}});
+  const context=await browser.newContext({viewport:{width:1600,height:900}});watchEntryBindings(context);
   await context.addInitScript(() => {
     if(localStorage.getItem('kemet-slot-preview-v2')===null)localStorage.setItem('kemet-slot-preview-v2','slot-sentinel');
     if(sessionStorage.getItem('jokers-circus:yakyuken:preview:v1')===null)sessionStorage.setItem('jokers-circus:yakyuken:preview:v1','wallet-sentinel');
@@ -244,6 +249,8 @@ try {
   await slot.goto(`${origin}/yakyuken-preview.html`);await phase(slot,'games');
   await slot.getByRole('button',{name:'選擇老虎機',exact:true}).click();
   await slot.waitForURL(`${origin}/?lobby=preview`);
+  await slot.locator('#loading-logo, .loading-logo').waitFor();
+  assert.equal(await slot.locator('#loading-track').getAttribute('role'),'progressbar','slot entry retains its own logo and meter');
   await slot.waitForFunction(()=>document.querySelector('#app')?.children.length>0);
   await slot.locator('#loading').waitFor({state:'detached'});
   assert.equal(await slot.getByRole('button',{name:'旋轉一次',exact:true}).isEnabled(),true,'slot assets finish loading and its original controls are ready');
@@ -253,7 +260,29 @@ try {
   for(const key of ['x','y','width','height'])assert.ok(Math.abs(slotCheckin[key]-expected[key])<1,`slot checkin ${key} matches shared geometry`);
   assert.equal(await slot.evaluate(()=>window.__qaSound.musicEnabled),true);
   await slot.screenshot({path:`${output}/slot-entry.png`});
-  await slot.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(slot,'games');
+  await slot.evaluate(()=>{
+    const animate=Element.prototype.animate;
+    Element.prototype.animate=function(...args){const animation=animate.apply(this,args);if(this.classList.contains('lobby-exit-cover')){animation.pause();animation.currentTime=170;window.__exitAnimation=animation;}return animation;};
+  });
+  await slot.addInitScript(()=>{
+    if(new URLSearchParams(location.search).get('transition')!=='fade' || sessionStorage.getItem('__qaArrivalPaused'))return;
+    sessionStorage.setItem('__qaArrivalPaused','true');
+    const observer=new MutationObserver(()=>{const scene=window.__yakyukenTest;if(scene?.initialized && scene.app.canvas?.dataset.entryKind==='arrival'){scene.app.stop();observer.disconnect();}});
+    observer.observe(document,{childList:true,subtree:true,attributes:true,attributeFilter:['data-entry-kind']});
+  });
+  await slot.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();
+  const slotFade=await slot.locator('.lobby-exit-cover').evaluate(node=>({alpha:Number(getComputedStyle(node).opacity),children:node.children.length,inert:document.querySelector('#app').inert}));
+  assert.ok(slotFade.alpha>0 && slotFade.alpha<1 && slotFade.inert);assert.equal(slotFade.children,0);assert.equal(await slot.locator('#loading').count(),0);
+  await slot.screenshot({path:`${output}/slot-return-fade-out.png`});
+  await slot.evaluate(()=>window.__exitAnimation.finish());
+  await slot.waitForURL(`${origin}/yakyuken-preview.html?transition=fade`);
+  await slot.waitForFunction(()=>document.querySelector('canvas')?.dataset.entryStage==='revealing');
+  assert.equal(await slot.getByRole('progressbar').count(),0);assert.equal(await slot.locator('body').innerText(),'');
+  await tickEntry(slot,ENTRY_TIMING.reveal/2);
+  assert.ok(await slot.evaluate(()=>{const alpha=window.__yakyukenTest.entryOverlay.cover.value;return alpha>0 && alpha<1;}));
+  await slot.screenshot({path:`${output}/slot-return-fade-in.png`});
+  await slot.evaluate(()=>window.__yakyukenTest.app.start());await phase(slot,'games');
+  checks.push('slot entry keeps its logo and loader; return fades out and the lobby fades in without loading UI');
   await startTable(slot);await slot.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(slot,'games');
   checks.push('both games return to the lobby only from the top UI and can switch games without relaunching');
 
@@ -283,8 +312,132 @@ try {
   assert.equal(await slot.evaluate(()=>localStorage.getItem('kemet-slot-preview-v2')),saved,'returning and re-entering preserves settled progress');
   await slot.close();checks.push('slot return waits for the active round, stops auto play and preserves exactly one saved result on re-entry');
 
+  // Hold a real entry asset so phase assertions remain valid on slow machines.
+  const entry=await context.newPage();entry.on('pageerror',error=>errors.push(error.message));
+  let releaseEntry;const entryGate=new Promise(resolve=>{releaseEntry=resolve;entryReleases.push(resolve);});
+  await entry.route('**/images/yakyuken/**/stage-1.webp',async route=>{await entryGate;await route.continue();});
+  await entry.goto(`${origin}/yakyuken-preview.html`);await phase(entry,'games');
+  await entry.evaluate(()=>{
+    window.__entryStages=[];
+    new MutationObserver(()=>{const stage=document.querySelector('canvas')?.dataset.entryStage;if(stage && !window.__entryStages.includes(stage))window.__entryStages.push(stage);}).observe(document.querySelector('canvas'),{attributes:true,attributeFilter:['data-entry-stage']});
+    window.__yakyukenTest.app.stop();
+  });
+  await entry.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(entry,'entering');
+  await tickEntry(entry,ENTRY_TIMING.cover/2);
+  const covering=await entry.evaluate(()=>({cover:window.__yakyukenTest.entryOverlay.cover.value,content:window.__yakyukenTest.entryOverlay.contentFade.value}));
+  assert.ok(covering.cover>0 && covering.cover<1,'lobby visibly fades out');assert.equal(covering.content,0,'fade-out does not show a loading meter');
+  assert.equal(await entry.evaluate(()=>{const scene=window.__yakyukenTest;return scene.app.renderer.graphicsContext.getGpuContext(scene.entryOverlay.backdrop.context).isBatchable;}),true,'loader background does not retain a standalone graphics bind group');
+  assert.equal(await entry.getByRole('progressbar').count(),0);
+  await entry.screenshot({path:`${output}/entry-fade-out.png`});
+  await entry.evaluate(()=>window.__yakyukenTest.app.start());
+  await entry.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).waitFor();
+  assert.ok(Number((await canvasState(entry)).entryProgress)<100,'a held asset cannot report ready');
+  assert.equal((await canvasState(entry)).entries,'0');
+  await entry.keyboard.press('Enter');await entry.keyboard.press('Escape');
+  assert.equal((await canvasState(entry)).entries,'0','entry keyboard input cannot enter twice or dismiss preparation');
+  assert.equal(await entry.getByRole('button',{name:'返回遊戲大廳',exact:true}).count(),0,'entry blocks background navigation');
+  await entry.screenshot({path:`${output}/entry-loading-desktop.png`});
+  await entry.setViewportSize({width:390,height:844});
+  await entry.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).waitFor();await frame(entry);
+  const meter=await entry.getByRole('progressbar').boundingBox();assert.ok(meter.x>=0 && meter.x+meter.width<=390 && meter.y+meter.height<=844);
+  await entry.screenshot({path:`${output}/entry-loading-mobile.png`});
+  await entry.evaluate(()=>window.__yakyukenTest.app.stop());releaseEntry();
+  await entry.waitForFunction(()=>document.querySelector('canvas').dataset.entryStage==='settling');
+  await tickEntry(entry,ENTRY_TIMING.minimum+ENTRY_TIMING.fill);
+  await entry.waitForFunction(()=>document.querySelector('canvas').dataset.entryStage==='clearing');
+  await tickEntry(entry,ENTRY_TIMING.clear);
+  await entry.waitForFunction(()=>document.querySelector('canvas').dataset.entryStage==='revealing');
+  await tickEntry(entry,ENTRY_TIMING.reveal/2);
+  const revealing=await entry.evaluate(()=>({cover:window.__yakyukenTest.entryOverlay.cover.value,content:window.__yakyukenTest.entryOverlay.contentFade.value,world:window.__yakyukenTest.world.alpha,zoom:window.__yakyukenTest.world.scale.x}));
+  assert.ok(revealing.cover>0 && revealing.cover<1,'selection fades in after preparation');assert.equal(revealing.world,1);assert.equal(revealing.zoom,1);
+  assert.equal(revealing.content,0);assert.equal(await entry.getByRole('progressbar').count(),0,'reveal contains no loading UI');
+  await entry.screenshot({path:`${output}/entry-fade-in.png`});
+  await entry.setViewportSize({width:1600,height:900});await frame(entry);
+  await tickEntry(entry,ENTRY_TIMING.reveal/2);await entry.evaluate(()=>window.__yakyukenTest.app.start());await phase(entry,'characters');
+  assert.equal((await canvasState(entry)).entries,'0');
+  const entryStages=await entry.evaluate(()=>window.__entryStages);
+  for(const stage of ['covering','loading','settling','clearing','revealing','complete'])assert.ok(entryStages.includes(stage),stage);
+  entryEvidence.push({covering,revealing,stages:entryStages});
+  checks.push('lobby-to-Yakyuken shows its independent logo and real preparation meter before character selection');
+
+  // Both in-game routes are plain fades; inspect their actual middle frames.
+  for(const kind of ['table','lobby']){
+    const trigger=entry.getByRole('button',{name:kind==='table'?'進入野球拳試玩':'返回遊戲大廳',exact:true});
+    await trigger.waitFor();
+    await entry.evaluate(()=>window.__yakyukenTest.app.stop());
+    await trigger.click();await phase(entry,'entering');
+    await tickEntry(entry,ENTRY_TIMING.cover/2);
+    assert.equal((await canvasState(entry)).entryKind,kind);assert.equal(await entry.getByRole('progressbar').count(),0);
+    assert.ok(await entry.evaluate(()=>{const overlay=window.__yakyukenTest.entryOverlay;return overlay.cover.value>0 && overlay.cover.value<1 && overlay.root.children.length===1 && !overlay.content;}),'fade-out contains only its plain cover');
+    await entry.keyboard.press('Enter');await entry.keyboard.press('Escape');
+    await entry.screenshot({path:`${output}/${kind}-fade-out.png`});
+    await tickEntry(entry,ENTRY_TIMING.cover/2);
+    await entry.waitForFunction(()=>document.querySelector('canvas')?.dataset.entryStage==='revealing');
+    await tickEntry(entry,ENTRY_TIMING.reveal/2);
+    assert.equal(await entry.getByRole('progressbar').count(),0);
+    const fade=await entry.evaluate(()=>{const scene=window.__yakyukenTest;return {alpha:scene.entryOverlay.cover.value,zoom:scene.world.scale.x,cards:scene.playerCards.map(card=>({y:card.y,baseY:card.baseY,alpha:card.alpha}))};});
+    assert.ok(fade.alpha>0 && fade.alpha<1);assert.equal(fade.zoom,1);
+    for(const card of fade.cards){assert.equal(card.y,card.baseY);assert.equal(card.alpha,1);}
+    await entry.screenshot({path:`${output}/${kind}-fade-in.png`});
+    await entry.setViewportSize({width:390,height:844});await frame(entry);
+    assert.ok(await entry.evaluate(()=>{const value=window.__yakyukenTest.entryOverlay.cover.value;return value>0 && value<1;}),'resizing preserves fade progress');
+    await tickEntry(entry,ENTRY_TIMING.reveal/2);await entry.evaluate(()=>window.__yakyukenTest.app.start());await phase(entry,kind==='table'?'selecting':'games');
+    assert.equal((await canvasState(entry)).entries,'1');
+  }
+  checks.push('Yakyuken selection-to-table and table-to-lobby use only fade-out/fade-in, with no logo, meter, zoom or card choreography');
+  await entry.close();
+
+  const recoveryContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
+  watchEntryBindings(recoveryContext);const recovery=await recoveryContext.newPage();recovery.on('pageerror',error=>errors.push(error.message));let denyEntry=true;
+  await recovery.route('**/images/yakyuken/**/stage-2.webp',route=>denyEntry?route.abort():route.continue());
+  await recovery.goto(`${origin}/yakyuken-preview.html`);await phase(recovery,'games');
+  await recovery.getByRole('button',{name:'選擇野球拳',exact:true}).click();
+  await recovery.getByRole('button',{name:'取消野球拳載入',exact:true}).waitFor();
+  assert.equal((await canvasState(recovery)).entries,'0');assert.equal(await recovery.getByRole('button',{name:/^選擇(拳頭|剪刀|布)$/}).count(),0);
+  await recovery.screenshot({path:`${output}/entry-error.png`});
+  await recovery.evaluate(()=>{window.__firstEntryGradients=window.__yakyukenTest.entryGradients;});
+  await recovery.getByRole('button',{name:'取消野球拳載入',exact:true}).click();await phase(recovery,'games');
+  await assertHeader(recovery,'games');
+  await recovery.getByRole('button',{name:'選擇野球拳',exact:true}).click();
+  await recovery.getByRole('button',{name:'重試進入野球拳',exact:true}).waitFor();denyEntry=false;
+  await recovery.getByRole('button',{name:'重試進入野球拳',exact:true}).click();await phase(recovery,'characters');
+  assert.equal((await canvasState(recovery)).entries,'0');
+  await recovery.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(recovery,'selecting');
+  assert.equal((await canvasState(recovery)).entries,'1','only successful preparation enters a session');
+  assert.equal(await recovery.evaluate(()=>window.__yakyukenTest.entryGradients===window.__firstEntryGradients),true,'retry reuses the renderer-owned loading textures');
+  await recoveryContext.close();checks.push('failed lobby-to-Yakyuken preparation offers retry or cancellation without partial entry or duplicate sessions');
+
+  const reducedContext=await browser.newContext({viewport:{width:320,height:568},reducedMotion:'reduce'});
+  watchEntryBindings(reducedContext);const reduced=await reducedContext.newPage();reduced.on('pageerror',error=>errors.push(error.message));let releaseReduced;
+  const reducedGate=new Promise(resolve=>{releaseReduced=resolve;entryReleases.push(resolve);});
+  await reduced.route('**/images/yakyuken/**/stage-2.webp',async route=>{await reducedGate;await route.continue();});
+  await reduced.goto(`${origin}/yakyuken-preview.html`);await phase(reduced,'games');
+  await reduced.getByRole('button',{name:'選擇野球拳',exact:true}).click();
+  await reduced.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).waitFor();
+  assert.equal(await reduced.evaluate(()=>window.__yakyukenTest.entryOverlay.cover.value),1);
+  assert.equal(await reduced.evaluate(()=>window.__yakyukenTest.entryOverlay.motion.tasks.size),0,'reduced motion does not keep fade or shimmer tasks');
+  assert.ok(Number((await canvasState(reduced)).entryProgress)<100);await reduced.screenshot({path:`${output}/entry-reduced-motion.png`});
+  releaseReduced();await phase(reduced,'characters');assert.equal((await canvasState(reduced)).entries,'0');
+  await reduced.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(reduced,'selecting');assert.equal((await canvasState(reduced)).entries,'1');
+  assert.equal(await reduced.getByRole('progressbar').count(),0);
+  await reducedContext.close();checks.push('reduced-motion entry still waits for real assets, while decorative transition motion is skipped');
+
+  const disposed=await context.newPage();disposed.on('pageerror',error=>errors.push(error.message));let releaseDisposed;
+  const disposedGate=new Promise(resolve=>{releaseDisposed=resolve;entryReleases.push(resolve);});
+  await disposed.route('**/images/yakyuken/**/stage-2.webp',async route=>{await disposedGate;await route.continue();});
+  await disposed.goto(`${origin}/yakyuken-preview.html`);await phase(disposed,'games');
+  await disposed.evaluate(()=>{const scene=window.__yakyukenTest,prepare=scene.prepareEntry.bind(scene);scene.prepareEntry=(...args)=>(window.__entryAssets=prepare(...args));});
+  await disposed.getByRole('button',{name:'選擇野球拳',exact:true}).click();
+  await disposed.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).waitFor();
+  await disposed.evaluate(async()=>{const scene=window.__yakyukenTest,pending=scene.entryPromise;await scene.destroy();await pending;});
+  releaseDisposed();await disposed.evaluate(()=>window.__entryAssets);
+  assert.equal(await disposed.locator('canvas').count(),0);assert.equal(await disposed.getByRole('progressbar').count(),0);
+  assert.equal(await disposed.evaluate(()=>window.__yakyukenTest.loaded.size),0);
+  assert.equal(await disposed.evaluate(()=>window.__yakyukenTest.entryGradients),null);
+  await disposed.close();checks.push('disposing during entry cancels pending presentation and unloads late assets without resurrecting the renderer');
+
   const failure=await context.newPage();failure.on('pageerror',error => errors.push(error.message));
-  await failure.route('**/images/yakyuken/**/stage-2.webp',route => route.abort());
+  await failure.route('**/images/yakyuken/**/stage-0.webp',route => route.abort());
   await failure.goto(`${origin}/yakyuken-preview.html`);await phase(failure,'error');
   await failure.getByRole('button',{name:'重新載入',exact:true}).waitFor();
   assert.equal(await failure.getByRole('button',{name:/^選擇/}).count(),0);
@@ -297,4 +450,4 @@ try {
   checks.push('dispose during renderer startup does not resurrect canvas or listeners');
   assert.deepEqual(errors,[]);report();console.log(JSON.stringify({ok:true,checks:checks.length,output}));
 } catch(error) {errors.push(error.stack);report();throw error;}
-finally {await browser?.close();await server.close();}
+finally {for(const release of entryReleases)release();await browser?.close();await server.close();}
