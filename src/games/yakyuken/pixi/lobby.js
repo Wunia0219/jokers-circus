@@ -42,7 +42,6 @@ export function buildLobby(scene){
   }else{
     const c=l.character;
     portrait(scene.dealerTextures[0],root,c.art,c.art.height/.58);
-    at(new PixiButton({text:ui.mobile?'‹':'返回大廳',name:'返回遊戲大廳',width:ui.mobile?44:100,height:44,fontSize:ui.mobile?26:13,onPress:()=>scene.visitScreen('games')}),ui.mobile?30:68,headerHeight+26,root);
     title('野球拳・選擇對手',c.infoX,c.headingY,root,ui.mobile?17:19);
     title('命運荷官',c.infoX,c.nameY,root,ui.mobile?19:26,PALETTE.cream,{fontWeight:'500'});
     if(!ui.mobile)title('酒紅襯衫、黑色背心，邀你入局。',c.infoX,c.descriptionY,root,13,PALETTE.muted);

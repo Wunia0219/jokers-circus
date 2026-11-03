@@ -22,11 +22,9 @@ export function buildSlotDialog(scene,type){
     const node=label(text,size,color,{wordWrap:true,wordWrapWidth:mw-44,lineHeight:size*1.9,align:'left'});node.anchor.set(0,0);node.position.set(-mw/2+22,y);body.addChild(node);return node;
   };
   if(type==='menu'){
-    const entries=scene.screen==='table'?
-      [['返回牌桌',null],['荷官與造型','wardrobe'],['重新選擇角色','screen:characters'],['返回遊戲大廳','screen:games'],['遊戲設定','settings']]:
-      [[scene.screen==='games'?'返回大廳':'返回選角',null],...(scene.screen==='characters'?[['返回遊戲大廳','screen:games']]:[]),['遊戲規則','help'],['遊玩紀錄','history'],['遊戲設定','settings']];
+    const entries=[['繼續遊戲',null],...(scene.screen==='table'?[['荷官與造型','wardrobe']]:[]),['遊戲設定','settings']];
     for(const [index,[text,target]] of entries.entries()){
-      addButton(text,-mh/2+100+index*52,()=>target?.startsWith('screen:')?scene.visitScreen(target.slice(7)):target?scene.openModal(target):scene.closeModal());
+      addButton(text,-mh/2+100+index*52,()=>target?scene.openModal(target):scene.closeModal());
     }
   }else if(type==='help'){
     if(height<550){

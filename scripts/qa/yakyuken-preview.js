@@ -28,16 +28,36 @@ const openMenuItem=async(page,name)=>{
   await page.getByRole('button',{name:'開啟選單',exact:true}).click();
   await page.getByRole('button',{name,exact:true}).click();
 };
+const assertHeader=async(page,screen)=>{
+  const {width,height}=page.viewportSize(),header=tableLayout(width,height).ui.headerHeight;
+  await frame(page);
+  await page.mouse.click(width<=700?32:52,width<=700?32:40);
+  assert.equal((await canvasState(page)).modal || '','','avatar has no action');
+  assert.equal((await canvasState(page)).screen,screen,'avatar does not navigate');
+  const back=page.getByRole('button',{name:'返回遊戲大廳',exact:true});
+  assert.equal(await back.count(),screen==='games'?0:1,'only one lobby control outside the lobby');
+  if(screen!=='games'){
+    const box=await back.boundingBox();
+    assert.ok(box.y>=0 && box.y+box.height<=header,'lobby control is inside the top UI');
+  }
+};
+const returnLobby=async page=>{
+  await assertHeader(page,(await canvasState(page)).screen);
+  await page.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(page,'games');
+};
 const startTable=async(page,screenshots)=>{
   await phase(page,'games');
+  await assertHeader(page,'games');
   if(screenshots)await page.screenshot({path:`${output}/${screenshots}-lobby.png`});
   assert.equal(await page.getByRole('button',{name:'確認出牌',exact:true}).count(),0,'no table input before entry');
   await page.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(page,'characters');
   await page.getByRole('button',{name:'選擇命運荷官',exact:true}).click();
   assert.equal((await canvasState(page)).entries,'0');
   assert.equal(await page.getByRole('button',{name:'選擇第二位來賓',exact:true}).count(),0,'unavailable characters cannot enter');
+  await assertHeader(page,'characters');
   if(screenshots)await page.screenshot({path:`${output}/${screenshots}-characters.png`});
   await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(page,'selecting');
+  await assertHeader(page,'table');
   await page.keyboard.press('Enter');assert.equal((await canvasState(page)).entries,'1','duplicate entry input cannot start a second session');
 };
 try {
@@ -127,7 +147,7 @@ try {
     await phone.goto(`${origin}/yakyuken-preview.html`);await startTable(phone,name);await frame(phone);
     assert.equal((await canvasState(phone)).dealerFrontCount,'0',`${name}: reduced-motion game starts on backs`);
     assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth===innerWidth && document.documentElement.scrollHeight===innerHeight),true);
-    for(const control of ['開啟選單','遊玩紀錄','遊戲規則']){
+    for(const control of ['返回遊戲大廳','開啟選單','遊玩紀錄','遊戲規則']){
       const target=await phone.getByRole('button',{name:control,exact:true}).boundingBox();
       assert.ok(target.width>=43.9 && target.height>=43.9,`${name}: ${control} has a 44px touch target`);
     }
@@ -149,13 +169,15 @@ try {
     await phone.waitForFunction(() => document.querySelector('canvas').dataset.pose==='1');
     await phone.getByRole('button',{name:'開啟選單',exact:true}).waitFor();
     if(name==='mobile'){
-      await openMenuItem(phone,'返回遊戲大廳');await phase(phone,'games');
+      await returnLobby(phone);
       await phone.getByRole('button',{name:'選擇老虎機',exact:true}).tap();await phone.waitForURL(`${origin}/?lobby=preview`);
       await phone.locator('#loading').waitFor({state:'detached'});
-      const menuBox=await phone.getByRole('button',{name:'開啟選單',exact:true}).boundingBox();
-      assert.ok(menuBox.width>=44 && menuBox.height>=44,'mobile slot menu retains a touch target');
-      await phone.getByRole('button',{name:'開啟選單',exact:true}).tap();
-      await phone.screenshot({path:`${output}/mobile-slot-menu.png`});
+      const menuBox=await phone.getByRole('button',{name:'返回遊戲大廳',exact:true}).boundingBox();
+      assert.ok(menuBox.width>=44 && menuBox.height>=44,'mobile slot lobby button retains a touch target');
+      await phone.locator('.player-avatar').click();
+      assert.equal(await phone.locator('#dialog').evaluate(node=>node.open),false);
+      assert.equal(await phone.locator('#player-header #return-lobby').count(),1);
+      await phone.screenshot({path:`${output}/mobile-slot-header.png`});
       await phone.getByRole('button',{name:'返回遊戲大廳',exact:true}).tap();await phase(phone,'games');
     }
     await phoneContext.close();
@@ -184,13 +206,15 @@ try {
   assert.equal((await canvasState(resizing)).dealerFrontCount,'1','resize preserves only the chosen front');
   checks.push('resize during dealer presentation reveals the same round once, including a losing result');
 
-  await openMenuItem(resizing,'重新選擇角色');await phase(resizing,'characters');
+  await resizing.getByRole('button',{name:'開啟選單',exact:true}).click();
+  assert.equal(await resizing.getByRole('button',{name:/重新選|返回.*大廳/}).count(),0,'menu contains no character reselect or lobby navigation');
+  await resizing.keyboard.press('Escape');assert.equal((await canvasState(resizing)).screen,'table');
+  await returnLobby(resizing);
   assert.equal(await resizing.getByRole('button',{name:/^選擇(拳頭|剪刀|布)$/}).count(),0);
-  await resizing.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(resizing,'games');
   await resizing.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(resizing,'characters');
   await resizing.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(resizing,'selecting');
   assert.deepEqual([(await canvasState(resizing)).entries,(await canvasState(resizing)).round,(await canvasState(resizing)).dealerFrontCount],['2','0','0']);
-  checks.push('return to characters and lobby removes table input; re-entry resets the presentation without wallet calls');
+  checks.push('return only through the header removes table input; re-entry resets the presentation without wallet calls');
 
   const slot=await context.newPage();slot.on('pageerror',error=>errors.push(error.message));
   await slot.goto(`${origin}/yakyuken-preview.html`);await phase(slot,'games');
@@ -200,27 +224,30 @@ try {
   await slot.locator('#loading').waitFor({state:'detached'});
   assert.equal(await slot.getByRole('button',{name:'旋轉一次',exact:true}).isEnabled(),true,'slot assets finish loading and its original controls are ready');
   await slot.screenshot({path:`${output}/slot-entry.png`});
-  await openMenuItem(slot,'返回遊戲大廳');await phase(slot,'games');
-  await startTable(slot);await openMenuItem(slot,'返回遊戲大廳');await phase(slot,'games');
-  checks.push('both games return to the lobby from the same avatar menu and can switch games without relaunching');
+  await slot.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(slot,'games');
+  await startTable(slot);await slot.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(slot,'games');
+  checks.push('both games return to the lobby only from the top UI and can switch games without relaunching');
 
   await slot.getByRole('button',{name:'選擇老虎機',exact:true}).click();await slot.waitForURL(`${origin}/?lobby=preview`);
   await slot.locator('#loading').waitFor({state:'detached'});
-  // Pause the isolated test ticker before input so the menu is opened during a
+  // Pause the isolated test ticker before input so navigation is checked during a
   // genuine active round, regardless of the machine's pointer-command latency.
   await slot.evaluate(()=>window.__slotNavigationTest.scene.app.ticker.stop());
   await slot.getByRole('button',{name:'自動旋轉',exact:true}).click();
   await slot.waitForFunction(()=>document.querySelector('#spin')?.getAttribute('aria-label')==='快速停輪');
-  await slot.getByRole('button',{name:'開啟選單',exact:true}).click();
+  await slot.locator('.player-avatar').click();
+  assert.equal(await slot.locator('#dialog').evaluate(node=>node.open),false,'slot avatar has no action');
+  assert.equal(await slot.locator('#player-header #return-lobby').count(),1,'slot return exists only in the header');
+  await slot.getByRole('button',{name:'停止自動旋轉',exact:true}).click();
   const returnButton=slot.getByRole('button',{name:'返回遊戲大廳',exact:true});
   assert.equal(await returnButton.isDisabled(),true,'cannot abandon an active settlement or animation');
-  assert.equal(await slot.evaluate(()=>window.__slotNavigationTest.controls.auto),false,'opening the menu cancels automatic continuation');
-  await slot.screenshot({path:`${output}/slot-menu-busy.png`});
+  assert.equal(await slot.evaluate(()=>window.__slotNavigationTest.controls.auto),false,'stop auto cancels automatic continuation before leaving');
+  await slot.screenshot({path:`${output}/slot-header-busy.png`});
   await slot.evaluate(()=>window.__slotNavigationTest.scene.app.ticker.start());
-  await slot.waitForFunction(()=>document.querySelector('.game-menu-actions button:last-child')?.disabled===false);
+  await slot.waitForFunction(()=>document.querySelector('#return-lobby')?.disabled===false);
   const saved=await slot.evaluate(()=>localStorage.getItem('kemet-slot-preview-v2'));
   assert.equal(JSON.parse(saved).history.length,1,'only one round settles after automatic play stops');
-  await slot.screenshot({path:`${output}/slot-menu.png`});
+  await slot.screenshot({path:`${output}/slot-header.png`});
   await returnButton.click();await phase(slot,'games');
   await slot.getByRole('button',{name:'選擇老虎機',exact:true}).click();await slot.waitForURL(`${origin}/?lobby=preview`);
   await slot.locator('#loading').waitFor({state:'detached'});

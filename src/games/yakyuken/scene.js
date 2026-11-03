@@ -92,7 +92,7 @@ export class YakyukenScene {
     this.root.removeChildren().forEach(child => child.destroy({children:true}));
     this.modalRoot=null;this.root.scale.set(this.layout.scale);
     this.world = new Container({label:'table-world'});this.root.addChild(this.world);this.overlay = null;
-    this.confirmButton=null;this.status=null;this.playerCards=[];this.dealerCards=[];
+    this.confirmButton=null;this.lobbyButton=null;this.status=null;this.playerCards=[];this.dealerCards=[];
     if(this.screen==='table'){this.buildRoom();this.buildCards();}
     else{this.buildBackdrop();buildLobby(this);}
     this.buildHud();this.updateControls();
@@ -139,6 +139,7 @@ export class YakyukenScene {
 
   visitScreen(screen){
     if(this.disposed || this.phase==='presenting' || this.changing || !['games','characters'].includes(screen))return;
+    if(screen==='characters' && this.screen!=='games')return;
     this.closeModal();this.screen=screen;this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.resize();
   }
   openSlot(){
