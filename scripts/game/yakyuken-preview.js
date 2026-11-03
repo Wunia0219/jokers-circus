@@ -7,7 +7,7 @@ const args = process.argv.slice(2);
 if (args.length > 1 || args.some(arg => arg !== '--build')) throw new Error('Use no arguments to serve or --build for isolated validation');
 const shared = {root,configFile:false,envDir:false,
   cacheDir:resolve(root,'test-results/yakyuken-vite-cache'),
-  optimizeDeps:{include:['pixi.js','pixi.js/unsafe-eval'],noDiscovery:true},
+  optimizeDeps:{include:['pixi.js','pixi.js/unsafe-eval','pixi.js/prepare'],noDiscovery:true},
 };
 if (args.includes('--build')) {
   await build({...shared,build:{
@@ -15,7 +15,7 @@ if (args.includes('--build')) {
     outDir:resolve(root,'test-results/yakyuken-preview'),
     emptyOutDir:true,
     // This preview has its own entry and output; the release build is untouched.
-    rollupOptions:{input:resolve(root,'yakyuken-preview.html')},
+    rollupOptions:{input:{lobby:resolve(root,'yakyuken-preview.html'),slot:resolve(root,'index.html')}},
   }});
 } else {
   const server = await createServer({...shared,server:{host:'127.0.0.1',port:4195,strictPort:true}});

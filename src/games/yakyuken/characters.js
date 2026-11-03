@@ -8,3 +8,4 @@ export const CHARACTERS = Object.freeze([
   Object.freeze({id:'guest-4', name:'第五位來賓', title:'COMING SOON', winsRequired:9, lossLimit:null, reward:50000, enabled:false}),
 ]);
 export const DEALER = CHARACTERS[0];
+export function canEnterCharacter(id){return CHARACTERS.some(character=>character.id===id && character.enabled);}

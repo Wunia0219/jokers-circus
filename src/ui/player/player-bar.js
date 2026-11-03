@@ -2,13 +2,13 @@ import './player-ui.css';
 import { dailyRewardView } from './player-copy.js';
 import { discordAvatarUrl } from '../../platform/discord-avatar.js';
 
-export function createPlayerBar({ icon, onCheckin, onHistory, onRules, onSound, onMusic, avatarUrlForUser = discordAvatarUrl }) {
+export function createPlayerBar({ icon, onCheckin, onHistory, onRules, onSound, onMusic, onMenu, avatarUrlForUser = discordAvatarUrl }) {
   const element = document.createElement('div');
   element.className = 'player-bar';
-  element.innerHTML = `<div class="player-identity" role="group" aria-label="玩家資訊"><span class="player-avatar" aria-hidden="true"><span class="player-avatar-fallback">${icon('user')}</span><img class="player-avatar-image" alt="" decoding="async" referrerpolicy="no-referrer" hidden /><i></i></span><div class="player-identity-text"><strong id="player-name">歡迎來到馬戲團</strong><span id="player-id">正在準備遊戲</span></div></div>
+  element.innerHTML = `<div class="player-identity" role="group" aria-label="玩家資訊">${onMenu?'<button id="player-menu" class="player-menu-toggle" aria-label="開啟選單" title="開啟選單" aria-haspopup="dialog" aria-controls="dialog">':''}<span class="player-avatar" aria-hidden="true"><span class="player-avatar-fallback">${icon('user')}</span><img class="player-avatar-image" alt="" decoding="async" referrerpolicy="no-referrer" hidden /><i></i></span>${onMenu?'</button>':''}<div class="player-identity-text"><strong id="player-name">歡迎來到馬戲團</strong><span id="player-id">正在準備遊戲</span></div></div>
     <button id="daily-checkin" class="daily-checkin" aria-haspopup="dialog" aria-controls="dialog" hidden disabled>${icon('gift')}<span><strong>週簽到</strong><small>查看七日獎勵</small></span></button>
     <nav class="player-tools" aria-label="遊戲工具"><div class="audio-controls" role="group" aria-label="聲音設定"><button id="sound" class="audio-toggle" aria-label="開啟音效" title="開啟音效" aria-pressed="false">${icon('muted')}</button><button id="music" class="audio-toggle" aria-label="開啟音樂" title="開啟音樂" aria-pressed="false">${icon('musicMuted')}</button></div><button id="help" class="utility" aria-label="遊戲規則" title="遊戲規則" aria-haspopup="dialog">${icon('info')}<span>遊戲規則</span></button><button id="all-history" class="utility" aria-label="遊玩紀錄" title="遊玩紀錄" aria-haspopup="dialog">${icon('clock')}<span>遊玩紀錄</span></button></nav>`;
-  for (const [id, handler] of [['daily-checkin', onCheckin], ['all-history', onHistory], ['help', onRules], ['sound', onSound], ['music', onMusic]]) if(handler)element.querySelector(`#${id}`).addEventListener('click', handler);
+  for (const [id, handler] of [['daily-checkin', onCheckin], ['all-history', onHistory], ['help', onRules], ['sound', onSound], ['music', onMusic],['player-menu',onMenu]]) if(handler)element.querySelector(`#${id}`).addEventListener('click', handler);
   const avatarImage = element.querySelector('.player-avatar-image');
   const avatarFallback = element.querySelector('.player-avatar-fallback');
   let avatarUrl = null;

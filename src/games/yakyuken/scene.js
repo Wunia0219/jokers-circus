@@ -6,13 +6,16 @@ import mainAtlas from '../../../images/main.json';
 import {DEALER_ART} from './assets.js';
 import {PreviewAudio} from './audio.js';
 import {HandCard} from './pixi/card.js';
-import {tableLayout,TABLE_MOVES,TABLE_MOVE_NAMES} from './pixi/layout.js';
+import {tableLayout,TABLE_MOVES} from './pixi/layout.js';
 import {Motion} from './pixi/motion.js';
 import {demoDuel} from './pixi/demo-duel.js';
 import {createTable} from './pixi/table.js';
 import {label,PALETTE,PixiButton} from './pixi/ui.js';
 import {buildSlotHud,updateSlotHud} from './pixi/chrome.js';
 import {buildSlotDialog} from './pixi/dialogs.js';
+import {buildLobby} from './pixi/lobby.js';
+import {canEnterCharacter} from './characters.js';
+import {PREVIEW_SLOT_PATH} from '../../platform/game-navigation.js';
 
 // Fixed demonstration choreography; no probability or wallet dependency.
 export class YakyukenScene {
@@ -21,6 +24,9 @@ export class YakyukenScene {
   audio = new PreviewAudio();
   abort = new AbortController();
   loaded = new Set();
+  screen = 'games';
+  selectedCharacter = 'dealer';
+  entries = 0;
   phase = 'selecting';
   selected = null;
   duel = null;
@@ -86,22 +92,27 @@ export class YakyukenScene {
     this.root.removeChildren().forEach(child => child.destroy({children:true}));
     this.modalRoot=null;this.root.scale.set(this.layout.scale);
     this.world = new Container({label:'table-world'});this.root.addChild(this.world);this.overlay = null;
-    this.buildRoom();this.buildCards();this.buildHud();this.updateControls();
+    this.confirmButton=null;this.status=null;this.playerCards=[];this.dealerCards=[];
+    if(this.screen==='table'){this.buildRoom();this.buildCards();}
+    else{this.buildBackdrop();buildLobby(this);}
+    this.buildHud();this.updateControls();
     if(this.modal)this.buildModal(this.modal);
     this.app.render();
   }
 
-  buildRoom() {
+  buildBackdrop() {
     const l=this.layout,{w,h}=l;
     const background = new Sprite(this.backgroundTexture);
-    background.width=w;background.height=l.portrait?h*.59:h;background.eventMode='none';this.world.addChild(background);
+    background.width=w;background.height=h;background.eventMode='none';this.world.addChild(background);
     const shade = new Graphics().rect(0,0,w,h).fill({color:0x070d1c,alpha:.16});shade.eventMode='none';this.world.addChild(shade);
+  }
+  buildRoom() {
+    const l=this.layout,{w}=l;this.buildBackdrop();
     if(l.logo.width){const logo=new Sprite(this.logoTexture);logo.anchor.set(.5,0);logo.width=l.logo.width;logo.scale.y=logo.scale.x;logo.position.set(l.logo.x,l.logo.y);logo.eventMode='none';this.world.addChild(logo);}
     this.dealer = new Sprite(this.dealerTextures[this.pose]);this.dealer.anchor.set(.5,0);
     this.dealer.height=l.dealer.height;this.dealer.scale.x=this.dealer.scale.y;
     this.dealer.position.set(l.dealer.x,l.dealer.y);this.dealer.eventMode='none';
     this.world.addChild(this.dealer,createTable(l));
-    if(l.ui.gameBottom-l.ui.gameTop>280){const name=label('命運荷官',13/l.scale,PALETTE.gold);name.position.set(w/2,l.dealerCards.y-100*l.dealerCards.scale-12/l.scale);this.world.addChild(name);}
   }
 
   buildCards() {
@@ -126,12 +137,31 @@ export class YakyukenScene {
 
   buildHud() { buildSlotHud(this); }
 
+  visitScreen(screen){
+    if(this.disposed || this.phase==='presenting' || this.changing || !['games','characters'].includes(screen))return;
+    this.closeModal();this.screen=screen;this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.resize();
+  }
+  openSlot(){
+    if(this.disposed || this.screen!=='games' || this.modal)return;
+    // This local preview opens the existing slot entry without changing its game.
+    location.assign(PREVIEW_SLOT_PATH);
+  }
+  selectCharacter(id){
+    if(this.disposed || this.screen!=='characters' || !canEnterCharacter(id))return;
+    this.selectedCharacter=id;this.updateControls();
+  }
+  enterCharacter(){
+    if(this.disposed || this.modal || this.screen!=='characters' || !canEnterCharacter(this.selectedCharacter))return;
+    this.screen='table';this.entries++;this.phase='selecting';this.selected=null;this.duel=null;
+    this.completedRounds=0;this.history=[];this.dealerStage='idle';this.pose=0;this.resize();
+  }
+
   select(move) {
-    if(this.disposed || this.modal || this.phase !== 'selecting' || !TABLE_MOVES.includes(move))return;
+    if(this.disposed || this.modal || this.screen!=='table' || this.phase !== 'selecting' || !TABLE_MOVES.includes(move))return;
     this.selected=move;this.playerCards.forEach(card => card.choose(card.move === move));this.audio.cue('draw');this.updateControls();
   }
   async confirm() {
-    if(this.disposed || this.modal || this.phase === 'presenting')return;
+    if(this.disposed || this.modal || this.screen!=='table' || this.phase === 'presenting')return;
     if(this.phase === 'confirmed'){
       this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';
       this.playerCards.forEach((card,index) => {card.lock(false);card.choose(false);card.rotation=(index-1)*.055;});
@@ -156,19 +186,15 @@ export class YakyukenScene {
     this.phase='confirmed';this.dealerStage='shown';this.audio.cue(this.duel.outcome);this.updateControls();
   }
   updateControls() {
-    if(!this.confirmButton)return;
     updateSlotHud(this);
-    const result=this.duel?{win:'你贏了',loss:'荷官獲勝',draw:'平手'}[this.duel.outcome]:'';
-    this.status.text=this.phase==='confirmed'?`${result}，你出${TABLE_MOVE_NAMES[this.selected]}，荷官出${TABLE_MOVE_NAMES[this.duel.dealer]}`:this.phase==='presenting'?'荷官正在出牌':this.selected?'準備好了，就出這一張。':'請選擇一張手牌';
-    this.status.visible=!this.selected;this.statusDetail.visible=false;
     const fronts=this.dealerCards.filter(card=>card.faceUp).length;
-    Object.assign(this.app.canvas.dataset,{phase:this.phase,selected:this.selected || '',pose:String(this.pose),scene:'yakyuken-table',dealerStage:this.dealerStage,
-      dealerFrontCount:String(fronts),dealerMove:fronts?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds),uiStyle:'slot'});
-    this.app.canvas.setAttribute('aria-label',`野球拳第一人稱牌桌。${this.status.text}。荷官已翻開 ${fronts} 張牌，其餘為背面。`);
+    Object.assign(this.app.canvas.dataset,{screen:this.screen,phase:this.screen==='table'?this.phase:this.screen,selected:this.selected || '',pose:String(this.pose),scene:this.screen==='table'?'yakyuken-table':'circus-lobby',dealerStage:this.dealerStage,
+      dealerFrontCount:String(fronts),dealerMove:fronts?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds),uiStyle:'shared-header',character:this.selectedCharacter,entries:String(this.entries)});
+    this.app.canvas.setAttribute('aria-label',this.screen==='table'?`野球拳第一人稱牌桌。${this.status.text.replaceAll('\n','。')}。荷官已翻開 ${fronts} 張牌，其餘為背面。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':'野球拳角色選擇，共五個角色位置。目前開放命運荷官，本機入場暫不扣款。');
   }
 
   openModal(type) {
-    if(this.disposed || this.phase === 'presenting' || this.changing)return;
+    if(this.disposed || this.phase === 'presenting' || this.changing || type==='wardrobe' && this.screen!=='table')return;
     this.closeModal();this.modal=type;this.buildModal(type);
   }
   closeModal() {
@@ -179,7 +205,7 @@ export class YakyukenScene {
   buildModal(type) { buildSlotDialog(this,type); }
 
   async changePose(index) {
-    if(this.changing || this.disposed)return;
+    if(this.changing || this.disposed || this.screen!=='table')return;
     this.closeModal();if(index === this.pose)return;
     this.changing=true;this.world.interactiveChildren=false;this.world.accessibleChildren=false;
     const epoch=this.epoch,{w,h}=this.layout,overlay=new Container({label:'wardrobe-emblem'});overlay.alpha=0;
@@ -199,7 +225,7 @@ export class YakyukenScene {
   keydown(event) {
     if(event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || this.disposed || document.hidden)return;
     if(event.key==='Escape'){event.preventDefault();if(this.modal)this.closeModal();else if(!this.changing)this.openModal('menu');return;}
-    if(this.modal || this.changing)return;
+    if(this.modal || this.changing || this.screen!=='table')return;
     const move=TABLE_MOVES[Number(event.key)-1];
     if(move){event.preventDefault();this.select(move);}
     else if(event.key==='Enter' && (event.target===document.body || event.target===this.app.canvas || this.selected && event.target?.getAttribute('aria-label')?.startsWith('選擇'))){event.preventDefault();void this.confirm();}

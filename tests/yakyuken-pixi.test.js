@@ -5,8 +5,10 @@ import {Motion} from '../src/games/yakyuken/pixi/motion.js';
 import {demoDuel} from '../src/games/yakyuken/pixi/demo-duel.js';
 import {revealCard} from '../src/games/yakyuken/pixi/card-flip.js';
 import {slotChrome,SLOT_UI} from '../src/games/yakyuken/pixi/slot-theme.js';
+import {lobbyLayout} from '../src/games/yakyuken/pixi/lobby-layout.js';
+import {CHARACTERS,canEnterCharacter} from '../src/games/yakyuken/characters.js';
 
-test('Pixi table: both rows remain inside the viewport and player cards stay above the action rail',() => {
+test('Pixi table: both rows fit a smaller table, with a prominent character and no control deck',() => {
   for(const [width,height,touch] of [[1600,900,false],[1440,1000,false],[390,844,true],[320,568,true],[844,390,true],[768,1024,true],[544,680,true],[544,680,false]]){
     const l=tableLayout(width,height,{touch});
     assert.equal(TABLE_MOVES.length,3);
@@ -16,7 +18,10 @@ test('Pixi table: both rows remain inside the viewport and player cards stay abo
       assert.ok(row.y-halfHeight>l.top && row.y+halfHeight<l.h,`${width}x${height}: vertical card bounds`);
     }
     const cardBottom=l.playerCards.y+113*l.playerCards.scale*.84+6;
-    assert.ok(cardBottom*l.scale<l.ui.deck.y,`${width}x${height}: player cards clear the slot-style control deck`);
+    assert.ok(cardBottom*l.scale<height,`${width}x${height}: player cards stay inside the viewport`);
+    assert.ok(l.dealer.height*l.scale*.44>(height-l.ui.headerHeight)*.45,`${width}x${height}: character remains the focus`);
+    assert.equal(l.ui.deck,undefined);
+    if(l.ui.mobile)assert.ok(cardBottom*l.scale<l.action.y-l.action.height/2,`${width}x${height}: cards clear the standalone action`);
     assert.ok(l.dealerCards.scale<l.playerCards.scale,'far cards preserve depth');
     const farBottom=l.dealerCards.y+113*l.dealerCards.scale*.84;
     const selectedTop=l.playerCards.y-l.confirmedLift-113*l.playerCards.scale*.84;
@@ -25,12 +30,29 @@ test('Pixi table: both rows remain inside the viewport and player cards stay abo
   assert.throws(() => tableLayout(0,900));
 });
 
-test('Pixi slot chrome: desktop and portrait controls retain the reference dimensions and font families',()=>{
+test('Pixi shared chrome: retains the slot header and font families without a bottom deck',()=>{
   const desktop=slotChrome(1600,900),phone=slotChrome(390,844,true);
-  assert.equal(desktop.headerHeight,80);assert.equal(desktop.deck.width,974);assert.equal(desktop.deck.height,140);
-  assert.equal(phone.headerHeight,132);assert.equal(phone.deck.height,246);assert.equal(phone.deck.width,374);
+  assert.equal(desktop.headerHeight,80);assert.equal(desktop.deck,undefined);
+  assert.equal(phone.headerHeight,132);assert.equal(phone.deck,undefined);
   assert.deepEqual(SLOT_UI.font,['Noto Sans TC','sans-serif']);assert.equal(SLOT_UI.utilitySize,48);
   assert.equal(SLOT_UI.bodySize,13);assert.equal(SLOT_UI.dialogTitleSize,19);
+});
+
+test('Pixi lobby: two game choices and five character positions fit desktop and narrow viewports',()=>{
+  for(const [width,height] of [[1600,900],[390,844],[320,568],[844,390],[768,1024],[544,680]]){
+    const {headerHeight}=slotChrome(width,height),l=lobbyLayout(width,height,headerHeight);
+    assert.equal(l.games.length,2);assert.equal(l.character.slots.length,5);
+    for(const r of [...l.games,...l.character.slots]){
+      assert.ok(r.width>=44 && r.height>=44,'interactive choices retain touch targets');
+      assert.ok(r.x-r.width/2>=0 && r.x+r.width/2<=width);
+      assert.ok(r.y-r.height/2>=headerHeight && r.y+r.height/2<=height);
+    }
+    assert.ok(l.character.art.height>0);
+    assert.ok(l.character.enterY+22<=height);
+  }
+  assert.equal(CHARACTERS.length,5);assert.equal(CHARACTERS.filter(c=>c.enabled).length,1);
+  assert.equal(canEnterCharacter('dealer'),true);
+  for(const id of ['guest-1','guest-4','unknown',null])assert.equal(canEnterCharacter(id),false);
 });
 
 test('Pixi card flip: back stays visible until edge-on, then only the selected face is revealed',async()=>{

@@ -22,6 +22,7 @@ import { setBitmapNumber } from './ui/shared/bitmap-number.js';
 import { installResponsiveLayout } from './ui/shared/responsive-layout.js';
 import { createWalletClient } from './platform/wallet-client.js';
 import {createCasinoPresence} from './platform/casino-presence.js';
+import {slotLobbyPath,canReturnToLobby} from './platform/game-navigation.js';
 import { BETS, SYMBOL_NAMES, MODEL_VERSION, drawStops, restoredStops, freshState, readState, createRound } from './game/index.js';
 
 const $ = s => document.querySelector(s);
@@ -75,11 +76,30 @@ const renderSpinButton=bindSpinButton($('#spin'),controls);
 const motion=matchMedia('(prefers-reduced-motion: reduce)');scene.reduced=motion.matches;motion.addEventListener('change',()=>scene.reduced=motion.matches);
 const signed=n=>(n>0?'+':'')+fmt(n);
 function save(next) { if(walletClient){if((next.revision||0)>=(state.revision||0))state=next;return;}state=next;try{localStorage.setItem(KEY,JSON.stringify(state));}catch{storageAvailable=false;} }
-const playerBar=createPlayerBar({icon,onCheckin:showCheckin,onHistory:showHistory,onRules:showRules,onSound:toggleSound,onMusic:toggleMusic});
+const lobbyPath=slotLobbyPath(window.location);
+let gameMenu=null;
+const playerBar=createPlayerBar({icon,onCheckin:showCheckin,onHistory:showHistory,onRules:showRules,onSound:toggleSound,onMusic:toggleMusic,onMenu:lobbyPath?showGameMenu:undefined});
 $('#player-header').append(playerBar.element);
 function renderAudio(){playerBar.audio(sound.state);}
 renderAudio();
-function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(state,{ready,busy,claiming});}
+function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(state,{ready,busy,claiming});updateGameMenu();}
+function updateGameMenu(){
+  if(!gameMenu?.element.isConnected)return;
+  const pending=walletClient?.hasPending()===true;
+  gameMenu.back.disabled=!canReturnToLobby({ready,busy,claiming,pending});
+  gameMenu.note.textContent=busy||claiming?'正在完成這局或處理戲籌，完成後即可返回大廳。':pending?'上一局尚待確認，請先返回遊戲並按 SPIN 找回結果。':storageAvailable||walletClient?'選擇其他遊戲，老虎機進度會保留。':'離開後不會保留本機進度。';
+}
+function showGameMenu(){
+  if(!lobbyPath)return;
+  const element=document.createElement('div'),note=document.createElement('p'),resume=document.createElement('button'),back=document.createElement('button');
+  element.className='game-menu-actions';resume.className=back.className='notice-action';resume.textContent='返回牌桌';back.textContent='返回遊戲大廳';
+  resume.addEventListener('click',()=>$('#dialog').close());
+  back.addEventListener('click',()=>{
+    if(!canReturnToLobby({ready,busy,claiming,pending:walletClient?.hasPending()}))return;
+    controls.stopAuto();location.assign(lobbyPath);
+  });
+  element.append(note,resume,back);gameMenu={element,note,back};openDialog('遊戲選單',element);updateGameMenu();
+}
 function notifyPlayer(message,tone='success'){
   const toast=$('#player-toast');clearTimeout(toastTimer);
   toast.replaceChildren();const text=document.createElement('span');text.textContent=message;
