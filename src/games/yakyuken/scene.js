@@ -5,6 +5,7 @@ import backgroundUrl from '../../../images/jokers-circus/circus-background.webp'
 import mainUrl from '../../../images/main.webp';
 import mainAtlas from '../../../images/main.json';
 import {DEALER_ART} from './assets.js';
+import {CARD_ART,CARD_CANVAS} from './card-assets.js';
 import {LOBBY_COVERS} from './lobby-art.js';
 import {PreviewAudio} from './audio.js';
 import {HandCard} from './pixi/card.js';
@@ -34,6 +35,7 @@ export class YakyukenScene {
   selectedCharacter = 'dealer';
   selectedDifficulty = 1;
   challenge = null;
+  cardTextures = {};
   entries = 0;
   entering = false;
   entryOverlay = null;
@@ -113,7 +115,7 @@ export class YakyukenScene {
     this.root.removeChildren().forEach(child => child.destroy({children:true}));
     this.modalRoot=null;this.root.scale.set(this.layout.scale);
     this.world = new Container({label:'table-world'});this.root.addChild(this.world);this.overlay = null;
-    this.confirmButton=null;this.lobbyButton=null;this.status=null;this.playerCards=[];this.dealerCards=[];
+    this.confirmButton=null;this.lobbyButton=null;this.status=null;this.statusDetail=null;this.playerCards=[];this.dealerCards=[];
     if(this.screen==='table'){this.buildRoom();this.buildCards();}
     else{this.buildBackdrop();buildLobby(this);}
     this.buildHud();this.updateControls();
@@ -141,12 +143,12 @@ export class YakyukenScene {
   buildCards() {
     const l=this.layout;
     const shown=this.dealerStage==='shown',move=this.duel?.dealer || 'rock';
-    const dealerCard=new HandCard({move,index:TABLE_MOVES.indexOf(move),owner:'dealer',motion:this.motion});
+    const dealerCard=new HandCard({move,index:TABLE_MOVES.indexOf(move),owner:'dealer',motion:this.motion,textures:this.cardTextures});
     dealerCard.place(l.dealerCard.x,l.dealerCard.y,l.dealerCard.scale,0,{selectedLift:0,perspective:1});
     dealerCard.selected=shown;dealerCard.highlight.visible=shown;dealerCard.setFaceUp(shown);
     this.world.addChild(dealerCard);this.dealerCards=[dealerCard];
     this.playerCards=TABLE_MOVES.map((move,index) => {
-      const card = new HandCard({move,index,owner:'player',motion:this.motion,onChoose:value => this.select(value)});
+      const card = new HandCard({move,index,owner:'player',motion:this.motion,textures:this.cardTextures,onChoose:value => this.select(value)});
       card.place(l.playerCards.x+(index-1)*l.playerCards.gap,l.playerCards.y,l.playerCards.scale,(index-1)*.055,{selectedLift:l.selectedLift,hoverLift:l.hoverLift,perspective:l.playerCards.perspective});
       card.selected=move === this.selected;card.highlight.visible=card.selected;if(card.selected)card.y-=this.phase==='confirmed'?l.confirmedLift:l.selectedLift;
       card.lock(this.phase !== 'selecting');this.world.addChild(card);return card;
@@ -198,13 +200,18 @@ export class YakyukenScene {
   }
   async prepareEntry(overlay){
     let completed=0;
-    const results=await Promise.allSettled(DEALER_ART.map(async(art,index)=>{
-      if(!this.dealerTextures[index]){
+    const artwork=[...DEALER_ART.map((art,index)=>({...art,index})),...Object.entries(CARD_ART).map(([key,url])=>({key,url}))];
+    const results=await Promise.allSettled(artwork.map(async art=>{
+      if(!(art.key?this.cardTextures[art.key]:this.dealerTextures[art.index])){
         const texture=await Assets.load(art.url);this.loaded.add(art.url);
         if(this.disposed){this.loaded.delete(art.url);await Assets.unload(art.url);return;}
-        this.dealerTextures[index]=texture;
+        if(art.key){
+          const {width,height}=CARD_CANVAS;
+          this.cardTextures[art.key]=new Texture({source:texture.source,frame:texture.frame,
+            orig:new Rectangle(0,0,width,height),trim:new Rectangle((width-texture.width)/2,(height-texture.height)/2,texture.width,texture.height)});
+        }else this.dealerTextures[art.index]=texture;
       }
-      completed++;overlay.update(15+completed/DEALER_ART.length*55,'正在準備命運荷官…');
+      completed++;overlay.update(15+completed/artwork.length*55,'正在準備荷官與典藏牌組…');
     }));
     if(results.some(result=>result.status==='rejected'))throw new Error('Yakyuken entry resources unavailable');
   }
@@ -217,7 +224,7 @@ export class YakyukenScene {
       this.screen=kind==='table'?'table':kind==='game'?'characters':'games';this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';
       if(kind==='table'){this.completedRounds=0;this.challenge=createChallenge(this.selectedDifficulty);this.pose=0;}
       this.resize();
-      if(!await waitForEntryTask(this.app.renderer.prepare.upload([this.backgroundTexture,...this.dealerTextures,this.logoTexture]),this.abort.signal))return false;
+      if(!await waitForEntryTask(this.app.renderer.prepare.upload([this.backgroundTexture,...this.dealerTextures,...Object.values(this.cardTextures),this.logoTexture]),this.abort.signal))return false;
       if(this.disposed)return false;
       overlay.update?.(95,'正在佈置舞台…');
       // Compile the current table behind the opaque cover, without retaining
@@ -276,9 +283,9 @@ export class YakyukenScene {
     updateSlotHud(this);
     const fronts=this.dealerCards.filter(card=>card.faceUp).length;
     Object.assign(this.app.canvas.dataset,{screen:this.screen,phase:this.entering?'entering':this.screen==='table'?this.phase:this.screen,selected:this.selected || '',pose:String(this.pose),scene:this.screen==='table'?'yakyuken-table':'circus-lobby',dealerStage:this.dealerStage,
-      dealerFrontCount:String(fronts),dealerMove:fronts?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds),uiStyle:'shared-header',character:this.selectedCharacter,entries:String(this.entries),
+      dealerFrontCount:String(fronts),dealerMove:fronts?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds),uiStyle:'theatre-cards',character:this.selectedCharacter,entries:String(this.entries),
       difficulty:String(this.selectedDifficulty),wins:String(this.challenge?.wins || 0),losses:String(this.challenge?.losses || 0),draws:String(this.challenge?.draws || 0),challengeStatus:this.challenge?.status || '',reward:String(this.challenge?.reward || 0)});
-    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。右側荷官牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':'野球拳角色選擇，共五個角色位置。目前開放命運荷官，本機入場暫不扣款。');
+    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。右側荷官牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':'野球拳角色選擇，共五個角色位置。目前開放命運荷官，本機入場暫不扣款。');
   }
 
   openModal(type) {
@@ -326,6 +333,7 @@ export class YakyukenScene {
     if(this.disposed)return;this.disposed=true;this.abort.abort();this.observer?.disconnect();this.motion.destroy();this.entryOverlay?.destroy();this.entryOverlay=null;this.audio.destroy();
     if(this.initialized){this.app.stop();this.app.destroy({removeView:true,releaseGlobalResources:true},{children:true});}
     this.entryGradients?.forEach(gradient=>gradient.destroy());this.entryGradients=null;
-    this.logoTexture?.destroy();this.entryLogoTexture?.destroy();await this.unload();
+    this.logoTexture?.destroy();this.entryLogoTexture?.destroy();
+    Object.values(this.cardTextures).forEach(texture=>texture.destroy());this.cardTextures={};await this.unload();
   }
 }

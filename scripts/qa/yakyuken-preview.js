@@ -3,7 +3,7 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 import {createServer} from 'vite';
 import {launchBrowser} from './helpers/browser.js';
 import {ENTRY_TIMING} from '../../src/games/yakyuken/pixi/entry-state.js';
-import {slotHeaderLayout} from '../../src/games/yakyuken/pixi/header-layout.js';
+import {slotHeaderLayout,yakyukenHeaderLayout} from '../../src/games/yakyuken/pixi/header-layout.js';
 import {tableLayout,TABLE_MOVES} from '../../src/games/yakyuken/pixi/layout.js';
 import {DIFFICULTIES} from '../../src/games/yakyuken/challenge.js';
 
@@ -40,13 +40,19 @@ const assertTableWings=async page=>{
   const geometry=await page.evaluate(()=>{
     const scene=window.__yakyukenTest,left=scene.score.getGlobalPosition(),right=scene.dealerCards[0].getGlobalPosition();
     return {left:{x:left.x,y:left.y},right:{x:right.x,y:right.y},player:scene.playerCards.length,dealer:scene.dealerCards.length,
-      numberSize:scene.scoreWins.style.fontSize,playerWidth:scene.playerCards[0].scale.x*scene.layout.scale*156};
+      numberSize:scene.scoreWins.style.fontSize,playerWidth:scene.playerCards[0].scale.x*scene.layout.scale*156,
+      cards:scene.playerCards.map(card=>{const b=card.getBounds();return {x:b.x,y:b.y,width:b.width,height:b.height};}),
+      action:{x:scene.confirmButton.x,y:scene.confirmButton.y,width:scene.confirmButton.buttonWidth,height:scene.confirmButton.buttonHeight}};
   });
   assert.equal(geometry.player,3);assert.equal(geometry.dealer,1,'only one dealer card is rendered');
   assert.ok(Math.abs(geometry.left.y-geometry.right.y)<1,'progress and dealer reveal align vertically');
   assert.ok(Math.abs(geometry.left.x+geometry.right.x-page.viewportSize().width)<1,'wings mirror about the character');
   assert.ok(geometry.numberSize>=28,'progress uses large readable numbers');
   assert.ok(geometry.playerWidth>=70,'player hands have enlarged touch targets');
+  for(const card of geometry.cards){
+    const a=geometry.action;
+    assert.ok(card.x+card.width<=a.x-a.width/2 || card.x>=a.x+a.width/2 || card.y+card.height<=a.y-a.height/2 || card.y>=a.y+a.height/2,'action never covers player cards');
+  }
 };
 const tickEntry=async(page,elapsed)=>page.evaluate(async ms=>{
   const scene=window.__yakyukenTest;scene.entryOverlay.tick(ms);await Promise.resolve();scene.entryOverlay?.tick(0);scene.app.render();
@@ -59,7 +65,9 @@ const openMenuItem=async(page,name)=>{
 const assertHeader=async(page,screen)=>{
   const {width,height}=page.viewportSize(),header=tableLayout(width,height).ui.headerHeight;
   await frame(page);
-  await page.mouse.click(width<=700?32:52,width<=700?32:40);
+  if(screen!=='games'){
+    const h=yakyukenHeaderLayout(width,height);await page.mouse.click(h.left+h.avatarSize/2,h.identityY);
+  }
   assert.equal((await canvasState(page)).modal || '','','avatar has no action');
   assert.equal((await canvasState(page)).screen,screen,'avatar does not navigate');
   const back=page.getByRole('button',{name:'返回遊戲大廳',exact:true});
@@ -67,7 +75,21 @@ const assertHeader=async(page,screen)=>{
   if(screen==='games'){
     assert.equal(await page.getByRole('button',{name:'遊戲規則',exact:true}).count(),0,'lobby has no game header');
   }else{
-    assert.equal(await page.getByRole('button',{name:'週簽到・介面預覽',exact:true}).count(),1,'shared checkin UI placeholder is visible');
+    const checkin=page.getByRole('button',{name:'週簽到・介面預覽',exact:true}),h=slotHeaderLayout(width,height);
+    assert.equal(await checkin.count(),1,'slot-style checkin placeholder is present');
+    const checkinBox=await checkin.boundingBox();
+    for(const key of ['x','y','width','height'])assert.ok(Math.abs(checkinBox[key]-h.checkin[key])<1,'checkin matches slot geometry');
+    const tools=await page.evaluate(()=>{
+      const hud=window.__yakyukenTest.hud;
+      return ['音效尚未加入',window.__qaSound.musicEnabled?'關閉音樂':'開啟音樂','遊戲規則','遊玩紀錄尚未開放','返回遊戲大廳'].map(name=>{
+        const node=hud.children.find(child=>child.accessibleTitle===name);return node && {x:node.x,y:node.y,width:node.buttonWidth,height:node.buttonHeight};
+      });
+    });
+    tools.forEach((tool,index)=>{assert.ok(tool,'all five slot-style tools are rendered');assert.equal(tool.width,48);assert.equal(tool.height,48);assert.ok(Math.abs(tool.x-h.centers[index])<1 && Math.abs(tool.y-(h.toolsY+h.toolsHeight/2))<1);});
+    for(const name of ['遊戲規則','返回遊戲大廳']){
+      const target=await page.getByRole('button',{name,exact:true}).boundingBox();
+      assert.ok(target.width>=47.9 && target.height>=47.9 && target.y>=0 && target.y+target.height<=header,'48px controls stay inside the slot-style header');
+    }
     const box=await back.boundingBox();
     assert.ok(box.y>=0 && box.y+box.height<=header,'lobby control is inside the top UI');
   }
@@ -101,10 +123,8 @@ const startTable=async(page,screenshots,difficulty)=>{
   await assertTableWings(page);
   await assertHeader(page,'table');
   assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),true,'each game starts with music enabled');
-  const checkin=page.getByRole('button',{name:'週簽到・介面預覽',exact:true});
-  await checkin.click();assert.equal((await canvasState(page)).modal || '','','preview checkin has no action');
-  const bounds=await checkin.boundingBox(),expected=slotHeaderLayout(...Object.values(page.viewportSize())).checkin;
-  for(const key of ['x','y','width','height'])assert.ok(Math.abs(bounds[key]-expected[key])<1,`checkin ${key} matches slot header`);
+  await page.getByRole('button',{name:'週簽到・介面預覽',exact:true}).click();
+  assert.equal((await canvasState(page)).modal || '','','checkin remains a UI-only placeholder');
   await page.keyboard.press('Enter');assert.equal((await canvasState(page)).entries,'1','duplicate entry input cannot start a second session');
 };
 try {
@@ -327,6 +347,9 @@ try {
   assert.equal(await slot.locator('#daily-checkin').isDisabled(),true,'checkin is UI-only');
   const slotCheckin=await slot.locator('#daily-checkin').boundingBox(),expected=slotHeaderLayout(1600,900).checkin;
   for(const key of ['x','y','width','height'])assert.ok(Math.abs(slotCheckin[key]-expected[key])<1,`slot checkin ${key} matches shared geometry`);
+  const slotTools=await slot.locator('.player-tools button').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect()).filter(r=>r.width>0 && r.height>0).map(r=>({x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height})));
+  const slotGeometry=slotHeaderLayout(1600,900);assert.equal(slotTools.length,5);
+  slotTools.forEach((tool,index)=>{assert.ok(Math.abs(tool.x-slotGeometry.centers[index])<1 && Math.abs(tool.y-(slotGeometry.toolsY+slotGeometry.toolsHeight/2))<1,'the same model also matches the real slot DOM');assert.equal(tool.width,48);assert.equal(tool.height,48);});
   assert.equal(await slot.evaluate(()=>window.__qaSound.musicEnabled),true);
   await slot.screenshot({path:`${output}/slot-entry.png`});
   await slot.evaluate(()=>{

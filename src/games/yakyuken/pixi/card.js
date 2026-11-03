@@ -4,12 +4,14 @@ import {createCardBack,createCardFront} from './card-art.js';
 import {revealCard} from './card-flip.js';
 
 export class HandCard extends Container {
-  constructor({move,index,owner,onChoose,motion}) {
-    super({label:`${owner}-card:${move}`});Object.assign(this,{move,owner,motion});
+  constructor({move,index,owner,onChoose,motion,textures}) {
+    super({label:`${owner}-card:${move}`});Object.assign(this,{move,owner,motion,textures});
     this.visual=new Container({label:'card-visual'});
-    this.shadow=new Graphics().roundRect(-78,-101,156,214,12).fill({color:0x030609,alpha:.5});
-    this.front=createCardFront(move,index);this.back=createCardBack();
-    this.highlight=new Graphics().roundRect(-82,-111,164,222,14).stroke({width:3,color:0xffdc89});this.highlight.visible=false;
+    this.shadow=new Graphics().roundRect(-73,-96,146,204,12).fill({color:0x01040b,alpha:.4});
+    this.front=createCardFront(move,index,textures);this.back=createCardBack(textures);
+    this.highlight=new Graphics().roundRect(-71,-100,142,200,11).stroke({width:8,color:0xffc66d,alpha:.10})
+      .roundRect(-71,-100,142,200,11).stroke({width:3,color:0xffd18c,alpha:.28})
+      .roundRect(-71,-100,142,200,11).stroke({width:1.1,color:0xffe4af});this.highlight.visible=false;
     this.visual.addChild(this.shadow,this.back,this.front,this.highlight);this.addChild(this.visual);
     this.setFaceUp(owner==='player');
     this.hitArea=new Rectangle(-84,-113,168,226);this.interactiveChildren=false;
@@ -33,7 +35,7 @@ export class HandCard extends Container {
   setFaceUp(value){this.faceUp=value;this.front.visible=value;this.back.visible=!value;}
   setMove(move,index){
     if(this.move===move)return;
-    const previous=this.front,next=createCardFront(move,index);
+    const previous=this.front,next=createCardFront(move,index,this.textures);
     this.visual.addChildAt(next,this.visual.getChildIndex(previous));previous.destroy({children:true});
     this.front=next;this.move=move;this.front.visible=this.faceUp;
   }

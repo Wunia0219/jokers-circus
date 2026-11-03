@@ -16,8 +16,8 @@ export class PixiButton extends Container {
   constructor({text='',subtitle='',width=160,height=44,onPress,primary=false,name=text,fontSize=14,variant=primary?'gold':'panel',icon=null}){
     super({label:`button:${name}`});Object.assign(this,{buttonWidth:width,buttonHeight:height,onPress,variant});
     this.background=new Graphics();this.outline=new Graphics();
-    this.caption=label(text,variant==='action'?12:fontSize,variant==='gold'?0xfff0bd:PALETTE.cream,
-      variant==='gold' || variant==='action'?{fontFamily:SLOT_UI.serif,fontWeight:'bold'}:{});
+    this.caption=label(text,variant==='action'?12:fontSize,variant==='gold' || variant==='duel'?0xfff0bd:PALETTE.cream,
+      variant==='gold' || variant==='action'?{fontFamily:SLOT_UI.serif,fontWeight:'bold'}:variant==='duel'?{fontWeight:'600',letterSpacing:1}:{});
     this.subtitle=label(subtitle,variant==='action'?12:12,0xffebc1,{letterSpacing:variant==='action'?0:1});
     if(variant==='gold'){this.caption.y=subtitle?-10:0;this.subtitle.y=16;}
     if(variant==='action'){this.caption.y=23;this.subtitle.y=height/2+11;}
@@ -41,8 +41,18 @@ export class PixiButton extends Container {
       g.roundRect(-6,-20,24,32,3).fill(rim).stroke({color:0xffedb1,width:1});
       g.poly([3,-16,10,-7,3,2,-4,-7]).fill(0x9d1730);
       this.outline.clear().circle(0,0,w/2+3).stroke({width:2,color:PALETTE.bright});
-    }else if(this.variant==='utility'){
-      g.roundRect(-w/2,-h/2,w,h,9).fill({color:this.active?0x9a703d:0x2b1d2d,alpha:this.active ? .22 : .01});
+    }else if(this.variant==='duel'){
+      const rim=new FillGradient({start:{x:0,y:0},end:{x:1,y:.8},colorStops:[{offset:0,color:0xfee2a3},{offset:.26,color:0xa56b32},{offset:.52,color:0xf2cc82},{offset:.8,color:0x94602f},{offset:1,color:0xe5b773}]});
+      const enamel=new FillGradient({start:{x:0,y:0},end:{x:0,y:1},colorStops:[{offset:0,color:0x9c3c48},{offset:.46,color:0x702432},{offset:1,color:0x3b1525}]});
+      g.roundRect(-w/2,-h/2+3,w,h,12).fill({color:0x03070e,alpha:.6});
+      g.roundRect(-w/2,-h/2,w,h,12).fill(rim);
+      g.roundRect(-w/2+2,-h/2+2,w-4,h-4,10).fill(enamel);
+      g.roundRect(-w/2+5,-h/2+5,w-10,h-10,8).stroke({color:0xffdda1,width:.8,alpha:.4});
+      g.moveTo(-w/2+13,-h/2+7).lineTo(w/2-13,-h/2+7).stroke({color:0xffead0,width:1,alpha:.3});
+      this.outline.clear().roundRect(-w/2-3,-h/2-3,w+6,h+6,14).stroke({width:1.5,color:PALETTE.bright});
+    }else if(this.variant==='utility' || this.variant==='tool'){
+      g.roundRect(-w/2,-h/2,w,h,9).fill({color:this.active?0x9a703d:0x2b1d2d,alpha:this.active ? .22 : this.variant==='tool' ? .72 : .01});
+      if(this.variant==='tool')g.roundRect(-w/2,-h/2,w,h,9).stroke({color:0xd3ac73,width:.8,alpha:.24});
       if(this.active)g.roundRect(-w/2,-h/2,w,h,9).stroke({color:0xf4d28b,width:1,alpha:.44});
       this.outline.clear().roundRect(-w/2,-h/2,w,h,9).fill({color:0xe7be71,alpha:.08}).stroke({color:0xe7be71,width:1,alpha:.3});
     }else{

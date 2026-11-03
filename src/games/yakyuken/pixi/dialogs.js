@@ -42,15 +42,14 @@ export function buildSlotDialog(scene,type){
     addButton('遊戲設定與造型',mh/2-38,()=>scene.openModal('menu'));
   }else if(type==='settings'){
     const start=-mh/2+100;
-    addButton('音效尚未加入',start,()=>{}).setEnabled(false);
-    const music=addButton(scene.audio.musicMuted?'開啟音樂':'關閉音樂',start+52,async()=>{
+    const music=addButton(scene.audio.musicMuted?'開啟音樂':'關閉音樂',start,async()=>{
       try{await scene.audio.toggleMusic();scene.refreshAudioIcons?.();if(!music.destroyed)music.setText(scene.audio.musicMuted?'開啟音樂':'關閉音樂');}catch{}
     },'切換音樂');
-    const motion=addButton(scene.motion.reduced?'動態效果：減少':'動態效果：標準',start+104,()=>{
+    const motion=addButton(scene.motion.reduced?'動態效果：減少':'動態效果：標準',start+52,()=>{
       scene.reducePreference=!scene.motion.reduced;scene.motion.reduced=!!scene.reducePreference || scene.media.matches;if(scene.motion.reduced)scene.motion.finish();scene.openModal('settings');
     },'切換動態效果');
     if(scene.media.matches){motion.setText('動態效果：跟隨系統減少');motion.setEnabled(false);}
-    const fullscreen=addButton(document.fullscreenElement?'離開全螢幕':'全螢幕',start+156,async()=>{
+    const fullscreen=addButton(document.fullscreenElement?'離開全螢幕':'全螢幕',start+104,async()=>{
       try{if(document.fullscreenElement)await document.exitFullscreen();else await scene.host.requestFullscreen();if(!scene.disposed && scene.modal==='settings')scene.openModal('settings');}
       catch{if(!fullscreen.destroyed)fullscreen.setText('此視窗不支援全螢幕');}
     },'切換全螢幕');

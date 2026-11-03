@@ -10,6 +10,10 @@ export function slotHeaderLayout(width,height){
   const checkinX=narrow?left+barWidth-checkinWidth:toolsX-12-checkinWidth;
   const avatarSize=narrow?(small?32:40):height<=500?36:48;
   const identityY=narrow?(small?40:36):height<=500?36:40;
-  return {narrow,small,left,barWidth,avatarSize,identityY,toolsX,toolsY,toolsWidth,toolsHeight,centers,
+  const headerHeight=narrow?(small?140:132):height<=500?72:80;
+  return {narrow,small,left,barWidth,avatarSize,identityY,toolsX,toolsY,toolsWidth,toolsHeight,centers,headerHeight,logoWidth:0,
     checkin:{x:checkinX,y:narrow?(small?12:8):toolsY,width:checkinWidth,height:56}};
 }
+
+// Both games use the same geometry; Yakyuken deliberately omits the logo.
+export const yakyukenHeaderLayout=slotHeaderLayout;

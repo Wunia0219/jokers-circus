@@ -5,12 +5,12 @@ import {Motion} from '../src/games/yakyuken/pixi/motion.js';
 import {demoDuel} from '../src/games/yakyuken/pixi/demo-duel.js';
 import {revealCard} from '../src/games/yakyuken/pixi/card-flip.js';
 import {slotChrome,SLOT_UI} from '../src/games/yakyuken/pixi/slot-theme.js';
-import {slotHeaderLayout} from '../src/games/yakyuken/pixi/header-layout.js';
+import {slotHeaderLayout,yakyukenHeaderLayout} from '../src/games/yakyuken/pixi/header-layout.js';
 import {lobbyLayout} from '../src/games/yakyuken/pixi/lobby-layout.js';
 import {CHARACTERS,canEnterCharacter} from '../src/games/yakyuken/characters.js';
 
 test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit around the character',() => {
-  for(const [width,height,touch] of [[1600,900,false],[1440,1000,false],[390,844,true],[320,568,true],[844,390,true],[768,1024,true],[544,680,true],[544,680,false]]){
+  for(const [width,height,touch] of [[1600,900,false],[1440,1000,false],[1100,800,false],[390,844,true],[320,568,true],[844,390,true],[600,420,true],[700,500,true],[768,1024,true],[544,680,true],[544,680,false]]){
     const l=tableLayout(width,height,{touch});
     assert.equal(TABLE_MOVES.length,3);
     const row=l.playerCards,halfWidth=(84+113*row.perspective*.06)*row.scale,halfHeight=(113*row.perspective+84*.06)*row.scale;
@@ -21,7 +21,8 @@ test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit a
     assert.ok(l.dealer.height*l.scale*.44>(height-l.ui.headerHeight)*.45,`${width}x${height}: character remains the focus`);
     assert.equal(l.ui.deck,undefined);
     if(height<550)assert.equal(l.logo.width,0,'compact landscape keeps the progress wing clear of the logo');
-    if(l.ui.mobile)assert.ok(cardBottom*l.scale<l.action.y-l.action.height/2,`${width}x${height}: cards clear the standalone action`);
+    if(l.stackedControls)assert.ok(cardBottom*l.scale<l.status.y-16,`${width}x${height}: cards clear the result text and bottom action`);
+    else assert.ok((row.x+row.gap+halfWidth)*l.scale<l.action.x-l.action.width/2,`${width}x${height}: side action cannot cover a player card`);
     const p=l.progress,d=l.dealerCard;
     assert.ok(Math.abs(p.y-d.y*l.scale)<1e-9,'left progress and right reveal share a centre line');
     assert.ok(Math.abs(p.x+d.x*l.scale-width)<1e-9,'wings mirror about the character');
@@ -37,12 +38,27 @@ test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit a
   assert.throws(() => tableLayout(0,900));
 });
 
-test('Pixi shared chrome: retains the slot header and font families without a bottom deck',()=>{
+test('Pixi Yakyuken chrome: slot-sized header preserves readable typography without a bottom deck',()=>{
   const desktop=slotChrome(1600,900),phone=slotChrome(390,844,true);
   assert.equal(desktop.headerHeight,80);assert.equal(desktop.deck,undefined);
   assert.equal(phone.headerHeight,132);assert.equal(phone.deck,undefined);
   assert.deepEqual(SLOT_UI.font,['Noto Sans TC','sans-serif']);assert.equal(SLOT_UI.utilitySize,48);
   assert.equal(SLOT_UI.bodySize,13);assert.equal(SLOT_UI.dialogTitleSize,19);
+});
+
+test('Yakyuken shares slot avatar, checkin and five 48px tools at every viewport, without a logo',()=>{
+  for(const [width,height] of [[320,568],[390,844],[544,680],[768,1024],[844,390],[1600,900]]){
+    const h=yakyukenHeaderLayout(width,height);
+    assert.deepEqual(h,slotHeaderLayout(width,height));
+    assert.equal(h.headerHeight,slotChrome(width,height).headerHeight);
+    assert.equal(h.centers.length,5);assert.equal(h.logoWidth,0);
+    assert.ok(h.toolsY>=0 && h.toolsY+h.toolsHeight<=h.headerHeight);
+    assert.ok(h.left+h.avatarSize+8<h.checkin.x,'identity stays separate from checkin');
+    h.centers.forEach((x,i)=>{
+      assert.ok(x-24>=0 && x+24<=width);
+      if(i)assert.ok(x-h.centers[i-1]>=56,'48px controls retain at least 8px clear gaps');
+    });
+  }
 });
 
 test('Pixi lobby: two game choices and five character positions fit desktop and narrow viewports',()=>{
