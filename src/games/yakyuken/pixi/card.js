@@ -17,12 +17,13 @@ export class HandCard extends Container {
       this.eventMode='static';this.cursor='pointer';this.accessible=true;
       this.accessibleTitle=`選擇${TABLE_MOVE_NAMES[move]}`;this.accessibleHint=this.accessibleTitle;this.tabIndex=index+1;
       this.on('pointertap',() => onChoose(move));
-      const hover=value => {
+      this.hover=value => {
+        if(this.destroyed)return;
         if(this.locked)return;this.highlight.visible=value || this.selected;
         void motion.to(this,{y:this.baseY-(this.selected?this.selectedLift:value?this.hoverLift:0)},150);
       };
-      this.on('pointerover',() => hover(true));this.on('pointerout',() => hover(false));
-      this.on('mouseover',() => hover(true));this.on('mouseout',() => hover(false));
+      this.on('pointerover',() => this.hover(true));this.on('pointerout',() => this.hover(false));
+      this.focus=value=>this.hover(value);
     }else this.eventMode='none';
   }
   place(x,y,scale,angle=0,{selectedLift=24,hoverLift=12}={}) {

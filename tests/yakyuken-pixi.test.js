@@ -5,6 +5,7 @@ import {Motion} from '../src/games/yakyuken/pixi/motion.js';
 import {demoDuel} from '../src/games/yakyuken/pixi/demo-duel.js';
 import {revealCard} from '../src/games/yakyuken/pixi/card-flip.js';
 import {slotChrome,SLOT_UI} from '../src/games/yakyuken/pixi/slot-theme.js';
+import {slotHeaderLayout} from '../src/games/yakyuken/pixi/header-layout.js';
 import {lobbyLayout} from '../src/games/yakyuken/pixi/lobby-layout.js';
 import {CHARACTERS,canEnterCharacter} from '../src/games/yakyuken/characters.js';
 
@@ -102,4 +103,18 @@ test('Pixi demonstration: the dealer rotates independently of player choice and 
     }
   });
   assert.throws(() => demoDuel(-1,'rock'));assert.throws(() => demoDuel(0,'invalid'));
+});
+
+
+test('shared header controls and UI-only checkin fit 320px through desktop without overlap',()=>{
+  for(const [width,height] of [[320,568],[390,844],[544,680],[768,1024],[844,390],[1600,900]]){
+    const h=slotHeaderLayout(width,height),c=h.checkin;
+    assert.ok(c.x>=0 && c.x+c.width<=width);
+    assert.ok(c.y>=0 && c.y+c.height<=slotChrome(width,height).headerHeight);
+    h.centers.forEach((x,i)=>{
+      assert.ok(x-24>=0 && x+24<=width);
+      if(i)assert.ok(x-h.centers[i-1]>=48,'48px controls never overlap');
+    });
+    if(!h.narrow)assert.ok(c.x+c.width+12<=h.toolsX);
+  }
 });

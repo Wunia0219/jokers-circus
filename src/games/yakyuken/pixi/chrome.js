@@ -2,43 +2,46 @@ import {Container,FillGradient,Graphics} from 'pixi.js';
 import {icon} from '../../../ui/shared/icons.js';
 import {label,PALETTE,PixiButton,slotIcon} from './ui.js';
 import {TABLE_MOVE_NAMES} from './layout.js';
+import {slotHeaderLayout} from './header-layout.js';
 
 function at(node,x,y,parent){node.position.set(x,y);parent.addChild(node);return node;}
 function leftLabel(text,size,color,x,y,parent,options={}){const node=label(text,size,color,options);node.anchor.set(0,.5);return at(node,x,y,parent);}
 
 export function buildSlotHud(scene){
-  const {ui,scale}=scene.layout,{width,narrow,headerHeight}=ui;
+  if(scene.screen==='games')return;
+  const {ui,scale}=scene.layout,{width,height,headerHeight}=ui;
+  const h=slotHeaderLayout(width,height),{narrow,small,left,avatarSize,identityY}=h;
   const hud=new Container({label:'slot-style-chrome'});hud.scale.set(1/scale);scene.world.addChild(hud);scene.hud=hud;
   const shade=new FillGradient({start:{x:0,y:0},end:{x:0,y:1},colorStops:[{offset:0,color:0x19101e},{offset:1,color:0x211426}]});
-  hud.addChild(new Graphics().rect(0,0,width,headerHeight).fill({fill:shade,alpha:.82}));
-  const ax=narrow?12:28,avatarSize=narrow?40:48;
-  const avatar=at(new Container({label:'player-avatar',eventMode:'none'}),ax+avatarSize/2,narrow?32:40,hud);
+  hud.addChild(new Graphics().rect(0,0,width,headerHeight).fill({fill:shade,alpha:.7}));
+  const avatar=at(new Container({label:'player-avatar',eventMode:'none'}),left+avatarSize/2,identityY,hud);
   const portrait=new Graphics().circle(0,0,avatarSize/2).fill(new FillGradient({start:{x:0,y:0},end:{x:1,y:1},colorStops:[{offset:0,color:0x825342},{offset:.58,color:0x442638},{offset:1,color:0x281d30}]})).stroke({color:0xbf925e,width:1,alpha:.53});
-  portrait.circle(avatarSize/2-3,avatarSize/2-3,4).fill(0xb5a0b1).stroke({color:0x24182c,width:2});avatar.addChild(portrait,slotIcon(icon('user'),narrow?19:23,0xf4d59b));
-  leftLabel('訪客玩家',narrow?14:15,PALETTE.cream,ax+avatarSize+(narrow?8:12),narrow?23:29,hud,{fontWeight:'500'});
-  leftLabel('本機試玩・不扣戲籌',width<=360?11:12,0xd7bfbf,ax+avatarSize+(narrow?8:12),narrow?44:51,hud);
-  const hasLobby=scene.screen!=='games',count=hasLobby?6:5;
-  const toolsWidth=narrow?width-24:count*56+12,toolsX=narrow?12:width-toolsWidth-28,toolsY=narrow?72:12,toolsHeight=56;
-  hud.addChild(new Graphics().roundRect(toolsX,toolsY,toolsWidth,toolsHeight,12).fill({color:0x2b1d2d,alpha:.85}).stroke({color:0xc99b5b,alpha:.21,width:1}));
-  const positions=Array.from({length:count},(_,i)=>toolsX+28+i*(toolsWidth-56)/(count-1)),cy=toolsY+toolsHeight/2,size=narrow?44:48;
-  const sound=at(new PixiButton({name:scene.audio.muted?'開啟音效':'關閉音效',variant:'utility',width:size,height:size,icon:icon(scene.audio.muted?'muted':'sound'),onPress:async()=>{
-    try{await scene.audio.toggle();scene.refreshAudioIcons?.();}catch{}
-  }}),positions[0],cy,hud);
-  const music=at(new PixiButton({name:scene.audio.musicMuted?'開啟音樂':'關閉音樂',variant:'utility',width:size,height:size,icon:icon(scene.audio.musicMuted?'musicMuted':'music'),onPress:async()=>{
-    try{await scene.audio.toggleMusic();scene.refreshAudioIcons?.();}catch{}
-  }}),positions[1],cy,hud);
+  portrait.circle(avatarSize/2-6,avatarSize/2-6,4).fill(0xb5a0b1).stroke({color:0x24182c,width:2});avatar.addChild(portrait,slotIcon(icon('user'),narrow?19:23,0xf4d59b));
+  const textX=left+avatarSize+(narrow?8:12),textWidth=h.checkin.x-12-textX;
+  leftLabel('訪客玩家',narrow?14:15,PALETTE.cream,textX,identityY-10,hud,{fontWeight:'500'});
+  leftLabel('進度保存在這台裝置',small?11:12,0xd7bfbf,textX,identityY+11,hud,{wordWrap:true,wordWrapWidth:textWidth,align:'left'});
+  const c=h.checkin,checkin=at(new PixiButton({name:'週簽到・介面預覽',width:c.width,height:56}),c.x+c.width/2,c.y+28,hud);checkin.cursor='default';
+  checkin.background.clear().roundRect(-c.width/2,-28,c.width,56,12).fill(new FillGradient({start:{x:0,y:0},end:{x:1,y:.2},colorStops:[{offset:0,color:0x73452f},{offset:1,color:0x5c2f39}]})).stroke({color:0xc79a5f,width:1});
+  const copyWidth=6*(narrow?11:12),giftSize=narrow?18:20,giftGap=narrow?8:10;
+  const contentX=-(copyWidth+(small?0:giftSize+giftGap))/2;
+  if(!small){const gift=slotIcon(icon('gift'),giftSize);gift.position.set(contentX,-giftSize/2);checkin.addChild(gift);}
+  const copyX=contentX+(small?0:giftSize+giftGap);
+  leftLabel('週簽到',narrow?12:14,0xffe9bc,copyX,-10,checkin,{fontWeight:'500'});
+  leftLabel('查看七日獎勵',narrow?11:12,0xffdfab,copyX,11,checkin);
+  const {toolsX,toolsY,toolsWidth,toolsHeight,centers}=h,cy=toolsY+toolsHeight/2;
+  hud.addChild(new Graphics().roundRect(toolsX,toolsY,toolsWidth,toolsHeight,narrow?11:12).fill({color:0x2b1d2d,alpha:.85}).stroke({color:0xc99b5b,alpha:.21,width:1}));
+  const sound=at(new PixiButton({name:'音效尚未加入',variant:'utility',width:48,height:48,icon:icon('muted')}),centers[0],cy,hud);sound.setEnabled(false);sound.alpha=1;sound.glyph.tint=0xc1b1bf;
+  const music=at(new PixiButton({name:scene.audio.musicMuted?'開啟音樂':'關閉音樂',variant:'utility',width:48,height:48,icon:icon(scene.audio.musicMuted?'musicMuted':'music'),onPress:async()=>{
+    await scene.audio.toggleMusic();scene.refreshAudioIcons?.();
+  }}),centers[1],cy,hud);
   scene.refreshAudioIcons=()=>{
-    if(scene.disposed || sound.destroyed || music.destroyed)return;
-    sound.setIcon(icon(scene.audio.muted?'muted':'sound'));sound.setName(scene.audio.muted?'開啟音效':'關閉音效');
-    music.setIcon(icon(scene.audio.musicMuted?'musicMuted':'music'));music.setName(scene.audio.musicMuted?'開啟音樂':'關閉音樂');
-  };
-  const divider=(positions[1]+positions[2])/2;
-  hud.addChild(new Graphics().moveTo(divider,toolsY+9).lineTo(divider,toolsY+toolsHeight-9).stroke({color:0xc99b5b,width:1,alpha:.19}));
-  at(new PixiButton({name:'遊戲規則',variant:'utility',width:size,height:size,icon:icon('info'),onPress:()=>scene.openModal('help')}),positions[2],cy,hud);
-  at(new PixiButton({name:'遊玩紀錄',variant:'utility',width:size,height:size,icon:icon('clock'),onPress:()=>scene.openModal('history')}),positions[3],cy,hud);
-  if(hasLobby)scene.lobbyButton=at(new PixiButton({name:'返回遊戲大廳',variant:'utility',width:size,height:size,icon:icon('lobby'),onPress:()=>scene.visitScreen('games')}),positions[4],cy,hud);
-  at(new PixiButton({name:'開啟選單',variant:'utility',width:size,height:size,icon:icon('menu'),onPress:()=>scene.openModal('menu')}),positions[count-1],cy,hud);
-
+    if(scene.disposed || music.destroyed)return;
+    music.setActive(!scene.audio.musicMuted);music.setIcon(icon(scene.audio.musicMuted?'musicMuted':'music'));music.setName(scene.audio.musicMuted?'開啟音樂':'關閉音樂');
+  };scene.refreshAudioIcons();
+  hud.addChild(new Graphics().moveTo(centers[1]+33,toolsY+9).lineTo(centers[1]+33,toolsY+toolsHeight-9).stroke({color:0xc99b5b,width:1,alpha:.19}));
+  at(new PixiButton({name:'遊戲規則',variant:'utility',width:48,height:48,icon:icon('info'),onPress:()=>scene.openModal('help')}),centers[2],cy,hud);
+  at(new PixiButton({name:'遊玩紀錄',variant:'utility',width:48,height:48,icon:icon('clock'),onPress:()=>scene.openModal('history')}),centers[3],cy,hud);
+  scene.lobbyButton=at(new PixiButton({name:'返回遊戲大廳',variant:'utility',width:48,height:48,icon:icon('lobby'),onPress:()=>scene.visitScreen('games')}),centers[4],cy,hud);
   if(scene.screen!=='table')return;
   const {action,status}=scene.layout;
   scene.confirmButton=at(new PixiButton({text:'確認出牌',name:'確認出牌',variant:'gold',width:action.width,height:action.height,fontSize:14,onPress:()=>scene.confirm()}),action.x,action.y,hud);

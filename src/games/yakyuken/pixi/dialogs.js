@@ -34,12 +34,10 @@ export function buildSlotDialog(scene,type){
       paragraph('雙方各有拳頭、剪刀、布三張牌。\n選好手牌，按下中央的出牌按鈕。\n\n荷官先蓋牌，出牌時只翻開選中的一張。\n拳頭勝剪刀、剪刀勝布、布勝拳頭。\n\n鍵盤 1／2／3 選牌，Enter 確認；Esc 開關選單。',-mh/2+109);
     }
     paragraph('本機展示使用固定出牌順序，不扣戲籌；正式機率另行確認。',mh/2-96,12,PALETTE.muted);
-    addButton('返回遊戲',mh/2-38,()=>scene.closeModal());
+    addButton('遊戲設定與造型',mh/2-38,()=>scene.openModal('menu'));
   }else if(type==='settings'){
     const start=-mh/2+100;
-    const audio=addButton(scene.audio.muted?'開啟音效':'關閉音效',start,async()=>{
-      try{await scene.audio.toggle();scene.refreshAudioIcons?.();if(!audio.destroyed)audio.setText(scene.audio.muted?'開啟音效':'關閉音效');}catch{}
-    },'切換音效');
+    addButton('音效尚未加入',start,()=>{}).setEnabled(false);
     const music=addButton(scene.audio.musicMuted?'開啟音樂':'關閉音樂',start+52,async()=>{
       try{await scene.audio.toggleMusic();scene.refreshAudioIcons?.();if(!music.destroyed)music.setText(scene.audio.musicMuted?'開啟音樂':'關閉音樂');}catch{}
     },'切換音樂');

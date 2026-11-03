@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Sound} from '../src/ui/audio/audio.js';
 import {cueVoices} from '../src/ui/audio/audio-cues.js';
+import {startDefaultMusic} from '../src/ui/audio/default-music.js';
 
 function fixture({music=true,stereo=true}={}){
   const parameter=()=>({value:0,setValueAtTime(value){this.value=value;},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){},cancelScheduledValues(){},setTargetAtTime(value){this.value=value;}});
@@ -18,6 +19,27 @@ function fixture({music=true,stereo=true}={}){
   const sound=new Sound({contextFactory:()=>context,musicUrl:music?'/provided-music.mp3':null,musicFactory:()=>player,isHidden:()=>hidden,onStateChange:state=>changes.push(state)});
   return {sound,context,player,oscillators,panners,changes,set hidden(value){hidden=value;}};
 }
+
+test('default music retries browser autoplay on a gesture without enabling effects or overriding mute',async()=>{
+  const {sound,player}=fixture(),target=new EventTarget();let allowed=false,attempts=0;
+  player.play=async()=>{attempts++;if(!allowed)throw Object.assign(new Error('gesture required'),{name:'NotAllowedError'});player.paused=false;};
+  const cleanup=startDefaultMusic(sound,{target});await Promise.resolve();await Promise.resolve();
+  assert.equal(sound.musicEnabled,true);assert.equal(sound.musicPending,true);assert.equal(sound.context,null);
+  allowed=true;target.dispatchEvent(new Event('pointerdown'));await Promise.resolve();
+  assert.equal(player.paused,false);assert.equal(sound.musicPending,false);
+  await sound.setMusicEnabled(false);target.dispatchEvent(new Event('pointerdown'));
+  assert.equal(attempts,2);assert.equal(player.paused,true);assert.equal(sound.musicEnabled,false);
+  cleanup();sound.dispose();
+});
+
+test('muting while autoplay is blocked cancels the deferred start',async()=>{
+  const {sound,player}=fixture(),target=new EventTarget();let attempts=0;
+  player.play=async()=>{attempts++;throw Object.assign(new Error('blocked'),{name:'NotAllowedError'});};
+  const cleanup=startDefaultMusic(sound,{target});await Promise.resolve();await Promise.resolve();
+  await sound.setMusicEnabled(false);target.dispatchEvent(new Event('keydown'));await Promise.resolve();
+  assert.equal(attempts,1);assert.equal(sound.musicPending,false);assert.equal(sound.musicEnabled,false);
+  cleanup();
+});
 
 test('audio is silent by default and missing music remains unavailable',async()=>{
   const {sound,oscillators}=fixture({music:false});

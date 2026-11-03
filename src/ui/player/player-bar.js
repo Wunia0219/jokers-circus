@@ -32,7 +32,7 @@ export function createPlayerBar({ icon, onCheckin, onHistory, onRules, onSound, 
       const back=element.querySelector('#return-lobby');if(!back)return;
       back.disabled=!enabled;back.title=note || '返回遊戲大廳';
     },
-    update({ user, connected = false, localTest = false, ready = false, busy = false, claiming = false, claimed = false, daily, weeklyCheckin, storageAvailable = true }) {
+    update({ user, connected = false, checkinPreview = false, localTest = false, ready = false, busy = false, claiming = false, claimed = false, daily, weeklyCheckin, storageAvailable = true }) {
       const name = user ? user.global_name || user.username : '訪客玩家';
       const nameNode = element.querySelector('#player-name');
       nameNode.textContent = name;
@@ -49,7 +49,12 @@ export function createPlayerBar({ icon, onCheckin, onHistory, onRules, onSound, 
         else avatarImage.removeAttribute('src');
       }
       const button = element.querySelector('#daily-checkin');
-      button.hidden = !connected;
+      button.hidden = !connected&&!checkinPreview;
+      button.classList.toggle('is-preview',checkinPreview);
+      if(checkinPreview){
+        button.querySelector('strong').textContent='週簽到';button.querySelector('small').textContent='查看七日獎勵';
+        button.disabled=true;button.title='週簽到・介面預覽';button.setAttribute('aria-label',button.title);return;
+      }
       const view = dailyRewardView({ ready, busy, claiming, claimed, daily, weeklyCheckin });
       button.querySelector('strong').textContent = view.title;
       button.querySelector('small').textContent = view.detail;

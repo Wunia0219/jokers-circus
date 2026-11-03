@@ -24,11 +24,11 @@ export class PixiButton extends Container {
     this.addChild(this.background,this.outline,this.caption,this.subtitle);
     if(icon)this.setIcon(icon);
     this.hitArea=new Rectangle(-width/2,-height/2,width,height);
+    this.boundsArea=this.hitArea;
     this.eventMode='static';this.interactiveChildren=false;this.cursor='pointer';
     this.accessible=true;this.accessibleTitle=name;this.accessibleHint=name;this.accessibleType='button';this.tabIndex=0;
     this.on('pointertap',() => {if(this.enabled!==false)this.onPress?.();});
-    this.on('pointerover',() => this.focus(true));this.on('pointerout',() => this.focus(false));
-    this.on('mouseover',() => this.focus(true));this.on('mouseout',() => this.focus(false));this.draw();
+    this.on('pointerover',() => this.hover(true));this.on('pointerout',() => this.hover(false));this.draw();
   }
   draw(){
     const w=this.buttonWidth,h=this.buttonHeight,g=this.background;g.clear();
@@ -42,7 +42,8 @@ export class PixiButton extends Container {
       g.poly([3,-16,10,-7,3,2,-4,-7]).fill(0x9d1730);
       this.outline.clear().circle(0,0,w/2+3).stroke({width:2,color:PALETTE.bright});
     }else if(this.variant==='utility'){
-      g.roundRect(-w/2,-h/2,w,h,9).fill({color:0x2b1d2d,alpha:.01});
+      g.roundRect(-w/2,-h/2,w,h,9).fill({color:this.active?0x9a703d:0x2b1d2d,alpha:this.active ? .22 : .01});
+      if(this.active)g.roundRect(-w/2,-h/2,w,h,9).stroke({color:0xf4d28b,width:1,alpha:.44});
       this.outline.clear().roundRect(-w/2,-h/2,w,h,9).fill({color:0xe7be71,alpha:.08}).stroke({color:0xe7be71,width:1,alpha:.3});
     }else{
       const gold=this.variant==='gold';
@@ -54,11 +55,13 @@ export class PixiButton extends Container {
       if(gold)g.roundRect(-w/2+3,-h/2+3,w-6,h-6,6).stroke({color:0xfbd38c,width:1,alpha:.22});
       this.outline.clear().roundRect(-w/2-3,-h/2-3,w+6,h+6,10).stroke({width:2,color:PALETTE.bright});
     }
-    this.outline.visible=false;
+    this.outline.visible=!!(this.hovered || this.focused) && this.enabled!==false;
   }
-  setIcon(svg){if(this.glyph)this.glyph.destroy();this.glyph=slotIcon(svg);this.addChild(this.glyph);}
-  focus(value){this.outline.visible=value && this.enabled!==false;}
-  setEnabled(value){this.enabled=value;this.eventMode=value?'static':'none';this.accessible=value;this.alpha=value?1:.5;this.focus(false);}
+  setIcon(svg){this.svg=svg;if(this.glyph)this.glyph.destroy();this.glyph=slotIcon(svg,20,this.active?0xffe0a2:0xead8cb);this.addChild(this.glyph);}
+  setActive(value){if(this.active===value)return;this.active=value;this.draw();if(this.svg)this.setIcon(this.svg);}
+  hover(value){if(this.destroyed)return;this.hovered=value;this.outline.visible=!!(value || this.focused) && this.enabled!==false;}
+  focus(value){if(this.destroyed)return;this.focused=value;this.outline.visible=!!(value || this.hovered) && this.enabled!==false;}
+  setEnabled(value){this.enabled=value;this.eventMode=value?'static':'none';this.accessible=value;this.alpha=value?1:.5;if(!value){this.hover(false);this.focus(false);}}
   setText(text){this.caption.text=text;}
   setSubtitle(text){this.subtitle.text=text;}
   setName(name){

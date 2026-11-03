@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {createServer} from 'vite';
 import {launchBrowser} from './helpers/browser.js';
+import {slotHeaderLayout} from '../../src/games/yakyuken/pixi/header-layout.js';
 import {tableLayout,TABLE_MOVES} from '../../src/games/yakyuken/pixi/layout.js';
 
 const port=4196,origin=`http://127.0.0.1:${port}`,output='test-results/yakyuken-pixi';
@@ -12,7 +13,10 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
     if(request.url!=='/__yakyuken_lifecycle')return next();
     response.setHeader('Content-Type','text/html');response.end(`<div id="host"></div><script type="module">import {YakyukenScene} from '/src/games/yakyuken/scene.js';const scene=new YakyukenScene();const host=document.querySelector('#host');const init=scene.init(host);await scene.destroy();await init;document.body.dataset.disposed='true';</script>`);
   });},transform(code,id){
-    if(!id.split('?')[0].replaceAll('\\','/').endsWith('/src/main.js'))return;
+    const path=id.split('?')[0].replaceAll('\\','/');
+    if(path.endsWith('/src/ui/audio/audio.js'))return {code:code.replace('this.music=musicUrl?','globalThis.__qaSound=this;this.music=musicUrl?'),map:null};
+    if(path.endsWith('/src/games/yakyuken/scene.js'))return {code:code.replace('this.host = host;','globalThis.__yakyukenTest=this;this.host = host;'),map:null};
+    if(!path.endsWith('/src/main.js'))return;
     assert.ok(code.includes('startGame();'),'isolated slot ticker hook must match the real entry');
     return {code:code.replace('startGame();','globalThis.__slotNavigationTest={scene,controls};startGame();'),map:null};
   }}],
@@ -25,7 +29,8 @@ const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationF
 const phase=(page,value) => page.waitForFunction(expected => document.querySelector('canvas')?.dataset.phase===expected,value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
 const openMenuItem=async(page,name)=>{
-  await page.getByRole('button',{name:'開啟選單',exact:true}).click();
+  await page.getByRole('button',{name:'遊戲規則',exact:true}).click();
+  await page.getByRole('button',{name:'遊戲設定與造型',exact:true}).click();
   await page.getByRole('button',{name,exact:true}).click();
 };
 const assertHeader=async(page,screen)=>{
@@ -36,7 +41,10 @@ const assertHeader=async(page,screen)=>{
   assert.equal((await canvasState(page)).screen,screen,'avatar does not navigate');
   const back=page.getByRole('button',{name:'返回遊戲大廳',exact:true});
   assert.equal(await back.count(),screen==='games'?0:1,'only one lobby control outside the lobby');
-  if(screen!=='games'){
+  if(screen==='games'){
+    assert.equal(await page.getByRole('button',{name:'遊戲規則',exact:true}).count(),0,'lobby has no game header');
+  }else{
+    assert.equal(await page.getByRole('button',{name:'週簽到・介面預覽',exact:true}).count(),1,'shared checkin UI placeholder is visible');
     const box=await back.boundingBox();
     assert.ok(box.y>=0 && box.y+box.height<=header,'lobby control is inside the top UI');
   }
@@ -58,6 +66,11 @@ const startTable=async(page,screenshots)=>{
   if(screenshots)await page.screenshot({path:`${output}/${screenshots}-characters.png`});
   await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(page,'selecting');
   await assertHeader(page,'table');
+  assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),true,'each game starts with music enabled');
+  const checkin=page.getByRole('button',{name:'週簽到・介面預覽',exact:true});
+  await checkin.click();assert.equal((await canvasState(page)).modal || '','','preview checkin has no action');
+  const bounds=await checkin.boundingBox(),expected=slotHeaderLayout(...Object.values(page.viewportSize())).checkin;
+  for(const key of ['x','y','width','height'])assert.ok(Math.abs(bounds[key]-expected[key])<1,`checkin ${key} matches slot header`);
   await page.keyboard.press('Enter');assert.equal((await canvasState(page)).entries,'1','duplicate entry input cannot start a second session');
 };
 try {
@@ -76,6 +89,14 @@ try {
   assert.equal(await page.locator('dialog,img,main,h1,header').count(),0);
   assert.equal(await page.getByRole('button',{name:/^選擇(拳頭|剪刀|布)$/}).count(),3);
   assert.equal(await page.evaluate(() => document.documentElement.scrollHeight===innerHeight && document.documentElement.scrollWidth===innerWidth),true);
+  const help=page.getByRole('button',{name:'遊戲規則',exact:true});
+  await help.hover();await page.mouse.move(800,200);await frame(page);
+  assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='遊戲規則').outline.visible),false,'moving off a button clears its outline');
+  await help.click();await page.getByRole('button',{name:'關閉視窗',exact:true}).click();await page.mouse.move(800,200);await frame(page);
+  assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='遊戲規則').outline.visible),false,'pointer focus after click cannot leave a ring');
+  await page.keyboard.press('Tab');await help.focus();
+  assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='遊戲規則').outline.visible),true,'keyboard focus remains visible');
+  await page.mouse.click(800,200);await frame(page);
   await page.screenshot({path:`${output}/desktop.png`});
   checks.push('one full-viewport Pixi canvas, six visible table cards reviewed in screenshot, no HTML game UI');
 
@@ -120,18 +141,19 @@ try {
   await openMenuItem(page,'荷官與造型');
   await page.getByRole('button',{name:'預覽終幕造型',exact:true}).click();
   await page.waitForFunction(() => document.querySelector('canvas').dataset.pose==='2');
-  await page.getByRole('button',{name:'開啟選單',exact:true}).waitFor();
+  await page.waitForFunction(()=>!window.__yakyukenTest.changing);
   await frame(page);await page.screenshot({path:`${output}/desktop-pose-2.png`});
   checks.push('Pixi wardrobe panel and central emblem replace the dealer texture behind the table');
 
   await openMenuItem(page,'遊戲設定');
-  await page.getByRole('button',{name:'切換音效',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'切換音效',exact:true}).count(),0,'no duel SFX control');
   await page.getByRole('button',{name:'切換動態效果',exact:true}).click();
   await page.getByRole('button',{name:'關閉視窗',exact:true}).click();
-  await page.getByRole('button',{name:'關閉音效',exact:true}).waitFor();
-  await page.getByRole('button',{name:'開啟音樂',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.__qaSound.context),null,'duel does not initialize effects');
   await page.getByRole('button',{name:'關閉音樂',exact:true}).click();
-  await page.getByRole('button',{name:'開啟音樂',exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),false,'first click turns default music off');
+  await page.getByRole('button',{name:'開啟音樂',exact:true}).click();
+  await page.getByRole('button',{name:'關閉音樂',exact:true}).waitFor();
   await page.getByRole('button',{name:'遊玩紀錄',exact:true}).click();
   await page.waitForFunction(() => document.querySelector('canvas').dataset.modal==='history');
   await page.screenshot({path:`${output}/history.png`});await page.keyboard.press('Escape');
@@ -147,7 +169,7 @@ try {
     await phone.goto(`${origin}/yakyuken-preview.html`);await startTable(phone,name);await frame(phone);
     assert.equal((await canvasState(phone)).dealerFrontCount,'0',`${name}: reduced-motion game starts on backs`);
     assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth===innerWidth && document.documentElement.scrollHeight===innerHeight),true);
-    for(const control of ['返回遊戲大廳','開啟選單','遊玩紀錄','遊戲規則']){
+    for(const control of ['返回遊戲大廳','遊玩紀錄','遊戲規則']){
       const target=await phone.getByRole('button',{name:control,exact:true}).boundingBox();
       assert.ok(target.width>=43.9 && target.height>=43.9,`${name}: ${control} has a 44px touch target`);
     }
@@ -163,11 +185,12 @@ try {
       await phone.waitForFunction(() => document.querySelector('canvas').dataset.modal==='help');
       await phone.screenshot({path:`${output}/mobile-landscape-help.png`});await phone.keyboard.press('Escape');
     }
-    await phone.getByRole('button',{name:'開啟選單',exact:true}).tap();
+    await phone.getByRole('button',{name:'遊戲規則',exact:true}).tap();
+    await phone.getByRole('button',{name:'遊戲設定與造型',exact:true}).tap();
     await phone.getByRole('button',{name:'荷官與造型',exact:true}).tap();
     await phone.getByRole('button',{name:'預覽漸入佳境造型',exact:true}).tap();
     await phone.waitForFunction(() => document.querySelector('canvas').dataset.pose==='1');
-    await phone.getByRole('button',{name:'開啟選單',exact:true}).waitFor();
+    await phone.waitForFunction(()=>!window.__yakyukenTest.changing);
     if(name==='mobile'){
       await returnLobby(phone);
       await phone.getByRole('button',{name:'選擇老虎機',exact:true}).tap();await phone.waitForURL(`${origin}/?lobby=preview`);
@@ -206,7 +229,7 @@ try {
   assert.equal((await canvasState(resizing)).dealerFrontCount,'1','resize preserves only the chosen front');
   checks.push('resize during dealer presentation reveals the same round once, including a losing result');
 
-  await resizing.getByRole('button',{name:'開啟選單',exact:true}).click();
+  await resizing.keyboard.press('Escape');
   assert.equal(await resizing.getByRole('button',{name:/重新選|返回.*大廳/}).count(),0,'menu contains no character reselect or lobby navigation');
   await resizing.keyboard.press('Escape');assert.equal((await canvasState(resizing)).screen,'table');
   await returnLobby(resizing);
@@ -223,6 +246,11 @@ try {
   await slot.waitForFunction(()=>document.querySelector('#app')?.children.length>0);
   await slot.locator('#loading').waitFor({state:'detached'});
   assert.equal(await slot.getByRole('button',{name:'旋轉一次',exact:true}).isEnabled(),true,'slot assets finish loading and its original controls are ready');
+  assert.equal(await slot.locator('#daily-checkin').isVisible(),true);
+  assert.equal(await slot.locator('#daily-checkin').isDisabled(),true,'checkin is UI-only');
+  const slotCheckin=await slot.locator('#daily-checkin').boundingBox(),expected=slotHeaderLayout(1600,900).checkin;
+  for(const key of ['x','y','width','height'])assert.ok(Math.abs(slotCheckin[key]-expected[key])<1,`slot checkin ${key} matches shared geometry`);
+  assert.equal(await slot.evaluate(()=>window.__qaSound.musicEnabled),true);
   await slot.screenshot({path:`${output}/slot-entry.png`});
   await slot.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(slot,'games');
   await startTable(slot);await slot.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(slot,'games');

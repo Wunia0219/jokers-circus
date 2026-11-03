@@ -8,6 +8,7 @@ import './style.css';
 import { SlotScene } from './ui/reels/scene.js';
 import { Sound } from './ui/audio/audio.js';
 import { MUSIC_SOURCE } from './ui/audio/audio-cues.js';
+import {startDefaultMusic} from './ui/audio/default-music.js';
 import { presentRoundWin } from './ui/wins/round-win.js';
 import { connectActivity } from './platform/discord-activity.js';
 import { connectLocalWallet } from './platform/local-wallet.js';
@@ -81,7 +82,10 @@ const playerBar=createPlayerBar({icon,onCheckin:showCheckin,onHistory:showHistor
 $('#player-header').append(playerBar.element);
 function renderAudio(){playerBar.audio(sound.state);}
 renderAudio();
-function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(state,{ready,busy,claiming});updateLobbyButton();}
+const stopDefaultMusic=startDefaultMusic(sound);
+addEventListener('pagehide',event=>{if(event.persisted)void sound.setVisible(false);else{stopDefaultMusic();sound.dispose();}});
+addEventListener('pageshow',event=>{if(event.persisted)void sound.setVisible(true);});
+function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,checkinPreview:!!lobbyPath&&!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(state,{ready,busy,claiming});updateLobbyButton();}
 function updateLobbyButton(){
   const pending=walletClient?.hasPending()===true;
   playerBar.lobby({enabled:canReturnToLobby({ready,busy,claiming,pending}),note:busy||claiming?'正在完成這局或處理戲籌，完成後即可返回大廳。':pending?'上一局尚待確認，請先按 SPIN 找回結果。':'返回遊戲大廳'});

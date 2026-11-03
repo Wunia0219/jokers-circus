@@ -15,13 +15,14 @@ import {buildSlotHud,updateSlotHud} from './pixi/chrome.js';
 import {buildSlotDialog} from './pixi/dialogs.js';
 import {buildLobby} from './pixi/lobby.js';
 import {canEnterCharacter} from './characters.js';
+import {installPointerFeedback} from './pixi/pointer-feedback.js';
 import {PREVIEW_SLOT_PATH} from '../../platform/game-navigation.js';
 
 // Fixed demonstration choreography; no probability or wallet dependency.
 export class YakyukenScene {
   app = new Application();
   motion = new Motion();
-  audio = new PreviewAudio();
+  audio = new PreviewAudio(()=>this.refreshAudioIcons?.());
   abort = new AbortController();
   loaded = new Set();
   screen = 'games';
@@ -40,6 +41,8 @@ export class YakyukenScene {
 
   async init(host) {
     this.host = host;
+    this.audio.start({target:document,signal:this.abort.signal});
+    installPointerFeedback(document,this.abort.signal);
     await this.app.init({
       width:Math.max(host.clientWidth,1),height:Math.max(host.clientHeight,1),
       background:0x211426,antialias:true,autoDensity:true,resolution:Math.min(devicePixelRatio || 1,2),
@@ -86,6 +89,7 @@ export class YakyukenScene {
     if(this.disposed || !this.dealerTextures)return;
     const width=Math.max(this.host.clientWidth,1),height=Math.max(this.host.clientHeight,1);
     this.app.renderer.resize(width,height);this.layout = tableLayout(width,height,{touch:matchMedia('(hover: none) and (pointer: coarse)').matches});
+    if(this.screen==='games')this.layout.ui.headerHeight=0;
     this.motion.finish();this.epoch++;
     if(this.phase === 'presenting'){this.phase = 'confirmed';this.dealerStage = 'shown';}
     this.changing=false;
@@ -140,6 +144,7 @@ export class YakyukenScene {
   visitScreen(screen){
     if(this.disposed || this.phase==='presenting' || this.changing || !['games','characters'].includes(screen))return;
     if(screen==='characters' && this.screen!=='games')return;
+    if(screen==='characters')void this.audio.background.setMusicEnabled(true,{retryBlockedPlayback:true});
     this.closeModal();this.screen=screen;this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.resize();
   }
   openSlot(){
@@ -159,7 +164,7 @@ export class YakyukenScene {
 
   select(move) {
     if(this.disposed || this.modal || this.screen!=='table' || this.phase !== 'selecting' || !TABLE_MOVES.includes(move))return;
-    this.selected=move;this.playerCards.forEach(card => card.choose(card.move === move));this.audio.cue('draw');this.updateControls();
+    this.selected=move;this.playerCards.forEach(card => card.choose(card.move === move));this.updateControls();
   }
   async confirm() {
     if(this.disposed || this.modal || this.screen!=='table' || this.phase === 'presenting')return;
@@ -184,7 +189,7 @@ export class YakyukenScene {
     this.updateControls();
     await Promise.all([this.motion.to(dealerCard,{y:dealerCard.baseY-this.layout.dealerLift,rotation:0},280),dealerCard.reveal(()=>this.updateControls())]);
     if(this.disposed || epoch !== this.epoch)return;
-    this.phase='confirmed';this.dealerStage='shown';this.audio.cue(this.duel.outcome);this.updateControls();
+    this.phase='confirmed';this.dealerStage='shown';this.updateControls();
   }
   updateControls() {
     updateSlotHud(this);
@@ -218,14 +223,14 @@ export class YakyukenScene {
     this.root.addChild(overlay);this.overlay=overlay;
     await this.motion.to(overlay,{alpha:1},220);
     if(this.disposed || epoch !== this.epoch)return;
-    this.pose=index;this.dealer.texture=this.dealerTextures[index];this.app.canvas.dataset.pose=String(index);this.audio.cue('win');
+    this.pose=index;this.dealer.texture=this.dealerTextures[index];this.app.canvas.dataset.pose=String(index);
     await this.motion.to({time:0},{time:1},300);await this.motion.to(overlay,{alpha:0},320);
     if(this.disposed || epoch !== this.epoch)return;
     overlay.destroy({children:true});this.overlay=null;this.changing=false;this.world.interactiveChildren=true;this.world.accessibleChildren=true;
   }
   keydown(event) {
     if(event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || this.disposed || document.hidden)return;
-    if(event.key==='Escape'){event.preventDefault();if(this.modal)this.closeModal();else if(!this.changing)this.openModal('menu');return;}
+    if(event.key==='Escape'){event.preventDefault();if(this.modal)this.closeModal();else if(!this.changing && this.screen!=='games')this.openModal('menu');return;}
     if(this.modal || this.changing || this.screen!=='table')return;
     const move=TABLE_MOVES[Number(event.key)-1];
     if(move){event.preventDefault();this.select(move);}
