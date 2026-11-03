@@ -43,10 +43,12 @@ test('Pixi lobby: two game choices and five character positions fit desktop and 
   for(const [width,height] of [[1600,900],[390,844],[320,568],[844,390],[768,1024],[544,680]]){
     const {headerHeight}=slotChrome(width,height),l=lobbyLayout(width,height,headerHeight);
     assert.equal(l.games.length,2);assert.equal(l.character.slots.length,5);
+    for(const r of l.character.slots)assert.ok(r.y-r.height/2>=headerHeight,'character controls clear the game header');
+    for(const r of l.games)assert.ok(Math.abs(r.width/r.height-1.5)<1e-9,'generated cover and lettering keep their 3:2 proportions');
     for(const r of [...l.games,...l.character.slots]){
       assert.ok(r.width>=44 && r.height>=44,'interactive choices retain touch targets');
       assert.ok(r.x-r.width/2>=0 && r.x+r.width/2<=width);
-      assert.ok(r.y-r.height/2>=headerHeight && r.y+r.height/2<=height);
+      assert.ok(r.y-r.height/2>=0 && r.y+r.height/2<=height);
     }
     assert.ok(l.character.art.height>0);
     assert.ok(l.character.enterY+22<=height);

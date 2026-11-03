@@ -230,6 +230,7 @@ try {
   checks.push('resize during dealer presentation reveals the same round once, including a losing result');
 
   await resizing.keyboard.press('Escape');
+  await resizing.getByRole('button',{name:'繼續遊戲',exact:true}).waitFor();
   assert.equal(await resizing.getByRole('button',{name:/重新選|返回.*大廳/}).count(),0,'menu contains no character reselect or lobby navigation');
   await resizing.keyboard.press('Escape');assert.equal((await canvasState(resizing)).screen,'table');
   await returnLobby(resizing);

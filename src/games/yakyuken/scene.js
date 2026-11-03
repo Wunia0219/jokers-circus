@@ -4,6 +4,7 @@ import backgroundUrl from '../../../images/jokers-circus/circus-background.webp'
 import mainUrl from '../../../images/main.webp';
 import mainAtlas from '../../../images/main.json';
 import {DEALER_ART} from './assets.js';
+import {LOBBY_COVERS} from './lobby-art.js';
 import {PreviewAudio} from './audio.js';
 import {HandCard} from './pixi/card.js';
 import {tableLayout,TABLE_MOVES} from './pixi/layout.js';
@@ -58,7 +59,7 @@ export class YakyukenScene {
     this.root = new Container({label:'yakyuken-scene'});this.app.stage.addChild(this.root);
     const loading = label('正在準備舞台…',13,PALETTE.gold);
     loading.position.set(this.app.screen.width/2,this.app.screen.height/2);this.app.stage.addChild(loading);this.app.render();
-    const resources = await Promise.allSettled([backgroundUrl,...DEALER_ART.map(art => art.url),mainUrl].map(async url => {
+    const resources = await Promise.allSettled([backgroundUrl,...DEALER_ART.map(art => art.url),mainUrl,...LOBBY_COVERS.map(art=>art.url)].map(async url => {
       const texture = await Assets.load(url);this.loaded.add(url);return texture;
     }));
     if(this.disposed){await this.unload();return;}
@@ -73,6 +74,7 @@ export class YakyukenScene {
     }
     this.backgroundTexture = resources[0].value;
     this.dealerTextures = resources.slice(1,4).map(value => value.value);
+    this.lobbyTextures = resources.slice(5).map(value=>value.value);
     const f=mainAtlas.frames['logo-long.png'].frame;
     this.logoTexture=new Texture({source:resources[4].value.source,frame:new Rectangle(f.x,f.y,f.w,f.h)});
     this.media = matchMedia('(prefers-reduced-motion: reduce)');this.motion.reduced = this.media.matches;
