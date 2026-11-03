@@ -4,6 +4,7 @@ import {label,PALETTE,PixiButton} from './ui.js';
 import {lobbyLayout} from './lobby-layout.js';
 import {createGameCover} from './game-cover.js';
 import {LOBBY_COVERS} from '../lobby-art.js';
+import {difficultyRule} from '../challenge.js';
 
 const at=(node,x,y,parent)=>{node.position.set(x,y);parent.addChild(node);return node;};
 function portrait(texture,parent,area,fullHeight){
@@ -46,6 +47,8 @@ export function buildLobby(scene){
       if(!character.enabled)button.setEnabled(false);
     });
     title(`入場 ${ENTRY_FEE.toLocaleString('en-US')} 戲籌・本機暫不扣款`,c.infoX,c.feeY,root,12,PALETTE.muted);
-    at(new PixiButton({text:'進入試玩',name:'進入野球拳試玩',variant:'gold',width:176,height:44,fontSize:14,onPress:()=>scene.enterCharacter()}),c.infoX,c.enterY,root);
+    const buttonWidth=Math.min(176,(width-44)/2),offset=(buttonWidth+12)/2;
+    at(new PixiButton({text:`難度${difficultyRule(scene.selectedDifficulty).name}`,name:'選擇難度',width:buttonWidth,height:44,fontSize:14,onPress:()=>scene.openModal('difficulty')}),c.infoX-offset,c.enterY,root);
+    at(new PixiButton({text:'進入試玩',name:'進入野球拳試玩',variant:'gold',width:buttonWidth,height:44,fontSize:14,onPress:()=>scene.enterCharacter()}),c.infoX+offset,c.enterY,root);
   }
 }

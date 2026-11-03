@@ -5,6 +5,7 @@ import {launchBrowser} from './helpers/browser.js';
 import {ENTRY_TIMING} from '../../src/games/yakyuken/pixi/entry-state.js';
 import {slotHeaderLayout} from '../../src/games/yakyuken/pixi/header-layout.js';
 import {tableLayout,TABLE_MOVES} from '../../src/games/yakyuken/pixi/layout.js';
+import {DIFFICULTIES} from '../../src/games/yakyuken/challenge.js';
 
 const port=4196,origin=`http://127.0.0.1:${port}`,output='test-results/yakyuken-pixi';
 mkdirSync(output,{recursive:true});
@@ -16,7 +17,12 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
   });},transform(code,id){
     const path=id.split('?')[0].replaceAll('\\','/');
     if(path.endsWith('/src/ui/audio/audio.js'))return {code:code.replace('this.music=musicUrl?','globalThis.__qaSound=this;this.music=musicUrl?'),map:null};
-    if(path.endsWith('/src/games/yakyuken/scene.js'))return {code:code.replace('this.host = host;','globalThis.__yakyukenTest=this;this.host = host;'),map:null};
+    if(path.endsWith('/src/games/yakyuken/scene.js')){
+      assert.ok(code.includes('playChallengeRound(this.challenge,this.selected)'));
+      // Deterministic entropy only in this isolated QA server. Exercise the real sampler.
+      return {code:code.replace('this.host = host;','globalThis.__yakyukenTest=this;this.host = host;')
+        .replace('playChallengeRound(this.challenge,this.selected)','playChallengeRound(this.challenge,this.selected,{getRandomValues:values=>{values[0]=globalThis.__duelWeights?.shift() ?? 0;}})'),map:null};
+    }
     if(!path.endsWith('/src/main.js'))return;
     assert.ok(code.includes('startGame();'),'isolated slot ticker hook must match the real entry');
     return {code:code.replace('startGame();','globalThis.__slotNavigationTest={scene,controls};startGame();'),map:null};
@@ -26,7 +32,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
 const checks=[],errors=[],requests=[],entryEvidence=[],entryReleases=[];
 let browser;
 const watchEntryBindings=context=>context.on('page',page=>page.on('console',message=>{if(message.type()==='warning' && message.text().includes('[BindGroup]'))errors.push(message.text());}));
-const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===20 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
+const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===21 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => document.querySelector('canvas')?.dataset.phase===expected,value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
@@ -58,7 +64,7 @@ const returnLobby=async page=>{
   await assertHeader(page,(await canvasState(page)).screen);
   await page.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(page,'games');
 };
-const startTable=async(page,screenshots)=>{
+const startTable=async(page,screenshots,difficulty)=>{
   await phase(page,'games');
   await assertHeader(page,'games');
   if(screenshots)await page.screenshot({path:`${output}/${screenshots}-lobby.png`});
@@ -69,6 +75,16 @@ const startTable=async(page,screenshots)=>{
   assert.equal(await page.getByRole('button',{name:'選擇第二位來賓',exact:true}).count(),0,'unavailable characters cannot enter');
   await assertHeader(page,'characters');
   if(screenshots)await page.screenshot({path:`${output}/${screenshots}-characters.png`});
+  if(difficulty){
+    await page.getByRole('button',{name:'選擇難度',exact:true}).click();
+    for(const rule of DIFFICULTIES){
+      const box=await page.getByRole('button',{name:`難度${rule.name}`,exact:true}).boundingBox();
+      assert.ok(box.width>=44 && box.height>=44 && box.x>=0 && box.x+box.width<=page.viewportSize().width,'difficulty has a visible touch target');
+    }
+    await page.getByRole('button',{name:`難度${DIFFICULTIES[difficulty-1].name}`,exact:true}).click();
+    if(screenshots)await page.screenshot({path:`${output}/${screenshots}-difficulty.png`});
+    await page.getByRole('button',{name:'使用此難度',exact:true}).click();
+  }
   await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(page,'selecting');
   await assertHeader(page,'table');
   assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),true,'each game starts with music enabled');
@@ -87,6 +103,7 @@ try {
   });
   const page=await context.newPage();page.on('pageerror',error => errors.push(error.message));page.on('request',request => requests.push(request.url()));
   await page.goto(`${origin}/yakyuken-preview.html`);await startTable(page,'desktop');await frame(page);
+  await page.evaluate(()=>{window.__duelWeights=[8000,0,8000];});
   checks.push('game lobby, five character positions and explicit local entry precede the table; unavailable characters and duplicate entry are blocked');
   assert.equal((await canvasState(page)).dealerFrontCount,'0','all three dealer cards start face down');
   assert.equal(await page.locator('#yakyuken-app canvas').count(),1);
@@ -159,9 +176,8 @@ try {
   assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),false,'first click turns default music off');
   await page.getByRole('button',{name:'開啟音樂',exact:true}).click();
   await page.getByRole('button',{name:'關閉音樂',exact:true}).waitFor();
-  await page.getByRole('button',{name:'遊玩紀錄',exact:true}).click();
-  await page.waitForFunction(() => document.querySelector('canvas').dataset.modal==='history');
-  await page.screenshot({path:`${output}/history.png`});await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('button',{name:'遊玩紀錄',exact:true}).count(),0,'history is not implemented');
+  assert.equal(await page.evaluate(()=>Object.hasOwn(window.__yakyukenTest,'history')),false,'no per-hand history accumulates');
   await page.getByRole('button',{name:'下一局',exact:true}).click();
   await page.getByRole('button',{name:'選擇布',exact:true}).focus();
   await page.keyboard.press('Enter');assert.equal((await canvasState(page)).selected,'paper');
@@ -174,7 +190,7 @@ try {
     await phone.goto(`${origin}/yakyuken-preview.html`);await startTable(phone,name);await frame(phone);
     assert.equal((await canvasState(phone)).dealerFrontCount,'0',`${name}: reduced-motion game starts on backs`);
     assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth===innerWidth && document.documentElement.scrollHeight===innerHeight),true);
-    for(const control of ['返回遊戲大廳','遊玩紀錄','遊戲規則']){
+    for(const control of ['返回遊戲大廳','遊戲規則']){
       const target=await phone.getByRole('button',{name:control,exact:true}).boundingBox();
       assert.ok(target.width>=43.9 && target.height>=43.9,`${name}: ${control} has a 44px touch target`);
     }
@@ -222,11 +238,50 @@ try {
   assert.equal(localRequest('https://discord.com/api/blocked'),false);
   assert.equal(localRequest('blob:https://example.com/blocked'),false);
   assert.ok(requests.every(localRequest));
-  assert.ok(!requests.some(url => /\/(wallet-client|discord-activity|rules|state|controller)\.js/.test(url)));
-  checks.push('resize preserves selection and pose; no wallet, probability or Discord modules/requests');
+  assert.ok(!requests.some(url => /\/(wallet-client|discord-activity|state|controller|demo-duel)\.js/.test(url)));
+  assert.ok(requests.some(url=>url.includes('/yakyuken/challenge.js')));
+  checks.push('resize preserves selection and pose; probability engine loads without wallet, legacy controller or Discord');
+
+  for(const rule of DIFFICULTIES){
+    const viewports=[[320,568],[390,844],[844,390],[768,1024],[1600,900]], [width,height]=viewports[rule.id-1];
+    const challengeContext=await browser.newContext({viewport:{width,height},reducedMotion:'reduce'});
+    const challengePage=await challengeContext.newPage();challengePage.on('pageerror',error=>errors.push(error.message));
+    await challengePage.goto(`${origin}/yakyuken-preview.html`);await startTable(challengePage,`difficulty-${rule.id}`,rule.id);
+    const play=async outcome=>{
+      await challengePage.evaluate(value=>{window.__duelWeights=[value];},{win:0,loss:4000,draw:8000}[outcome]);
+      await challengePage.getByRole('button',{name:'選擇拳頭',exact:true}).click();
+      await challengePage.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(challengePage,'confirmed');
+      assert.equal((await canvasState(challengePage)).outcome,outcome);
+    };
+    await play('draw');assert.equal((await canvasState(challengePage)).draws,'1');
+    assert.equal((await canvasState(challengePage)).wins,'0');assert.equal((await canvasState(challengePage)).losses,'0');
+    await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
+    await play('loss');await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
+    for(let wins=1;wins<=rule.winsRequired;wins++){
+      await play('win');
+      const state=await canvasState(challengePage);assert.equal(state.wins,String(wins));assert.equal(state.losses,'1');
+      assert.equal(state.challengeStatus,wins===rule.winsRequired?'won':'playing');
+      if(wins<rule.winsRequired)await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
+    }
+    assert.equal((await canvasState(challengePage)).reward,String(rule.reward));
+    assert.equal(await challengePage.getByRole('button',{name:'下一局',exact:true}).count(),0);
+    await challengePage.screenshot({path:`${output}/difficulty-${rule.id}-won.png`});
+    await challengePage.getByRole('button',{name:'再挑戰一次',exact:true}).click();
+    assert.deepEqual([(await canvasState(challengePage)).wins,(await canvasState(challengePage)).losses,(await canvasState(challengePage)).round],['0','0','0']);
+    for(let losses=1;losses<=rule.lossLimit;losses++){
+      await play('loss');assert.equal((await canvasState(challengePage)).challengeStatus,losses===rule.lossLimit?'lost':'playing');
+      if(losses<rule.lossLimit)await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
+    }
+    assert.equal((await canvasState(challengePage)).reward,'0');
+    await challengePage.screenshot({path:`${output}/difficulty-${rule.id}-lost.png`});
+    assert.equal(await challengePage.evaluate(()=>Object.hasOwn(window.__yakyukenTest,'history')),false);
+    await challengeContext.close();
+  }
+  checks.push('all five difficulty selectors, draws, cumulative wins, exact win/loss endings, rewards and fresh retry work across screen sizes without game history');
 
   const resizing=await context.newPage();resizing.on('pageerror',error => errors.push(error.message));
   await resizing.goto(`${origin}/yakyuken-preview.html`);await startTable(resizing);
+  await resizing.evaluate(()=>{window.__duelWeights=[4000];});
   await resizing.getByRole('button',{name:'選擇布',exact:true}).click();
   await resizing.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(resizing,'presenting');
   await resizing.setViewportSize({width:390,height:844});await phase(resizing,'confirmed');
