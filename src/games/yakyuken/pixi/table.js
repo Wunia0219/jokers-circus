@@ -28,8 +28,8 @@ export function createTable(layout) {
   const side = layout.portrait?300:530;
   for(const direction of [-1,1]){
     const detail = new Graphics();
-    detail.moveTo(x+direction*side,layout.dealerCards.y-20).lineTo(x+direction*(side-70),layout.dealerCards.y-20).stroke({color:PALETTE.gold,width:1,alpha:.27});
-    group.addChild(detail,diamond(x+direction*side,layout.dealerCards.y-20,5,0xa9814d));
+    detail.moveTo(x+direction*side,layout.playerCards.y-20).lineTo(x+direction*(side-70),layout.playerCards.y-20).stroke({color:PALETTE.gold,width:1,alpha:.27});
+    group.addChild(detail,diamond(x+direction*side,layout.playerCards.y-20,5,0xa9814d));
   }
   return group;
 }

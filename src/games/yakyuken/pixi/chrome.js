@@ -8,6 +8,26 @@ import {difficultyRule} from '../challenge.js';
 function at(node,x,y,parent){node.position.set(x,y);parent.addChild(node);return node;}
 function leftLabel(text,size,color,x,y,parent,options={}){const node=label(text,size,color,options);node.anchor.set(0,.5);return at(node,x,y,parent);}
 
+function buildProgress(scene,hud){
+  const {progress,dealerCard,scale}=scene.layout,{x,y,width:w,height:h}=progress;
+  const rule=difficultyRule(scene.selectedDifficulty);
+  const score=at(new Container({label:'challenge-progress',eventMode:'none'}),x,y,hud);scene.score=score;
+  const fill=new FillGradient({start:{x:0,y:0},end:{x:1,y:1},colorStops:[{offset:0,color:0x472536},{offset:1,color:0x171626}]});
+  const frame=new Graphics().roundRect(-w/2,-h/2,w,h,9).fill({fill,alpha:.96}).stroke({color:0xd8ac67,width:1.5});
+  frame.roundRect(-w/2+4,-h/2+4,w-8,h-8,6).stroke({color:PALETTE.gold,width:1,alpha:.22});
+  frame.moveTo(-w*.33,0).lineTo(w*.33,0).stroke({color:PALETTE.gold,width:1,alpha:.28});score.addChild(frame);
+  const titleSize=Math.max(12,Math.min(15,w*.09)),titleY=y-h/2-18;
+  at(label(`難度${rule.name}`,titleSize,PALETTE.gold),x,titleY,hud);
+  at(label('荷官',titleSize,PALETTE.gold),dealerCard.x*scale,titleY,hud);
+  for(const [index,[name,target,color]] of [['勝',rule.winsRequired,PALETTE.bright],['敗',rule.lossLimit,0xe8b9bc]].entries()){
+    const rowY=(index ? 1 : -1)*h*.25;
+    at(label(name,Math.max(12,w*.10),color),-w*.32,rowY,score);
+    const number=at(label('0',Math.max(28,w*.38),color,{fontFamily:['Georgia','serif'],fontWeight:'bold'}),-w*.06,rowY,score);
+    at(label(`/ ${target}`,Math.max(12,w*.12),PALETTE.muted),w*.28,rowY+w*.04,score);
+    if(index)scene.scoreLosses=number;else scene.scoreWins=number;
+  }
+}
+
 export function buildSlotHud(scene){
   if(scene.screen==='games')return;
   const {ui,scale}=scene.layout,{width,height,headerHeight}=ui;
@@ -48,9 +68,7 @@ export function buildSlotHud(scene){
   scene.confirmButton=at(new PixiButton({text:'確認出牌',name:'確認出牌',variant:'gold',width:action.width,height:action.height,fontSize:14,onPress:()=>scene.confirm()}),action.x,action.y,hud);
   scene.status=at(label('',13,PALETTE.cream,{wordWrap:true,wordWrapWidth:status.width,lineHeight:20}),status.x,status.y,hud);
   scene.status.anchor.set(.5,1);scene.status.y=action.y-action.height/2-10;
-  const scoreWidth=Math.min(width-24,360),scoreY=headerHeight+23;
-  hud.addChild(new Graphics().roundRect((width-scoreWidth)/2,scoreY-17,scoreWidth,34,10).fill({color:0x211426,alpha:.85}).stroke({color:PALETTE.gold,alpha:.3,width:1}));
-  scene.score=at(label('',13,PALETTE.gold),width/2,scoreY,hud);
+  buildProgress(scene,hud);
 }
 
 export function updateSlotHud(scene){
@@ -60,7 +78,9 @@ export function updateSlotHud(scene){
   const rule=difficultyRule(scene.selectedDifficulty),challenge=scene.challenge,finished=challenge?.status!=='playing';
   // Counters reveal with the hand, without exposing its result mid-flip.
   const pending=phase==='presenting'?duel?.outcome:null;
-  scene.score.text=`難度${rule.name}　${(challenge?.wins || 0)-Number(pending==='win')} / ${rule.winsRequired} 勝　${(challenge?.losses || 0)-Number(pending==='loss')} / ${rule.lossLimit} 敗`;
+  const wins=(challenge?.wins || 0)-Number(pending==='win'),losses=(challenge?.losses || 0)-Number(pending==='loss');
+  scene.scoreWins.text=String(wins);scene.scoreLosses.text=String(losses);
+  scene.scoreDescription=`難度${rule.name}，${wins} 勝，目標 ${rule.winsRequired} 勝；${losses} 敗，上限 ${rule.lossLimit} 敗`;
   const next=finished?'再挑戰一次':'下一局';
   scene.confirmButton.setText(confirmed?next:phase==='presenting'?'荷官出牌中…':'確認出牌');
   scene.confirmButton.setName(confirmed?next:'確認出牌');

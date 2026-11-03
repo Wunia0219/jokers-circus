@@ -9,24 +9,30 @@ import {slotHeaderLayout} from '../src/games/yakyuken/pixi/header-layout.js';
 import {lobbyLayout} from '../src/games/yakyuken/pixi/lobby-layout.js';
 import {CHARACTERS,canEnterCharacter} from '../src/games/yakyuken/characters.js';
 
-test('Pixi table: both rows fit a smaller table, with a prominent character and no control deck',() => {
+test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit around the character',() => {
   for(const [width,height,touch] of [[1600,900,false],[1440,1000,false],[390,844,true],[320,568,true],[844,390,true],[768,1024,true],[544,680,true],[544,680,false]]){
     const l=tableLayout(width,height,{touch});
     assert.equal(TABLE_MOVES.length,3);
-    for(const row of [l.dealerCards,l.playerCards]){
-      const halfWidth=84*row.scale,halfHeight=113*row.scale*.84;
-      assert.ok(row.x-row.gap-halfWidth>0 && row.x+row.gap+halfWidth<l.w,`${width}x${height}: horizontal card bounds`);
-      assert.ok(row.y-halfHeight>l.top && row.y+halfHeight<l.h,`${width}x${height}: vertical card bounds`);
-    }
-    const cardBottom=l.playerCards.y+113*l.playerCards.scale*.84+6;
+    const row=l.playerCards,halfWidth=(84+113*row.perspective*.06)*row.scale,halfHeight=(113*row.perspective+84*.06)*row.scale;
+    assert.ok(row.x-row.gap-halfWidth>0 && row.x+row.gap+halfWidth<l.w,`${width}x${height}: rotated player cards fit horizontally`);
+    assert.ok(row.y-halfHeight-l.confirmedLift>l.top && row.y+halfHeight<l.h,`${width}x${height}: raised player cards fit vertically`);
+    const cardBottom=l.playerCards.y+halfHeight;
     assert.ok(cardBottom*l.scale<height,`${width}x${height}: player cards stay inside the viewport`);
     assert.ok(l.dealer.height*l.scale*.44>(height-l.ui.headerHeight)*.45,`${width}x${height}: character remains the focus`);
     assert.equal(l.ui.deck,undefined);
+    if(height<550)assert.equal(l.logo.width,0,'compact landscape keeps the progress wing clear of the logo');
     if(l.ui.mobile)assert.ok(cardBottom*l.scale<l.action.y-l.action.height/2,`${width}x${height}: cards clear the standalone action`);
-    assert.ok(l.dealerCards.scale<l.playerCards.scale,'far cards preserve depth');
-    const farBottom=l.dealerCards.y+113*l.dealerCards.scale*.84;
-    const selectedTop=l.playerCards.y-l.confirmedLift-113*l.playerCards.scale*.84;
-    assert.ok(selectedTop>=farBottom,`${width}x${height}: confirmed player card must not cover dealer cards`);
+    const p=l.progress,d=l.dealerCard;
+    assert.ok(Math.abs(p.y-d.y*l.scale)<1e-9,'left progress and right reveal share a centre line');
+    assert.ok(Math.abs(p.x+d.x*l.scale-width)<1e-9,'wings mirror about the character');
+    assert.ok(Math.abs(p.height-214*d.scale*l.scale)<1e-9,'both wings have the same height');
+    assert.ok(p.x+p.width/2<width/2 && d.x*l.scale-p.width/2>width/2,'both wings remain beside the character');
+    assert.ok(p.x-p.width/2>=0 && d.x*l.scale+84*d.scale*l.scale<width,'wing borders stay in the viewport');
+    assert.ok(p.y-p.height/2-30>l.ui.headerHeight,'wing labels clear the header');
+    const selectedTop=(l.playerCards.y-l.confirmedLift-halfHeight)*l.scale;
+    assert.ok(selectedTop>p.y+p.height/2,`${width}x${height}: raised player card clears the reveal and score`);
+    const oldWidth=Math.max(44,Math.min(104,width*.20,(height-l.ui.headerHeight)*.122));
+    assert.ok(row.scale*l.scale*156>oldWidth*1.15,'player cards are visibly larger than the previous layout');
   }
   assert.throws(() => tableLayout(0,900));
 });

@@ -26,11 +26,17 @@ export class HandCard extends Container {
       this.focus=value=>this.hover(value);
     }else this.eventMode='none';
   }
-  place(x,y,scale,angle=0,{selectedLift=24,hoverLift=12}={}) {
-    this.position.set(x,y);this.baseY=y;this.scale.set(scale,scale*.84);this.rotation=angle;
+  place(x,y,scale,angle=0,{selectedLift=24,hoverLift=12,perspective=.84}={}) {
+    this.position.set(x,y);this.baseY=y;this.scale.set(scale,scale*perspective);this.rotation=angle;
     Object.assign(this,{selectedLift,hoverLift});
   }
   setFaceUp(value){this.faceUp=value;this.front.visible=value;this.back.visible=!value;}
+  setMove(move,index){
+    if(this.move===move)return;
+    const previous=this.front,next=createCardFront(move,index);
+    this.visual.addChildAt(next,this.visual.getChildIndex(previous));previous.destroy({children:true});
+    this.front=next;this.move=move;this.front.visible=this.faceUp;
+  }
   reveal(onReveal=()=>{}) {
     return revealCard({motion:this.motion,scale:this.visual.scale,isValid:() => !this.destroyed,
       showFront:() => {this.setFaceUp(true);onReveal();}});

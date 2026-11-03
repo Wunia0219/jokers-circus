@@ -36,6 +36,18 @@ const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify(
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => document.querySelector('canvas')?.dataset.phase===expected,value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
+const assertTableWings=async page=>{
+  const geometry=await page.evaluate(()=>{
+    const scene=window.__yakyukenTest,left=scene.score.getGlobalPosition(),right=scene.dealerCards[0].getGlobalPosition();
+    return {left:{x:left.x,y:left.y},right:{x:right.x,y:right.y},player:scene.playerCards.length,dealer:scene.dealerCards.length,
+      numberSize:scene.scoreWins.style.fontSize,playerWidth:scene.playerCards[0].scale.x*scene.layout.scale*156};
+  });
+  assert.equal(geometry.player,3);assert.equal(geometry.dealer,1,'only one dealer card is rendered');
+  assert.ok(Math.abs(geometry.left.y-geometry.right.y)<1,'progress and dealer reveal align vertically');
+  assert.ok(Math.abs(geometry.left.x+geometry.right.x-page.viewportSize().width)<1,'wings mirror about the character');
+  assert.ok(geometry.numberSize>=28,'progress uses large readable numbers');
+  assert.ok(geometry.playerWidth>=70,'player hands have enlarged touch targets');
+};
 const tickEntry=async(page,elapsed)=>page.evaluate(async ms=>{
   const scene=window.__yakyukenTest;scene.entryOverlay.tick(ms);await Promise.resolve();scene.entryOverlay?.tick(0);scene.app.render();
 },elapsed);
@@ -86,6 +98,7 @@ const startTable=async(page,screenshots,difficulty)=>{
     await page.getByRole('button',{name:'使用此難度',exact:true}).click();
   }
   await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(page,'selecting');
+  await assertTableWings(page);
   await assertHeader(page,'table');
   assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),true,'each game starts with music enabled');
   const checkin=page.getByRole('button',{name:'週簽到・介面預覽',exact:true});
@@ -105,7 +118,7 @@ try {
   await page.goto(`${origin}/yakyuken-preview.html`);await startTable(page,'desktop');await frame(page);
   await page.evaluate(()=>{window.__duelWeights=[8000,0,8000];});
   checks.push('game lobby, five character positions and explicit local entry precede the table; unavailable characters and duplicate entry are blocked');
-  assert.equal((await canvasState(page)).dealerFrontCount,'0','all three dealer cards start face down');
+  assert.equal((await canvasState(page)).dealerFrontCount,'0','the single dealer card starts face down');
   assert.equal(await page.locator('#yakyuken-app canvas').count(),1);
   assert.equal(await page.locator('body').innerText(),'');
   assert.equal(await page.locator('dialog,img,main,h1,header').count(),0);
@@ -120,7 +133,7 @@ try {
   assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='遊戲規則').outline.visible),true,'keyboard focus remains visible');
   await page.mouse.click(800,200);await frame(page);
   await page.screenshot({path:`${output}/desktop.png`});
-  checks.push('one full-viewport Pixi canvas, six visible table cards reviewed in screenshot, no HTML game UI');
+  checks.push('one Pixi canvas, three enlarged player hands and one upright dealer reveal; mirrored large-number progress beside the character');
 
   const l=tableLayout(1600,900);
   // Exercise actual screen coordinates, rather than invoking game methods.
@@ -130,7 +143,7 @@ try {
   assert.equal((await canvasState(page)).selected,'scissors');
   await page.evaluate(() => {
     window.__dealerStages=[];window.__dealerFaces=[];
-    new MutationObserver(() => {const data=document.querySelector('canvas').dataset;if(!window.__dealerStages.includes(data.dealerStage))window.__dealerStages.push(data.dealerStage);window.__dealerFaces.push({stage:data.dealerStage,fronts:data.dealerFrontCount});}).observe(document.querySelector('canvas'),{attributes:true,attributeFilter:['data-dealer-stage','data-dealer-front-count']});
+    new MutationObserver(() => {const data=document.querySelector('canvas').dataset;if(!window.__dealerStages.includes(data.dealerStage))window.__dealerStages.push(data.dealerStage);window.__dealerFaces.push({stage:data.dealerStage,fronts:data.dealerFrontCount,scale:window.__yakyukenTest.dealerCards[0].visual.scale.x});}).observe(document.querySelector('canvas'),{attributes:true,attributeFilter:['data-dealer-stage','data-dealer-front-count']});
   });
   await page.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(page,'presenting');
   await page.keyboard.press('Enter');await phase(page,'confirmed');
@@ -138,7 +151,8 @@ try {
   const flips=await page.evaluate(()=>window.__dealerFaces);
   assert.ok(flips.some(event=>event.stage==='playing' && event.fronts==='0'),'playing starts on the back');
   assert.ok(flips.some(event=>event.stage==='playing' && event.fronts==='1'),'the chosen front appears during the flip');
-  assert.ok(flips.every(event=>Number(event.fronts)<=1),'unplayed cards never reveal');
+  assert.ok(flips.every(event=>Number(event.fronts)<=1),'only one dealer front exists');
+  assert.ok(flips.some(event=>event.fronts==='1' && event.scale<.05),'dealer changes face only at the narrow edge of its actual flip');
   assert.deepEqual([(await canvasState(page)).dealerMove,(await canvasState(page)).outcome,(await canvasState(page)).round],['scissors','draw','1']);
   await page.mouse.click(l.playerCards.x+l.playerCards.gap,l.playerCards.y);
   assert.equal((await canvasState(page)).selected,'scissors','locked cards cannot replace a confirmed choice');

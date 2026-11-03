@@ -140,19 +140,14 @@ export class YakyukenScene {
 
   buildCards() {
     const l=this.layout;
-    this.dealerCards=TABLE_MOVES.map((move,index) => {
-      const card = new HandCard({move,index,owner:'dealer',motion:this.motion});
-      card.place(l.dealerCards.x+(index-1)*l.dealerCards.gap,l.dealerCards.y,l.dealerCards.scale,(index-1)*.035,{selectedLift:l.dealerLift});
-      const shown=this.dealerStage==='shown';
-      card.selected=shown && this.duel?.dealer===move;card.highlight.visible=card.selected;
-      card.setFaceUp(!!card.selected);
-      if(card.selected){card.y-=l.dealerLift;card.rotation=0;}
-      card.alpha=shown && !card.selected ? .45 : .94;
-      this.world.addChild(card);return card;
-    });
+    const shown=this.dealerStage==='shown',move=this.duel?.dealer || 'rock';
+    const dealerCard=new HandCard({move,index:TABLE_MOVES.indexOf(move),owner:'dealer',motion:this.motion});
+    dealerCard.place(l.dealerCard.x,l.dealerCard.y,l.dealerCard.scale,0,{selectedLift:0,perspective:1});
+    dealerCard.selected=shown;dealerCard.highlight.visible=shown;dealerCard.setFaceUp(shown);
+    this.world.addChild(dealerCard);this.dealerCards=[dealerCard];
     this.playerCards=TABLE_MOVES.map((move,index) => {
       const card = new HandCard({move,index,owner:'player',motion:this.motion,onChoose:value => this.select(value)});
-      card.place(l.playerCards.x+(index-1)*l.playerCards.gap,l.playerCards.y,l.playerCards.scale,(index-1)*.055,{selectedLift:l.selectedLift,hoverLift:l.hoverLift});
+      card.place(l.playerCards.x+(index-1)*l.playerCards.gap,l.playerCards.y,l.playerCards.scale,(index-1)*.055,{selectedLift:l.selectedLift,hoverLift:l.hoverLift,perspective:l.playerCards.perspective});
       card.selected=move === this.selected;card.highlight.visible=card.selected;if(card.selected)card.y-=this.phase==='confirmed'?l.confirmedLift:l.selectedLift;
       card.lock(this.phase !== 'selecting');this.world.addChild(card);return card;
     });
@@ -256,7 +251,7 @@ export class YakyukenScene {
       }
       this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';
       this.playerCards.forEach((card,index) => {card.lock(false);card.choose(false);card.rotation=(index-1)*.055;});
-      this.dealerCards.forEach((card,index) => {card.choose(false);card.setFaceUp(false);card.visual.scale.x=1;card.alpha=.94;card.rotation=(index-1)*.035;});
+      this.dealerCards.forEach(card => {card.choose(false);card.setFaceUp(false);card.visual.scale.x=1;card.rotation=0;});
       this.updateControls();return;
     }
     if(!this.selected)return;
@@ -269,8 +264,9 @@ export class YakyukenScene {
     await this.motion.to({time:0},{time:1},260);
     if(this.disposed || epoch !== this.epoch)return;
     this.dealerStage='playing';
-    const dealerCard=this.dealerCards.find(value => value.move===this.duel.dealer);
-    this.dealerCards.forEach(value => {value.selected=value===dealerCard;value.highlight.visible=value.selected;value.alpha=value.selected ? .94 : .45;});
+    const dealerCard=this.dealerCards[0];
+    dealerCard.setMove(this.duel.dealer,TABLE_MOVES.indexOf(this.duel.dealer));
+    dealerCard.selected=true;dealerCard.highlight.visible=true;
     this.updateControls();
     await Promise.all([this.motion.to(dealerCard,{y:dealerCard.baseY-this.layout.dealerLift,rotation:0},280),dealerCard.reveal(()=>this.updateControls())]);
     if(this.disposed || epoch !== this.epoch)return;
@@ -282,7 +278,7 @@ export class YakyukenScene {
     Object.assign(this.app.canvas.dataset,{screen:this.screen,phase:this.entering?'entering':this.screen==='table'?this.phase:this.screen,selected:this.selected || '',pose:String(this.pose),scene:this.screen==='table'?'yakyuken-table':'circus-lobby',dealerStage:this.dealerStage,
       dealerFrontCount:String(fronts),dealerMove:fronts?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds),uiStyle:'shared-header',character:this.selectedCharacter,entries:String(this.entries),
       difficulty:String(this.selectedDifficulty),wins:String(this.challenge?.wins || 0),losses:String(this.challenge?.losses || 0),draws:String(this.challenge?.draws || 0),challengeStatus:this.challenge?.status || '',reward:String(this.challenge?.reward || 0)});
-    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.status.text.replaceAll('\n','。')}。荷官已翻開 ${fronts} 張牌，其餘為背面。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':'野球拳角色選擇，共五個角色位置。目前開放命運荷官，本機入場暫不扣款。');
+    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。右側荷官牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':'野球拳角色選擇，共五個角色位置。目前開放命運荷官，本機入場暫不扣款。');
   }
 
   openModal(type) {
