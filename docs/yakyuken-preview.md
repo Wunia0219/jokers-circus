@@ -198,3 +198,11 @@
 - 新增 5 項儲存測試：單場去重與重載、離場統計、玩家隔離／雙分頁、儲存故障、損壞資料。瀏覽器 24 項通過，包含圖片鎖定、實際勝利解鎖、回顧不改變造型、重新整理保存、勝／敗／離場紀錄、手機翻頁、跨玩家隔離及儲存故障；獨立預覽建置通過。證據為 `archive-ui.log`、`browser-report.json`、`archive-mobile-*.png`、`archive-small-history-page-2.png`、`archive-blocked-storage.png` 與 `archive-build.log`。
 - 手機另可從收藏／紀錄視窗右上選單進入原有設定，避免移除規則入口後只剩鍵盤 Esc；320px、390px 與桌機觸控入口補驗通過，鎖定條件保持清楚可讀。補驗為 `archive-menu-report.json`、`archive-menu-final.log` 及 `archive-collection-final-*.png`。
 - 完整本機 `npm run verify:ci` 14/14 項通過，包含停輪體驗、安全、慢幀與 Firestore 回歸；原始日誌為 `archive-verify-ci.log`，彙整快照為 `archive-verification.json`。未執行遠端 CI，未部署、更新版本、commit 或 merge。
+
+### CG 收藏品牌與單一功能入口（2026-11-04）
+
+- CG 工具列改為細線畫冊圖示，與大廳圖示採相同線寬、圓角與尺寸。依最新需求移除收藏／紀錄右上的額外選單，各入口只開啟自己的功能；保留關閉、CG 內的圖片切換與返回收藏。既有鍵盤 Esc 選單不變。
+- 收藏頁加入原品牌 Logo、角色與解鎖進度，手機採直向收藏列、桌機採三欄展示，並保留未解鎖條件。底部加入服務條款、隱私權政策、品牌名稱與現行版本；條款在新分頁開啟，原對局和收藏畫面保持原狀。版本讀取既有 APP_VERSION，未更新產品版本。
+- 新增 320×568、390×844、844×390、1600×900 的可見範圍／觸控尺寸、品牌資訊、無額外選單及兩條政策連結的實際瀏覽器斷言；24 項瀏覽器檢查與隔離預覽建置通過。證據為 `collection-brand-ui.log`、`collection-brand-*.png`、`browser-report.json` 與 `collection-brand-build.log`。
+- 完整本機 `npm run verify:ci` 14/14 項通過，日誌為 `collection-brand-verify-ci.log`，快照為 `collection-brand-verification.json`。4195 預覽已恢復；未執行遠端 CI，未部署、更新版本、commit 或 merge。
+- 後續依老虎機樣式統一條款與隱私文字連結：滑鼠停留／點擊不畫外框或底色，保留手形游標、44px 點擊高度與鍵盤焦點提示。320px、390px、1600px 已實際驗證兩個政策連結、滑鼠／鍵盤狀態與一般工具列原有回饋，隔離建置通過；補驗為 `collection-text-links-report.json`、`collection-text-links.log`、`collection-text-links-build.log`。

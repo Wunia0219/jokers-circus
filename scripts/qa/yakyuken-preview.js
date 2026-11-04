@@ -6,6 +6,7 @@ import {ENTRY_TIMING} from '../../src/games/yakyuken/pixi/entry-state.js';
 import {slotHeaderLayout,yakyukenHeaderLayout} from '../../src/games/yakyuken/pixi/header-layout.js';
 import {tableLayout,TABLE_MOVES} from '../../src/games/yakyuken/pixi/layout.js';
 import {DEALER} from '../../src/games/yakyuken/characters.js';
+import {APP_VERSION} from '../../src/version.js';
 
 const port=4196,origin=`http://127.0.0.1:${port}`,output='test-results/yakyuken-pixi';
 mkdirSync(output,{recursive:true});
@@ -292,6 +293,25 @@ try {
   await archiveA.getByRole('button',{name:'CG 收藏',exact:true}).click();
   assert.equal(await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).count(),1);
   assert.equal(await archiveA.getByRole('button',{name:'回顧終幕 CG',exact:true}).count(),0);
+  for(const [width,height] of [[320,568],[390,844],[844,390],[1600,900]]){
+    await archiveA.setViewportSize({width,height});await frame(archiveA);
+    assert.equal(await archiveA.getByRole('button',{name:'遊戲選單',exact:true}).count(),0,'collection has no unrelated navigation menu');
+    const geometry=await archiveA.evaluate(()=>{
+      const body=window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog');
+      return {logo:!!body.children.find(n=>n.label==='collection-brand-logo'),texts:body.children.filter(n=>typeof n.text==='string').map(n=>n.text),
+        controls:body.children.filter(n=>n.accessible).map(n=>{const b=n.getBounds();return {name:n.accessibleTitle,x:b.x,y:b.y,width:b.width,height:b.height};})};
+    });
+    assert.ok(geometry.logo);assert.ok(geometry.texts.includes('JOKER’S CIRCUS'));assert.ok(geometry.texts.includes(`v${APP_VERSION}`));
+    for(const b of geometry.controls){assert.ok(b.x>=0 && b.y>=0 && b.x+b.width<=width+1 && b.y+b.height<=height+1,`${b.name} fits ${width}×${height}`);assert.ok(b.height>=44,'touch targets remain usable');}
+    await archiveA.screenshot({path:`${output}/collection-brand-${width}.png`});
+  }
+  for(const [name,path] of [['服務條款','/terms.html'],['隱私權政策','/privacy.html']]){
+    const popupPromise=archiveA.waitForEvent('popup');
+    await archiveA.getByRole('button',{name:`${name}（另開分頁）`,exact:true}).click();
+    const popup=await popupPromise;await popup.waitForLoadState('domcontentloaded');assert.equal(new URL(popup.url()).pathname,path);assert.ok((await popup.title()).includes(name));await popup.close();
+    assert.equal((await canvasState(archiveA)).modal,'collection','legal links preserve collection and battle');
+  }
+  await archiveA.setViewportSize({width:390,height:844});await frame(archiveA);
   await archiveA.screenshot({path:`${output}/archive-mobile-collection.png`});
   await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).click();
   assert.equal((await canvasState(archiveA)).pose,'1');assert.equal((await canvasState(archiveA)).modal,'cg');
@@ -301,6 +321,7 @@ try {
   const savedArchive=await archiveA.evaluate(()=>window.__yakyukenTest.archive.records());
   assert.equal(savedArchive.length,1);assert.deepEqual([savedArchive[0].characterId,savedArchive[0].wins,savedArchive[0].losses,savedArchive[0].draws,savedArchive[0].status],['dealer',1,1,1,'left']);
   await archiveA.getByRole('button',{name:'遊玩紀錄',exact:true}).click();await archiveA.screenshot({path:`${output}/archive-mobile-history.png`});
+  assert.equal(await archiveA.getByRole('button',{name:'遊戲選單',exact:true}).count(),0,'history has no unrelated navigation menu');
   await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   await archiveA.getByRole('button',{name:'CG 收藏',exact:true}).click();
   assert.equal(await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).count(),1,'earned CG persists after reload');

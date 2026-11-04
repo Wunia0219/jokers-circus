@@ -50,6 +50,9 @@ export class PixiButton extends Container {
       g.roundRect(-w/2+5,-h/2+5,w-10,h-10,8).stroke({color:0xffdda1,width:.8,alpha:.4});
       g.moveTo(-w/2+13,-h/2+7).lineTo(w/2-13,-h/2+7).stroke({color:0xffead0,width:1,alpha:.3});
       this.outline.clear().roundRect(-w/2-3,-h/2-3,w+6,h+6,14).stroke({width:1.5,color:PALETTE.bright});
+    }else if(this.variant==='link'){
+      // Text links stay unframed under the pointer; keyboard focus remains visible.
+      this.outline.clear().roundRect(-w/2,-h/2,w,h,2).stroke({width:2,color:PALETTE.gold});
     }else if(this.variant==='utility' || this.variant==='tool'){
       g.roundRect(-w/2,-h/2,w,h,9).fill({color:this.active?0x9a703d:0x2b1d2d,alpha:this.active ? .22 : this.variant==='tool' ? .72 : .01});
       if(this.variant==='tool')g.roundRect(-w/2,-h/2,w,h,9).stroke({color:0xd3ac73,width:.8,alpha:.24});
@@ -65,12 +68,12 @@ export class PixiButton extends Container {
       if(gold)g.roundRect(-w/2+3,-h/2+3,w-6,h-6,6).stroke({color:0xfbd38c,width:1,alpha:.22});
       this.outline.clear().roundRect(-w/2-3,-h/2-3,w+6,h+6,10).stroke({width:2,color:PALETTE.bright});
     }
-    this.outline.visible=!!(this.hovered || this.focused) && this.enabled!==false;
+    this.outline.visible=!!(this.focused || this.variant!=='link' && this.hovered) && this.enabled!==false;
   }
   setIcon(svg){this.svg=svg;if(this.glyph)this.glyph.destroy();this.glyph=slotIcon(svg,20,this.active?0xffe0a2:0xead8cb);this.addChild(this.glyph);}
   setActive(value){if(this.active===value)return;this.active=value;this.draw();if(this.svg)this.setIcon(this.svg);}
-  hover(value){if(this.destroyed)return;this.hovered=value;this.outline.visible=!!(value || this.focused) && this.enabled!==false;}
-  focus(value){if(this.destroyed)return;this.focused=value;this.outline.visible=!!(value || this.hovered) && this.enabled!==false;}
+  hover(value){if(this.destroyed)return;this.hovered=value;this.outline.visible=!!(this.focused || this.variant!=='link' && value) && this.enabled!==false;}
+  focus(value){if(this.destroyed)return;this.focused=value;this.outline.visible=!!(value || this.variant!=='link' && this.hovered) && this.enabled!==false;}
   setEnabled(value){this.enabled=value;this.eventMode=value?'static':'none';this.accessible=value;this.alpha=value?1:.5;if(!value){this.hover(false);this.focus(false);}}
   setText(text){this.caption.text=text;}
   setSubtitle(text){this.subtitle.text=text;}

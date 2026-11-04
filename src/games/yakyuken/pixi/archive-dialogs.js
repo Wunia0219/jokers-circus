@@ -2,6 +2,7 @@ import {Container,Graphics,Rectangle,Sprite} from 'pixi.js';
 import {DEALER_ART} from '../assets.js';
 import {characterRule} from '../characters.js';
 import {icon} from '../../../ui/shared/icons.js';
+import {APP_VERSION} from '../../../version.js';
 import {label,panel,PALETTE,PixiButton,slotIcon} from './ui.js';
 
 const lock='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1"/></svg>';
@@ -16,16 +17,26 @@ function thumbnail(texture,parent,{x,y,width,height}){
 function storageCaption(scene,body,mw,y){
   text(scene.archive.persistent?'收藏與紀錄儲存在這台裝置':'目前無法儲存，資料只保留在此頁',11,0,y,body,PALETTE.muted,{wordWrap:true,wordWrapWidth:mw-32,lineHeight:15});
 }
+function collectionFooter(scene,body,mw,mh){
+  const bottom=mh/2;
+  storageCaption(scene,body,mw,bottom-98);
+  for(const [name,path,x] of [['服務條款','/terms.html',-64],['隱私權政策','/privacy.html',64]]){
+    const link=place(new PixiButton({text:name,name:`${name}（另開分頁）`,variant:'link',width:112,height:44,fontSize:13,onPress:()=>window.open(path,'_blank','noopener,noreferrer')}),x,bottom-65,body);
+    link.caption.style.fill=PALETTE.gold;
+  }
+  body.addChild(new Graphics().moveTo(-mw/2+20,bottom-35).lineTo(mw/2-20,bottom-35).stroke({color:PALETTE.gold,width:.7,alpha:.22}));
+  leftText('JOKER’S CIRCUS',11,-mw/2+20,bottom-18,body,PALETTE.muted);
+  const version=text(`v${APP_VERSION}`,11,mw/2-20,bottom-18,body,PALETTE.muted);version.anchor.x=1;
+}
 
 export function buildArchiveDialog(scene,type){
   const {width,height}=scene.layout.ui,scale=scene.layout.scale;
   scene.world.interactiveChildren=false;scene.world.accessibleChildren=false;
   const root=new Container({label:`modal:${type}`});root.scale.set(1/scale);scene.modalRoot=root;scene.root.addChild(root);
   const shade=new Graphics().rect(0,0,width,height).fill({color:0x080d1c,alpha:type==='cg'?.96:.88});shade.eventMode='static';shade.hitArea=new Rectangle(0,0,width,height);shade.on('pointertap',()=>scene.closeModal());root.addChild(shade);
-  const mw=Math.min(type==='cg'?1000:type==='collection'?800:660,width-24),mh=type==='cg'?height-24:Math.min(height-24,type==='collection'?580:600);
+  const mw=Math.min(type==='cg'?1000:type==='collection'?800:660,width-24),mh=type==='cg'?height-24:Math.min(height-24,type==='collection'?680:600);
   const body=place(new Container({label:'archive-dialog'}),width/2,height/2,root);body.eventMode='static';body.hitArea=new Rectangle(-mw/2,-mh/2,mw,mh);body.on('pointertap',e=>e.stopPropagation());body.addChild(panel(mw,mh));
   const close=place(new PixiButton({name:'關閉視窗',icon:icon('close'),variant:'utility',width:44,height:44,onPress:()=>scene.closeModal()}),mw/2-30,-mh/2+30,body);
-  if(type!=='cg')place(new PixiButton({name:'遊戲選單',icon:icon('menu'),variant:'utility',width:44,height:44,onPress:()=>scene.openModal('menu')}),mw/2-86,-mh/2+30,body);
   if(type==='cg'){
     place(new PixiButton({text:'返回收藏',name:'返回 CG 收藏',width:96,height:44,fontSize:13,onPress:()=>scene.openModal('collection')}),-mw/2+62,-mh/2+30,body);
     text(`${characterRule(scene.selectedCharacter).name} · ${DEALER_ART[scene.cgIndex].name}`,width<450?16:20,0,-mh/2+78,body,PALETTE.gold);
@@ -38,15 +49,17 @@ export function buildArchiveDialog(scene,type){
     // Keep the close control above the large image's bounds.
     body.setChildIndex(close,body.children.length-1);
   }else if(type==='collection'){
-    leftText('CG 收藏',19,-mw/2+22,-mh/2+30,body,PALETTE.gold);
+    const compact=height<500;
+    const logo=place(new Sprite(scene.logoTexture),0,-mh/2+(compact?12:22),body);logo.label='collection-brand-logo';logo.anchor.set(.5,0);logo.width=Math.min(compact?150:250,mw-96);logo.scale.y=logo.scale.x;logo.eventMode='none';
+    text('CG 收藏',compact?18:21,0,-mh/2+(compact?75:117),body,PALETTE.bright,{letterSpacing:2});
     const count=DEALER_ART.filter((_,i)=>scene.archive.isUnlocked(scene.selectedCharacter,i)).length;
-    text(`${characterRule(scene.selectedCharacter).name} · 已解鎖 ${count} / ${DEALER_ART.length}`,13,0,-mh/2+68,body,PALETTE.muted);
-    const vertical=width<600 && height>width,top=-mh/2+98,available=mh-152,gap=12;
+    text(`${characterRule(scene.selectedCharacter).name} · 已解鎖 ${count} / ${DEALER_ART.length}`,12,0,-mh/2+(compact?99:145),body,PALETTE.muted);
+    const vertical=width<600 && height>width,top=-mh/2+(compact?121:170),available=mh-(compact?245:294),gap=12;
     const tileWidth=vertical?mw-44:(mw-44-2*gap)/3,tileHeight=vertical?(available-2*gap)/3:Math.min(330,available);
     DEALER_ART.forEach((art,index)=>{
       const unlocked=scene.archive.isUnlocked(scene.selectedCharacter,index),cx=vertical?0:(index-1)*(tileWidth+gap),cy=vertical?top+tileHeight/2+index*(tileHeight+gap):top+available/2;
       const tile=place(new PixiButton({name:unlocked?`回顧${art.name} CG`:`${art.name} CG 尚未解鎖`,width:tileWidth,height:tileHeight,onPress:()=>scene.openCG(index)}),cx,cy,body);
-      tile.background.clear().roundRect(-tileWidth/2,-tileHeight/2,tileWidth,tileHeight,9).fill(0x151728).stroke({color:unlocked?PALETTE.gold:0x66545f,width:1,alpha:unlocked?.8:.5});
+      tile.background.clear().roundRect(-tileWidth/2,-tileHeight/2,tileWidth,tileHeight,9).fill(unlocked?0x30202e:0x201925).stroke({color:unlocked?PALETTE.gold:0x89717d,width:1,alpha:unlocked?.7:.4});
       if(unlocked){
         thumbnail(scene.dealerTextures[index],tile,vertical?{x:-tileWidth/2+47,y:0,width:82,height:tileHeight-10}:{x:0,y:-27,width:tileWidth-12,height:tileHeight-64});
       }else{
@@ -58,7 +71,7 @@ export function buildArchiveDialog(scene,type){
       text(unlocked?'已解鎖 · 點擊回顧':condition,vertical?12:12,tx,vertical?14:tileHeight/2-15,tile,unlocked?PALETTE.gold:PALETTE.muted);
       if(!unlocked){tile.setEnabled(false);tile.alpha=1;}
     });
-    storageCaption(scene,body,mw,mh/2-22);
+    collectionFooter(scene,body,mw,mh);
   }else{
     leftText('遊玩紀錄',19,-mw/2+22,-mh/2+30,body,PALETTE.gold);
     const records=scene.archive.records(),pageSize=Math.max(1,Math.floor((mh-164)/68)),pages=Math.max(1,Math.ceil(records.length/pageSize));

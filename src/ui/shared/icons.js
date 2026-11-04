@@ -4,5 +4,6 @@ export const icon = (name) => {
   paths.musicMuted='<path d="M9 17v-5m0-5V5l12-2v13M13 8l8-1"/><ellipse cx="6" cy="18" rx="3" ry="2.5"/><ellipse cx="18" cy="16" rx="3" ry="2.5"/><path d="m3 3 18 18"/>';
   paths.lobby='<path d="M12 5V2l4 1.5L12 5ZM3 11l9-6 9 6M5 14v7h14v-7M3 11h18v1a3 3 0 0 1-4.5 2.6A3 3 0 0 1 12 14a3 3 0 0 1-4.5.6A3 3 0 0 1 3 12v-1ZM9 21v-3a3 3 0 0 1 6 0v3"/>';
   paths.menu='<path d="M5 6h14M5 12h14M5 18h14"/>';
+  paths.gallery='<path d="M6 3h13a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3ZM6 3v18M3 17h3"/><path d="m9 16 3-4 2 2 2-3 3 5M14 6l1 2-1 2-1-2 1-2Z"/>';
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]||paths.star}</svg>`;
 };
