@@ -32,9 +32,9 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
 const checks=[],errors=[],requests=[],entryEvidence=[],entryReleases=[];
 let browser;
 const watchEntryBindings=context=>context.on('page',page=>page.on('console',message=>{if(message.type()==='warning' && message.text().includes('[BindGroup]'))errors.push(message.text());}));
-const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===22 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
+const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===23 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-const phase=(page,value) => page.waitForFunction(expected => document.querySelector('canvas')?.dataset.phase===expected,value);
+const phase=(page,value) => page.waitForFunction(expected => {const d=document.querySelector('canvas')?.dataset;return d?.phase===expected && (!['confirmed','selecting'].includes(expected) || d.changing!=='true');},value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
 const assertTableWings=async page=>{
   const geometry=await page.evaluate(()=>{
@@ -198,7 +198,7 @@ try {
   await page.waitForFunction(() => document.querySelector('canvas').dataset.pose==='2');
   await page.waitForFunction(()=>!window.__yakyukenTest.changing);
   await frame(page);await page.screenshot({path:`${output}/desktop-pose-2.png`});
-  checks.push('Pixi wardrobe panel and central emblem replace the dealer texture behind the table');
+  checks.push('Pixi wardrobe preview uses full-screen cached blurred focus and only the new outfit');
 
   await openMenuItem(page,'遊戲設定');
   assert.equal(await page.getByRole('button',{name:'切換音效',exact:true}).count(),0,'no duel SFX control');
@@ -306,11 +306,20 @@ try {
       if(losses<rule.lossLimit)await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
     }
     assert.equal((await canvasState(challengePage)).reward,'0');
+    assert.equal(await challengePage.getByRole('button',{name:'再挑戰一次',exact:true}).count(),0,'defeat has no replay control');
+    await challengePage.evaluate(()=>{void window.__yakyukenTest.confirm();});
+    assert.equal((await canvasState(challengePage)).challengeStatus,'lost','direct confirm cannot restart a lost challenge');
     await challengePage.screenshot({path:`${output}/character-dealer-${width}-lost.png`});
+    await phase(challengePage,'characters');
+    assert.equal(await challengePage.getByRole('button',{name:'選擇命運荷官',exact:true}).count(),1);
+    assert.equal(await challengePage.getByRole('button',{name:/^選擇(拳頭|剪刀|布)$/}).count(),0);
+    assert.equal((await canvasState(challengePage)).challengeStatus,'','the finished challenge is cleared after returning to selection');
+    await challengePage.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(challengePage,'selecting');
+    assert.deepEqual([(await canvasState(challengePage)).wins,(await canvasState(challengePage)).losses,(await canvasState(challengePage)).round],['0','0','0']);
     assert.equal(await challengePage.evaluate(()=>Object.hasOwn(window.__yakyukenTest,'history')),false);
     await challengeContext.close();
   }
-  checks.push('character-bound rules, draws, cumulative wins, exact win/loss endings, rewards and fresh retry work across five screen sizes without game history');
+  checks.push('character-bound rules, draws, cumulative wins, exact win/loss endings, rewards, victory retry and automatic defeat return work across five screen sizes without game history');
 
   const fluid=await context.newPage();fluid.on('pageerror',error=>errors.push(error.message));
   await fluid.goto(`${origin}/yakyuken-preview.html`);await phase(fluid,'games');
@@ -334,6 +343,58 @@ try {
     }
   }
   await fluid.close();checks.push('large desktop character panels and mirrored table wings scale fluidly, with no difficulty labels or adjacent-width size jump');
+
+  const wardrobePage=await context.newPage();wardrobePage.on('pageerror',error=>errors.push(error.message));
+  await wardrobePage.goto(`${origin}/yakyuken-preview.html`);await startTable(wardrobePage);
+  await wardrobePage.evaluate(()=>{window.__duelWeights=[0,4000,8000,0];});
+  const wardrobePlay=async()=>{
+    await wardrobePage.getByRole('button',{name:'選擇拳頭',exact:true}).click();
+    await wardrobePage.getByRole('button',{name:'確認出牌',exact:true}).click();
+  };
+  await wardrobePlay();
+  await wardrobePage.waitForFunction(()=>{const s=window.__yakyukenTest;if(!s.wardrobe)return false;s.app.stop();return true;});
+  const wardrobeTick=async target=>wardrobePage.evaluate(value=>{const s=window.__yakyukenTest;s.wardrobe.tick(Math.max(0,value-s.wardrobe.elapsed));s.app.render();},target);
+  await wardrobeTick(400);await wardrobePage.screenshot({path:`${output}/wardrobe-new-fade-in.png`});
+  await wardrobeTick(900);
+  const wardrobeState=await wardrobePage.evaluate(()=>{
+    const s=window.__yakyukenTest,w=s.wardrobe;
+    return {pose:s.pose,old:!!w.old,next:w.next.alpha,filters:s.root.filters?.length || 0,dialogue:s.dialogue,texture:w.frost.texture===s.wardrobeBackdrop.texture};
+  });
+  assert.equal(wardrobeState.pose,1);assert.equal(wardrobeState.old,false,'no previous outfit is presented');assert.equal(wardrobeState.next,1);
+  assert.equal(wardrobeState.filters,0,'the live game has no per-frame blur filter');assert.equal(wardrobeState.texture,true);
+  await wardrobePage.evaluate(()=>{const s=window.__yakyukenTest;void s.confirm();s.select('paper');s.visitScreen('games');s.openModal('help');});
+  assert.equal((await canvasState(wardrobePage)).round,'1');assert.equal((await canvasState(wardrobePage)).selected,'rock');assert.equal((await canvasState(wardrobePage)).screen,'table');
+  await wardrobePage.setViewportSize({width:390,height:844});
+  await wardrobePage.waitForFunction(()=>window.__yakyukenTest.layout.ui.width===390);
+  assert.equal(await wardrobePage.evaluate(()=>window.__yakyukenTest.wardrobe.elapsed),900,'resize preserves the active new-outfit reveal');
+  assert.ok(await wardrobePage.evaluate(()=>{const w=window.__yakyukenTest.wardrobe;return Math.abs(w.frost.width-innerWidth)<1 && Math.abs(w.frost.height-innerHeight)<1;}),'cached blur covers the whole resized viewport');
+  assert.equal((await canvasState(wardrobePage)).dialogue,wardrobeState.dialogue);
+  await wardrobePage.screenshot({path:`${output}/wardrobe-mobile-new-outfit.png`});
+  await wardrobeTick(1400);await wardrobePage.screenshot({path:`${output}/wardrobe-new-look.png`});
+  await wardrobeTick(2100);await wardrobePage.waitForFunction(()=>!window.__yakyukenTest.changing);
+  assert.equal(await wardrobePage.evaluate(()=>window.__yakyukenTest.root.filters?.length || 0),0,'returning to the game requires no filter teardown');
+  assert.equal(await wardrobePage.evaluate(()=>window.__yakyukenTest.wardrobeBackdrop.texture.destroyed),false,'the background texture is reused instead of deleted on the return frame');
+  await wardrobePage.evaluate(()=>window.__yakyukenTest.app.start());
+  await wardrobePage.screenshot({path:`${output}/wardrobe-first-win.png`});
+  for(const outcome of ['loss','draw']){
+    await wardrobePage.getByRole('button',{name:'下一局',exact:true}).click();await phase(wardrobePage,'selecting');
+    await wardrobePlay();await phase(wardrobePage,'confirmed');
+    const state=await canvasState(wardrobePage);assert.equal(state.outcome,outcome);assert.equal(state.pose,'1');assert.ok(state.dialogue.length>0);assert.equal(state.changing,'false');
+    assert.ok(await wardrobePage.evaluate(()=>window.__yakyukenTest.dialogueBubble.visible));
+    await wardrobePage.screenshot({path:`${output}/dialogue-${outcome}.png`});
+  }
+  await wardrobePage.emulateMedia({reducedMotion:'reduce'});
+  await wardrobePage.getByRole('button',{name:'下一局',exact:true}).click();await phase(wardrobePage,'selecting');
+  await wardrobePlay();await phase(wardrobePage,'confirmed');
+  assert.deepEqual([(await canvasState(wardrobePage)).wins,(await canvasState(wardrobePage)).pose,(await canvasState(wardrobePage)).challengeStatus],['2','2','won']);
+  await wardrobePage.getByRole('button',{name:'再挑戰一次',exact:true}).click();await phase(wardrobePage,'selecting');
+  assert.equal((await canvasState(wardrobePage)).pose,'0');
+  await wardrobePage.emulateMedia({reducedMotion:'no-preference'});
+  await wardrobePage.evaluate(()=>{const s=window.__yakyukenTest;void s.changePose(1);s.app.stop();});
+  await wardrobePage.evaluate(async()=>{const s=window.__yakyukenTest;await s.destroy();});
+  assert.equal(await wardrobePage.locator('canvas').count(),0);
+  assert.equal(await wardrobePage.evaluate(()=>window.__yakyukenTest.wardrobe),null);
+  await wardrobePage.close();checks.push('wins advance both outfits; all outcomes have dialogue; cached full-screen blur/new-outfit fade survives resize, blocks duplicate input, supports reduced motion and disposes cleanly');
 
   const resizing=await context.newPage();resizing.on('pageerror',error => errors.push(error.message));
   await resizing.goto(`${origin}/yakyuken-preview.html`);await startTable(resizing);

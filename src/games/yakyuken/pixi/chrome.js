@@ -25,6 +25,21 @@ function buildProgress(scene,hud){
   score.addChild(new Graphics().moveTo(-w*.27,0).lineTo(w*.27,0).stroke({color:PALETTE.gold,width:.7,alpha:.22}));
 }
 
+function updateDialogue(scene){
+  const bubble=scene.dialogueBubble;
+  if(!bubble)return;
+  bubble.visible=scene.phase==='confirmed' && !!scene.dialogue;
+  if(!bubble.visible || bubble.dialogue===scene.dialogue)return;
+  bubble.dialogue=scene.dialogue;
+  bubble.removeChildren().forEach(child=>child.destroy({children:true}));
+  const l=scene.layout,{width}=l.ui;
+  const w=Math.min(440,width-2*l.progress.x-l.progress.width-24),size=width<700?12:15;
+  const text=label(`「${scene.dialogue}」`,size,PALETTE.cream,{fontWeight:'500',wordWrap:true,wordWrapWidth:w-20,lineHeight:size*1.5});
+  const h=text.height+22;
+  const frame=new Graphics().roundRect(-w/2,-h/2,w,h,9).fill({color:0x101422,alpha:.91}).stroke({color:PALETTE.gold,alpha:.42,width:1});
+  bubble.addChild(frame,text);bubble.position.set(width/2,(l.table.y-l.table.ry)*l.scale-h/2-8);
+}
+
 export function buildSlotHud(scene){
   if(scene.screen==='games')return;
   const {ui,scale}=scene.layout,{width,height,headerHeight}=ui;
@@ -66,10 +81,11 @@ export function buildSlotHud(scene){
   scene.status=at(label('',ui.mobile?16:18,PALETTE.cream,{fontWeight:'600',wordWrap:true,wordWrapWidth:status.width,lineHeight:23}),status.x,status.y,hud);
   scene.statusDetail=at(label('',12,0xcbb8b5,{wordWrap:true,wordWrapWidth:status.width,lineHeight:17}),status.x,status.y+status.detailGap,hud);
   buildProgress(scene,hud);
+  scene.dialogueBubble=new Container({label:'dealer-dialogue',eventMode:'none'});hud.addChild(scene.dialogueBubble);
 }
 
 export function updateSlotHud(scene){
-  scene.lobbyButton?.setEnabled(scene.phase!=='presenting' && !scene.changing);
+  scene.lobbyButton?.setEnabled(scene.phase!=='presenting' && !scene.changing && !scene.ending);
   if(scene.screen!=='table' || !scene.confirmButton)return;
   const {phase,selected,duel}=scene,confirmed=phase==='confirmed';
   const rule=characterRule(scene.selectedCharacter),challenge=scene.challenge,finished=challenge?.status!=='playing';
@@ -77,14 +93,15 @@ export function updateSlotHud(scene){
   const wins=(challenge?.wins || 0)-Number(pending==='win'),losses=(challenge?.losses || 0)-Number(pending==='loss');
   scene.scoreWins.text=String(wins);scene.scoreLosses.text=String(losses);
   scene.scoreDescription=rule.name+'，'+wins+' 勝，目標 '+rule.winsRequired+' 勝；'+losses+' 敗，上限 '+rule.lossLimit+' 敗';
-  const next=finished?'再挑戰一次':'下一局';
+  const next=challenge?.status==='lost'?'返回選擇荷官…':finished?'再挑戰一次':'下一局';
   scene.confirmButton.setText(confirmed?next:phase==='presenting'?'荷官出牌中…':'確認出牌');
   scene.confirmButton.setName(confirmed?next:'確認出牌');
-  scene.confirmButton.setEnabled(confirmed || phase==='selecting' && !!selected);
+  scene.confirmButton.setEnabled(!scene.changing && !scene.ending && challenge?.status!=='lost' && (confirmed || phase==='selecting' && !!selected));
   scene.status.text=confirmed?{win:'你贏了',loss:'荷官獲勝',draw:'平手，再來一拳'}[duel.outcome]:phase==='presenting'?'荷官即將揭牌':selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
   scene.statusDetail.text=confirmed?'你出'+TABLE_MOVE_NAMES[selected]+' · 荷官出'+TABLE_MOVE_NAMES[duel.dealer]:phase==='presenting'?'好戲，即將揭曉':selected?'準備好了，就出這一張':'選擇手牌，與命運一決勝負';
   if(confirmed && finished){
     scene.status.text=challenge.status==='won'?'挑戰通關':'挑戰結束';
     scene.statusDetail.text=challenge.status==='won'?'獎金 '+challenge.reward.toLocaleString('en-US')+' 戲籌 · 試玩未入帳':'已達敗場上限，本場無獎金';
   }
+  updateDialogue(scene);
 }

@@ -1,4 +1,4 @@
-import {Container,Graphics,Sprite} from 'pixi.js';
+import {Container,FillGradient,Graphics,Sprite} from 'pixi.js';
 import {CHARACTERS,ENTRY_FEE,characterRule} from '../characters.js';
 import {label,PALETTE,PixiButton} from './ui.js';
 import {lobbyLayout} from './lobby-layout.js';
@@ -42,10 +42,18 @@ export function buildLobby(scene){
     title(rule.name,c.infoX,c.nameY,root,c.vertical?19:30*s,PALETTE.cream,{fontWeight:'500'});
     if(!c.vertical)title('酒紅襯衫、黑色背心，邀你入局。',c.infoX,c.descriptionY,root,14*s,PALETTE.muted);
     title(`${rule.winsRequired} 勝通關 · ${rule.lossLimit} 敗結束 · 獎金 ${rule.reward.toLocaleString('en-US')}`,c.infoX,c.rulesY,root,c.vertical?Math.min(13,(width-24)/25):15*s,PALETTE.gold);
+    scene.portraitGradient ??=new FillGradient({start:{x:0,y:0},end:{x:1,y:1},colorStops:[{offset:0,color:0x493037},{offset:.5,color:0x111729},{offset:1,color:0x251725}]});
     CHARACTERS.forEach((character,index)=>{
       const r=c.slots[index],button=new PixiButton({name:`選擇${character.name}`,width:r.width,height:r.height,onPress:()=>scene.selectCharacter(character.id)});
       button.position.set(r.x,r.y);root.addChild(button);
-      button.background.clear().roundRect(-r.width/2,-r.height/2,r.width,r.height,9*s).fill(index?0x211a2b:0x57302f).stroke({color:index?0x6a5259:PALETTE.gold,width:(index?1:2)*s});
+      button.background.context.batchMode='batch';
+      button.background.clear().roundRect(-r.width/2,-r.height/2,r.width,r.height,9*s)
+        .fill(scene.portraitGradient)
+        .stroke({color:index?0x6a5259:PALETTE.gold,width:(index?1:2)*s});
+      const stage=new Graphics({label:'portrait-stage',eventMode:'none'});
+      stage.poly([-r.width*.34,-r.height*.46,0,r.height*.34,r.width*.34,-r.height*.46]).fill({color:0xe6c488,alpha:index?.025:.10});
+      stage.moveTo(-r.width*.43,r.height*.32).lineTo(r.width*.43,r.height*.32).stroke({color:PALETTE.gold,width:s,alpha:.18});
+      button.addChild(stage);
       if(!index){portrait(scene.dealerTextures[0],button,{x:-r.width/2+3,y:-r.height/2+3,width:r.width-6,height:r.height-6},r.height*2.4);}
       else title(['','II','III','IV','V'][index],0,-8*s,button,22*s,0x887783,{fontFamily:['Georgia','serif']});
       button.addChild(new Graphics().rect(-r.width/2+3,r.height/2-24*s,r.width-6,21*s).fill({color:0x201522,alpha:.92}));
