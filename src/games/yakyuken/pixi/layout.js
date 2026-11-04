@@ -1,5 +1,7 @@
 import {slotChrome} from './slot-theme.js';
 
+const smooth=(from,to,value)=>{const t=Math.max(0,Math.min(1,(value-from)/(to-from)));return t*t*(3-2*t);};
+
 // Only the shared top bar uses slot dimensions. The room belongs to this game.
 export function tableLayout(width,height,{touch=false}={}) {
   if(!(width>0 && height>0))throw new Error('Viewport must have a positive size');
@@ -17,12 +19,26 @@ export function tableLayout(width,height,{touch=false}={}) {
   const nearHalf=nearWidth*113/156*.92+nearWidth*.035;
   const nearY=height-nearHalf-footerSpace;
   const farEdge=Math.min(ui.headerHeight+roomHeight*.72,nearY-nearHalf-gap);
-  const actorTop=ui.headerHeight+8,actorHeight=(farEdge-actorTop)/.44;
+  const baseActorTop=ui.headerHeight+8,baseActorHeight=(farEdge-baseActorTop)/.44;
+  // A tall phone should gain breathing room, rather than magnifying the
+  // portrait until its shoulders fill both HUD columns. Blend the adjustment
+  // with aspect ratio and available height, without a new phone breakpoint.
+  const portraitWings=smooth(1.3,1.85,height/width)*(1-smooth(520,700,width));
+  const portraitFit=portraitWings*smooth(440,680,roomHeight);
+  const fittedHeight=Math.min(baseActorHeight*.90,width*2.1);
+  const widthFittedHeight=baseActorHeight+(fittedHeight-baseActorHeight)*portraitFit;
+  const compactPortrait=portraitWings*(1-smooth(440,680,roomHeight));
+  const actorHeight=widthFittedHeight*(1-.06*compactPortrait);
   const nearGap=nearWidth*1.27;
   // Mirrored wings share their centre line, top edge, and visual weight.
-  const sideWidth=Math.min(width*(ui.mobile ? .22 : .17),(farEdge-actorTop)*.70*156/214,(farEdge-actorTop-48)*156/214);
-  const sideHeight=sideWidth*214/156,sideY=actorTop+(farEdge-actorTop)*.50;
-  const sideX=width*(ui.mobile ? .18 : .25);
+  const sideWidth=Math.min(width*(ui.mobile ? .22-.03*portraitWings : .17),(farEdge-baseActorTop)*.70*156/214,(farEdge-baseActorTop-48)*156/214);
+  const sideHeight=sideWidth*214/156,baseSideY=baseActorTop+(farEdge-baseActorTop)*.50;
+  const upperSideY=Math.min(baseSideY,ui.headerHeight+31+sideHeight/2);
+  const sideY=baseSideY+(upperSideY-baseSideY)*portraitWings;
+  const sideX=width*(ui.mobile ? .18-.035*portraitWings : .25);
+  const portraitShift=Math.min((baseActorHeight-widthFittedHeight)*.44,(farEdge-baseActorTop)*.14);
+  const shoulderSafeTop=sideY+sideHeight/2+12-actorHeight*.10;
+  const actorTop=Math.max(baseActorTop+portraitShift,baseActorTop+(shoulderSafeTop-baseActorTop)*portraitFit);
   const lift=Math.min(32,nearWidth*.20);
   const actionWidth=stackedControls?200:210;
   const actionX=stackedControls?width/2:compact?width-12-actionWidth/2:width-sideX;

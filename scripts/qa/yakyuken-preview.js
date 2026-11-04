@@ -23,6 +23,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
       return {code:code.replace('this.host = host;','globalThis.__yakyukenTest=this;this.host = host;')
         .replace('playChallengeRound(this.challenge,this.selected)','playChallengeRound(this.challenge,this.selected,{getRandomValues:values=>{values[0]=globalThis.__duelWeights?.shift() ?? 0;}})'),map:null};
     }
+    if(path.endsWith('/src/games/yakyuken/main.js'))return {code:code.replace('new YakyukenScene()',"new YakyukenScene({playerId:globalThis.__qaPlayer || 'local-guest'})"),map:null};
     if(!path.endsWith('/src/main.js'))return;
     assert.ok(code.includes('startGame();'),'isolated slot ticker hook must match the real entry');
     return {code:code.replace('startGame();','globalThis.__slotNavigationTest={scene,controls};startGame();'),map:null};
@@ -32,7 +33,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
 const checks=[],errors=[],requests=[],entryEvidence=[],entryReleases=[];
 let browser;
 const watchEntryBindings=context=>context.on('page',page=>page.on('console',message=>{if(message.type()==='warning' && message.text().includes('[BindGroup]'))errors.push(message.text());}));
-const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===23 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
+const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===24 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => {const d=document.querySelector('canvas')?.dataset;return d?.phase===expected && (!['confirmed','selecting'].includes(expected) || d.changing!=='true');},value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
@@ -58,8 +59,8 @@ const tickEntry=async(page,elapsed)=>page.evaluate(async ms=>{
   const scene=window.__yakyukenTest;scene.entryOverlay.tick(ms);await Promise.resolve();scene.entryOverlay?.tick(0);scene.app.render();
 },elapsed);
 const openMenuItem=async(page,name)=>{
-  await page.getByRole('button',{name:'遊戲規則',exact:true}).click();
-  await page.getByRole('button',{name:'遊戲設定與造型',exact:true}).click();
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>document.querySelector('canvas').dataset.modal==='menu');
   await page.getByRole('button',{name,exact:true}).click();
 };
 const assertHeader=async(page,screen)=>{
@@ -73,7 +74,7 @@ const assertHeader=async(page,screen)=>{
   const back=page.getByRole('button',{name:'返回遊戲大廳',exact:true});
   assert.equal(await back.count(),screen==='games'?0:1,'only one lobby control outside the lobby');
   if(screen==='games'){
-    assert.equal(await page.getByRole('button',{name:'遊戲規則',exact:true}).count(),0,'lobby has no game header');
+    assert.equal(await page.getByRole('button',{name:'CG 收藏',exact:true}).count(),0,'lobby has no game header');
   }else{
     const checkin=page.getByRole('button',{name:'週簽到・介面預覽',exact:true}),h=slotHeaderLayout(width,height);
     assert.equal(await checkin.count(),1,'slot-style checkin placeholder is present');
@@ -81,12 +82,12 @@ const assertHeader=async(page,screen)=>{
     for(const key of ['x','y','width','height'])assert.ok(Math.abs(checkinBox[key]-h.checkin[key])<1,'checkin matches slot geometry');
     const tools=await page.evaluate(()=>{
       const hud=window.__yakyukenTest.hud;
-      return ['音效尚未加入',window.__qaSound.musicEnabled?'關閉音樂':'開啟音樂','遊戲規則','遊玩紀錄尚未開放','返回遊戲大廳'].map(name=>{
+      return ['音效尚未加入',window.__qaSound.musicEnabled?'關閉音樂':'開啟音樂','CG 收藏','遊玩紀錄','返回遊戲大廳'].map(name=>{
         const node=hud.children.find(child=>child.accessibleTitle===name);return node && {x:node.x,y:node.y,width:node.buttonWidth,height:node.buttonHeight};
       });
     });
     tools.forEach((tool,index)=>{assert.ok(tool,'all five slot-style tools are rendered');assert.equal(tool.width,48);assert.equal(tool.height,48);assert.ok(Math.abs(tool.x-h.centers[index])<1 && Math.abs(tool.y-(h.toolsY+h.toolsHeight/2))<1);});
-    for(const name of ['遊戲規則','返回遊戲大廳']){
+    for(const name of ['CG 收藏','返回遊戲大廳']){
       const target=await page.getByRole('button',{name,exact:true}).boundingBox();
       assert.ok(target.width>=47.9 && target.height>=47.9 && target.y>=0 && target.y+target.height<=header,'48px controls stay inside the slot-style header');
     }
@@ -137,13 +138,13 @@ try {
   assert.equal(await page.locator('dialog,img,main,h1,header').count(),0);
   assert.equal(await page.getByRole('button',{name:/^選擇(拳頭|剪刀|布)$/}).count(),3);
   assert.equal(await page.evaluate(() => document.documentElement.scrollHeight===innerHeight && document.documentElement.scrollWidth===innerWidth),true);
-  const help=page.getByRole('button',{name:'遊戲規則',exact:true});
+  const help=page.getByRole('button',{name:'CG 收藏',exact:true});
   await help.hover();await page.mouse.move(800,200);await frame(page);
-  assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='遊戲規則').outline.visible),false,'moving off a button clears its outline');
+  assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='CG 收藏').outline.visible),false,'moving off a button clears its outline');
   await help.click();await page.getByRole('button',{name:'關閉視窗',exact:true}).click();await page.mouse.move(800,200);await frame(page);
-  assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='遊戲規則').outline.visible),false,'pointer focus after click cannot leave a ring');
+  assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='CG 收藏').outline.visible),false,'pointer focus after click cannot leave a ring');
   await page.keyboard.press('Tab');await help.focus();
-  assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='遊戲規則').outline.visible),true,'keyboard focus remains visible');
+  assert.equal(await page.evaluate(()=>window.__yakyukenTest.hud.children.find(node=>node.accessibleTitle==='CG 收藏').outline.visible),true,'keyboard focus remains visible');
   await page.mouse.click(800,200);await frame(page);
   await page.screenshot({path:`${output}/desktop.png`});
   checks.push('one Pixi canvas, three enlarged player hands and one upright dealer reveal; mirrored large-number progress beside the character');
@@ -188,17 +189,18 @@ try {
   await page.keyboard.press('Escape');await page.waitForFunction(() => document.querySelector('canvas').dataset.modal==='menu');
   await page.keyboard.press('1');assert.equal((await canvasState(page)).selected,'paper');
   await page.keyboard.press('Escape');
-  await page.getByRole('button',{name:'遊戲規則',exact:true}).click();
-  await page.waitForFunction(() => document.querySelector('canvas').dataset.modal==='help');
+  await page.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  await page.waitForFunction(() => document.querySelector('canvas').dataset.modal==='collection');
   await page.screenshot({path:`${output}/help.png`});await page.keyboard.press('Escape');
   checks.push('keyboard selection and confirm; Pixi modal blocks underlying input and closes with Escape');
 
-  await openMenuItem(page,'荷官與造型');
-  await page.getByRole('button',{name:'預覽終幕造型',exact:true}).click();
-  await page.waitForFunction(() => document.querySelector('canvas').dataset.pose==='2');
-  await page.waitForFunction(()=>!window.__yakyukenTest.changing);
-  await frame(page);await page.screenshot({path:`${output}/desktop-pose-2.png`});
-  checks.push('Pixi wardrobe preview uses full-screen cached blurred focus and only the new outfit');
+  await page.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'回顧終幕 CG',exact:true}).count(),0,'unearned CG stays locked');
+  await page.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).click();
+  assert.equal((await canvasState(page)).modal,'cg');assert.equal((await canvasState(page)).pose,'1','CG review never changes battle art');
+  await frame(page);await page.screenshot({path:`${output}/desktop-cg-review.png`});
+  await page.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  checks.push('CG collection locks unearned stages and reviews earned full artwork without changing the battle');
 
   await openMenuItem(page,'遊戲設定');
   assert.equal(await page.getByRole('button',{name:'切換音效',exact:true}).count(),0,'no duel SFX control');
@@ -209,8 +211,8 @@ try {
   assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),false,'first click turns default music off');
   await page.getByRole('button',{name:'開啟音樂',exact:true}).click();
   await page.getByRole('button',{name:'關閉音樂',exact:true}).waitFor();
-  assert.equal(await page.getByRole('button',{name:'遊玩紀錄',exact:true}).count(),0,'history is not implemented');
-  assert.equal(await page.evaluate(()=>Object.hasOwn(window.__yakyukenTest,'history')),false,'no per-hand history accumulates');
+  assert.equal(await page.getByRole('button',{name:'遊玩紀錄',exact:true}).count(),1);
+  assert.equal(await page.evaluate(()=>window.__yakyukenTest.archive.records().length),1,'all throws update the same match record');
   await page.getByRole('button',{name:'下一局',exact:true}).click();
   await page.getByRole('button',{name:'選擇布',exact:true}).focus();
   await page.keyboard.press('Enter');assert.equal((await canvasState(page)).selected,'paper');
@@ -223,7 +225,7 @@ try {
     await phone.goto(`${origin}/yakyuken-preview.html`);await startTable(phone,name);await frame(phone);
     assert.equal((await canvasState(phone)).dealerFrontCount,'0',`${name}: reduced-motion game starts on backs`);
     assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth===innerWidth && document.documentElement.scrollHeight===innerHeight),true);
-    for(const control of ['返回遊戲大廳','遊戲規則']){
+    for(const control of ['返回遊戲大廳','CG 收藏']){
       const target=await phone.getByRole('button',{name:control,exact:true}).boundingBox();
       assert.ok(target.width>=43.9 && target.height>=43.9,`${name}: ${control} has a 44px touch target`);
     }
@@ -235,16 +237,15 @@ try {
     assert.equal((await canvasState(phone)).dealerFrontCount,'1',`${name}: reduced-motion game reveals one card`);
     await phone.screenshot({path:`${output}/${name}.png`});
     if(name==='mobile-landscape'){
-      await phone.getByRole('button',{name:'遊戲規則',exact:true}).tap();
-      await phone.waitForFunction(() => document.querySelector('canvas').dataset.modal==='help');
+      await phone.getByRole('button',{name:'CG 收藏',exact:true}).tap();
+      await phone.waitForFunction(() => document.querySelector('canvas').dataset.modal==='collection');
       await phone.screenshot({path:`${output}/mobile-landscape-help.png`});await phone.keyboard.press('Escape');
     }
-    await phone.getByRole('button',{name:'遊戲規則',exact:true}).tap();
-    await phone.getByRole('button',{name:'遊戲設定與造型',exact:true}).tap();
-    await phone.getByRole('button',{name:'荷官與造型',exact:true}).tap();
-    await phone.getByRole('button',{name:'預覽漸入佳境造型',exact:true}).tap();
+    await phone.getByRole('button',{name:'CG 收藏',exact:true}).tap();
+    await phone.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).tap();
     await phone.waitForFunction(() => document.querySelector('canvas').dataset.pose==='1');
     await phone.waitForFunction(()=>!window.__yakyukenTest.changing);
+    await phone.getByRole('button',{name:'關閉視窗',exact:true}).tap();
     if(name==='mobile'){
       await returnLobby(phone);
       await phone.getByRole('button',{name:'選擇老虎機',exact:true}).tap();await phone.waitForURL(`${origin}/?lobby=preview`);
@@ -262,7 +263,7 @@ try {
   checks.push('mobile, small mobile, landscape, tablet and side-panel touch layouts stay within a non-scrolling viewport');
 
   await page.setViewportSize({width:390,height:844});await frame(page);
-  assert.equal((await canvasState(page)).selected,'paper');assert.equal((await canvasState(page)).pose,'2');
+  assert.equal((await canvasState(page)).selected,'paper');assert.equal((await canvasState(page)).pose,'1');
   await page.setViewportSize({width:1600,height:900});await frame(page);
   assert.equal(await page.evaluate(() => localStorage.getItem('kemet-slot-preview-v2')),'slot-sentinel');
   assert.equal(await page.evaluate(() => sessionStorage.getItem('jokers-circus:yakyuken:preview:v1')),'wallet-sentinel');
@@ -274,6 +275,59 @@ try {
   assert.ok(!requests.some(url => /\/(wallet-client|discord-activity|state|controller|demo-duel)\.js/.test(url)));
   assert.ok(requests.some(url=>url.includes('/yakyuken/challenge.js')));
   checks.push('resize preserves selection and pose; probability engine loads without wallet, legacy controller or Discord');
+
+  const archiveContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});watchEntryBindings(archiveContext);
+  const playerPage=async player=>{
+    const tab=await archiveContext.newPage();tab.on('pageerror',error=>errors.push(error.message));await tab.addInitScript(id=>{window.__qaPlayer=id;},player);
+    await tab.goto(`${origin}/yakyuken-preview.html`);await phase(tab,'games');return tab;
+  };
+  const archiveA=await playerPage('archive-A');await startTable(archiveA);
+  const archivePlay=async(page,outcome)=>{
+    await page.evaluate(value=>{window.__duelWeights=[value];},{win:0,loss:4000,draw:8000}[outcome]);
+    await page.getByRole('button',{name:'選擇拳頭',exact:true}).click();await page.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(page,'confirmed');
+  };
+  const advance=page=>page.getByRole('button',{name:'下一局',exact:true}).click();
+  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.openCG(2)),false);
+  for(const [i,outcome] of ['draw','loss','win'].entries()){if(i)await advance(archiveA);await archivePlay(archiveA,outcome);}
+  await archiveA.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  assert.equal(await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).count(),1);
+  assert.equal(await archiveA.getByRole('button',{name:'回顧終幕 CG',exact:true}).count(),0);
+  await archiveA.screenshot({path:`${output}/archive-mobile-collection.png`});
+  await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).click();
+  assert.equal((await canvasState(archiveA)).pose,'1');assert.equal((await canvasState(archiveA)).modal,'cg');
+  await archiveA.screenshot({path:`${output}/archive-mobile-cg.png`});await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  await returnLobby(archiveA);await archiveA.reload();await phase(archiveA,'games');
+  await archiveA.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(archiveA,'characters');
+  const savedArchive=await archiveA.evaluate(()=>window.__yakyukenTest.archive.records());
+  assert.equal(savedArchive.length,1);assert.deepEqual([savedArchive[0].characterId,savedArchive[0].wins,savedArchive[0].losses,savedArchive[0].draws,savedArchive[0].status],['dealer',1,1,1,'left']);
+  await archiveA.getByRole('button',{name:'遊玩紀錄',exact:true}).click();await archiveA.screenshot({path:`${output}/archive-mobile-history.png`});
+  await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  await archiveA.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  assert.equal(await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).count(),1,'earned CG persists after reload');
+  await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  const archiveB=await playerPage('archive-B');await archiveB.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(archiveB,'characters');
+  assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.archive.records().length),0);
+  await archiveB.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  assert.equal(await archiveB.getByRole('button',{name:/^回顧.*CG$/}).count(),0,"another player cannot review A's unlocks");
+  await archiveB.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  await archiveB.evaluate(()=>{const a=window.__yakyukenTest.archive;for(let i=0;i<14;i++)a.leave(a.begin('dealer'));});
+  await archiveB.setViewportSize({width:320,height:568});await frame(archiveB);
+  await archiveB.getByRole('button',{name:'遊玩紀錄',exact:true}).click();await archiveB.getByRole('button',{name:'下一頁遊玩紀錄',exact:true}).click();
+  await archiveB.getByRole('button',{name:'上一頁遊玩紀錄',exact:true}).waitFor();await archiveB.screenshot({path:`${output}/archive-small-history-page-2.png`});
+  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.archive.records().length),1,"another player cannot replace A's matches");
+  await archiveA.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(archiveA,'selecting');
+  await archivePlay(archiveA,'win');await advance(archiveA);await archivePlay(archiveA,'win');
+  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.archive.isUnlocked('dealer',2)),true);
+  await archiveA.getByRole('button',{name:'再挑戰一次',exact:true}).click();await phase(archiveA,'selecting');
+  await archivePlay(archiveA,'loss');await advance(archiveA);await archivePlay(archiveA,'loss');await phase(archiveA,'characters');
+  assert.deepEqual(await archiveA.evaluate(()=>window.__yakyukenTest.archive.records().map(r=>r.status).sort()),['left','lost','won']);
+  const blocked=await archiveContext.newPage();blocked.on('pageerror',error=>errors.push(error.message));
+  await blocked.addInitScript(()=>{window.__qaPlayer='archive-blocked';Storage.prototype.setItem=()=>{throw new Error('Storage blocked');};});
+  await blocked.goto(`${origin}/yakyuken-preview.html`);await startTable(blocked);await archivePlay(blocked,'win');
+  assert.equal(await blocked.evaluate(()=>window.__yakyukenTest.archive.persistent),false);
+  assert.equal(await blocked.evaluate(()=>window.__yakyukenTest.archive.records()[0].wins),1);
+  await blocked.getByRole('button',{name:'CG 收藏',exact:true}).click();await blocked.screenshot({path:`${output}/archive-blocked-storage.png`});
+  await archiveContext.close();checks.push('player-scoped CG and one-row match history persist across reload; draws, leaving, wins, losses, gallery locks, pagination, account isolation and blocked storage work');
 
   for(const [width,height] of [[320,568],[390,844],[844,390],[768,1024],[1600,900]]){
     const rule=DEALER;
@@ -316,10 +370,10 @@ try {
     assert.equal((await canvasState(challengePage)).challengeStatus,'','the finished challenge is cleared after returning to selection');
     await challengePage.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(challengePage,'selecting');
     assert.deepEqual([(await canvasState(challengePage)).wins,(await canvasState(challengePage)).losses,(await canvasState(challengePage)).round],['0','0','0']);
-    assert.equal(await challengePage.evaluate(()=>Object.hasOwn(window.__yakyukenTest,'history')),false);
+    assert.equal(await challengePage.evaluate(()=>window.__yakyukenTest.archive.records().length),3,'victory, defeat and new entry are separate matches');
     await challengeContext.close();
   }
-  checks.push('character-bound rules, draws, cumulative wins, exact win/loss endings, rewards, victory retry and automatic defeat return work across five screen sizes without game history');
+  checks.push('character-bound rules, draws, cumulative wins, exact win/loss endings, rewards, victory retry and automatic defeat return work across five screen sizes with one persistent record per match');
 
   const fluid=await context.newPage();fluid.on('pageerror',error=>errors.push(error.message));
   await fluid.goto(`${origin}/yakyuken-preview.html`);await phase(fluid,'games');
@@ -362,7 +416,7 @@ try {
   });
   assert.equal(wardrobeState.pose,1);assert.equal(wardrobeState.old,false,'no previous outfit is presented');assert.equal(wardrobeState.next,1);
   assert.equal(wardrobeState.filters,0,'the live game has no per-frame blur filter');assert.equal(wardrobeState.texture,true);
-  await wardrobePage.evaluate(()=>{const s=window.__yakyukenTest;void s.confirm();s.select('paper');s.visitScreen('games');s.openModal('help');});
+  await wardrobePage.evaluate(()=>{const s=window.__yakyukenTest;void s.confirm();s.select('paper');s.visitScreen('games');s.openModal('collection');});
   assert.equal((await canvasState(wardrobePage)).round,'1');assert.equal((await canvasState(wardrobePage)).selected,'rock');assert.equal((await canvasState(wardrobePage)).screen,'table');
   await wardrobePage.setViewportSize({width:390,height:844});
   await wardrobePage.waitForFunction(()=>window.__yakyukenTest.layout.ui.width===390);

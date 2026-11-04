@@ -14,6 +14,7 @@ import {Motion} from './pixi/motion.js';
 import {WardrobeTransition,createWardrobeGradients,createWardrobeBackdrop,destroyWardrobeBackdrop} from './pixi/wardrobe-transition.js';
 import {earnedPose,resultDialogue} from './duel-presentation.js';
 import {createChallenge,playChallengeRound} from './challenge.js';
+import {PlayerArchive} from './player-archive.js';
 import {createTable} from './pixi/table.js';
 import {label,PALETTE,PixiButton} from './pixi/ui.js';
 import {buildSlotHud,updateSlotHud} from './pixi/chrome.js';
@@ -53,6 +54,13 @@ export class YakyukenScene {
   modal = null;
   epoch = 0;
   disposed = false;
+  matchId = null;
+  historyPage = 0;
+  cgIndex = 0;
+
+  constructor({playerId='local-guest',storage}={}){
+    this.archive=new PlayerArchive({playerId,...(storage===undefined?{}:{storage})});
+  }
 
   async init(host) {
     this.host = host;
@@ -111,6 +119,7 @@ export class YakyukenScene {
     });this.observer.observe(host);
     document.addEventListener('keydown',event => this.keydown(event),{signal:this.abort.signal});
     document.addEventListener('visibilitychange',() => {if(document.hidden)this.pause();else this.resume();},{signal:this.abort.signal});
+    addEventListener('storage',event=>{if(this.archive.owns(event.key) && ['collection','history'].includes(this.modal))this.openModal(this.modal);},{signal:this.abort.signal});
     // A cross-document return starts on the same plain cover as the slot exit.
     // Keep the lobby hidden until its incoming cover exists to prevent a flash.
     if(lobbyArrival)this.root.visible=false;
@@ -243,15 +252,16 @@ export class YakyukenScene {
       // Graphics from a world that may be replaced by a viewport resize.
       this.app.render();
       if(!await overlay.finish() || this.disposed)return false;
-      if(kind==='table')this.entries++;
-      if(kind==='reselect'){this.challenge=null;this.completedRounds=0;this.presentedRound=0;this.dialogue='';this.pose=0;this.ending=false;}
+      if(kind==='table'){this.entries++;this.matchId=this.archive.begin(this.selectedCharacter);}
+      if(kind==='lobby'){this.archive.leave(this.matchId);this.matchId=null;}
+      if(kind==='reselect'){this.matchId=null;this.challenge=null;this.completedRounds=0;this.presentedRound=0;this.dialogue='';this.pose=0;this.ending=false;}
       this.entering=false;overlay.destroy();this.entryOverlay=null;
       this.world.interactiveChildren=true;this.world.accessibleChildren=true;this.updateControls();return true;
     }catch{
       if(this.disposed)return false;
       this.entering=false;
       if(kind==='reselect'){
-        this.screen='characters';this.phase='selecting';this.challenge=null;this.completedRounds=0;this.presentedRound=0;this.dialogue='';this.pose=0;this.ending=false;this.resize();
+        this.screen='characters';this.phase='selecting';this.matchId=null;this.challenge=null;this.completedRounds=0;this.presentedRound=0;this.dialogue='';this.pose=0;this.ending=false;this.resize();
       }else if(this.screen!==source){this.screen=source;this.phase='selecting';this.resize();}
       overlay.fail();this.updateControls();this.world.interactiveChildren=false;this.world.accessibleChildren=false;return false;
     }
@@ -271,6 +281,7 @@ export class YakyukenScene {
       const restarting=this.challenge.status!=='playing';
       if(restarting){
         this.challenge=createChallenge(this.selectedCharacter);this.completedRounds=0;this.presentedRound=0;
+        this.matchId=this.archive.begin(this.selectedCharacter);
       }
       this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.dialogue='';
       this.playerCards.forEach((card,index) => {card.lock(false);card.choose(false);card.rotation=(index-1)*.055;});
@@ -279,6 +290,7 @@ export class YakyukenScene {
     }
     if(!this.selected)return;
     this.challenge=playChallengeRound(this.challenge,this.selected);
+    this.archive.update(this.matchId,this.challenge);
     this.duel=this.challenge.last;this.completedRounds=this.challenge.rounds;
     this.phase='presenting';this.dealerStage='thinking';this.playerCards.forEach(card => card.lock(true));this.updateControls();
     const epoch=this.epoch,card=this.playerCards.find(value => value.move === this.selected);
@@ -324,9 +336,14 @@ export class YakyukenScene {
   }
 
   openModal(type) {
-    if(!['menu','help','settings','wardrobe'].includes(type))return;
-    if(this.disposed || this.entering || this.entryOverlay || this.ending || this.phase === 'presenting' || this.changing || type==='wardrobe' && this.screen!=='table')return;
+    if(!['menu','collection','cg','history','settings'].includes(type))return;
+    if(type==='cg' && !this.archive.isUnlocked(this.selectedCharacter,this.cgIndex))return;
+    if(this.disposed || this.entering || this.entryOverlay || this.ending || this.phase === 'presenting' || this.changing)return;
     this.closeModal();this.modal=type;this.buildModal(type);
+  }
+  openCG(index){
+    if(!this.archive.isUnlocked(this.selectedCharacter,index) || !this.dealerTextures[index])return false;
+    this.cgIndex=index;this.openModal('cg');return this.modal==='cg';
   }
   closeModal() {
     this.modal=null;if(this.modalRoot){this.modalRoot.destroy({children:true});this.modalRoot=null;}
@@ -365,7 +382,7 @@ export class YakyukenScene {
   resume() {if(!this.disposed && this.dealerTextures && !document.hidden){this.motion.suspended=false;if(this.entryOverlay)this.entryOverlay.motion.suspended=false;this.audio.resumeMusic();this.app.start();}}
   async unload() {const urls=[...this.loaded];this.loaded.clear();await Promise.allSettled(urls.map(url => Assets.unload(url)));}
   async destroy() {
-    if(this.disposed)return;this.disposed=true;this.abort.abort();this.observer?.disconnect();if(this.resizeFrame)cancelAnimationFrame(this.resizeFrame);this.motion.destroy();this.wardrobe?.destroy();this.wardrobe=null;this.entryOverlay?.destroy();this.entryOverlay=null;this.audio.destroy();
+    if(this.disposed)return;this.disposed=true;this.archive.leave(this.matchId);this.matchId=null;this.abort.abort();this.observer?.disconnect();if(this.resizeFrame)cancelAnimationFrame(this.resizeFrame);this.motion.destroy();this.wardrobe?.destroy();this.wardrobe=null;this.entryOverlay?.destroy();this.entryOverlay=null;this.audio.destroy();
     if(this.initialized){this.app.stop();this.app.destroy({removeView:true,releaseGlobalResources:true},{children:true});}
     destroyWardrobeBackdrop(this.wardrobeBackdrop);this.wardrobeBackdrop=null;
     this.entryGradients?.forEach(gradient=>gradient.destroy());this.entryGradients=null;

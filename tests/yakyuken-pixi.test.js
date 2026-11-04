@@ -10,7 +10,7 @@ import {lobbyLayout} from '../src/games/yakyuken/pixi/lobby-layout.js';
 import {CHARACTERS,canEnterCharacter} from '../src/games/yakyuken/characters.js';
 
 test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit around the character',() => {
-  for(const [width,height,touch] of [[1600,900,false],[1440,1000,false],[1100,800,false],[390,844,true],[320,568,true],[844,390,true],[600,420,true],[700,500,true],[768,1024,true],[544,680,true],[544,680,false]]){
+  for(const [width,height,touch] of [[1600,900,false],[1440,1000,false],[1100,800,false],[390,844,true],[320,568,true],[324,699,true],[360,640,true],[360,740,true],[844,390,true],[600,420,true],[700,500,true],[768,1024,true],[544,680,true],[544,680,false]]){
     const l=tableLayout(width,height,{touch});
     assert.equal(TABLE_MOVES.length,3);
     const row=l.playerCards,halfWidth=(84+113*row.perspective*.06)*row.scale,halfHeight=(113*row.perspective+84*.06)*row.scale;
@@ -18,7 +18,8 @@ test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit a
     assert.ok(row.y-halfHeight-l.confirmedLift>l.top && row.y+halfHeight<l.h,`${width}x${height}: raised player cards fit vertically`);
     const cardBottom=l.playerCards.y+halfHeight;
     assert.ok(cardBottom*l.scale<height,`${width}x${height}: player cards stay inside the viewport`);
-    assert.ok(l.dealer.height*l.scale*.44>(height-l.ui.headerHeight)*.45,`${width}x${height}: character remains the focus`);
+    const visibleActor=Math.min(l.dealer.height,(l.table.y-l.table.ry)-l.dealer.y)*l.scale;
+    assert.ok(visibleActor>(height-l.ui.headerHeight)*.45,`${width}x${height}: the visible character remains the focus`);
     assert.equal(l.ui.deck,undefined);
     if(height<550)assert.equal(l.logo.width,0,'compact landscape keeps the progress wing clear of the logo');
     if(l.stackedControls)assert.ok(cardBottom*l.scale<l.status.y-16,`${width}x${height}: cards clear the result text and bottom action`);
@@ -36,6 +37,21 @@ test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit a
     assert.ok(row.scale*l.scale*156>oldWidth*1.15,'player cards are visibly larger than the previous layout');
   }
   assert.throws(() => tableLayout(0,900));
+});
+
+test('tall phones keep the head and shoulder gestures clear of the raised side cards',()=>{
+  for(const [width,height] of [[360,800],[375,812],[390,844],[393,852],[412,915],[432,932],[375,1000],[430,1000],[375,1200]]){
+    const l=tableLayout(width,height),p=l.progress,actorHeight=l.dealer.height*l.scale,actorTop=l.dealer.y*l.scale;
+    assert.ok(actorHeight<=width*2.15,'portrait magnification is limited by phone width');
+    assert.ok(p.y+p.height/2+9<actorTop+actorHeight*.10,'both card bottoms clear the shoulder/hand area');
+    assert.ok(p.x+p.width/2<width/2-actorHeight*.115,'left card clears the protected head area');
+    assert.ok(width-p.x-p.width/2>width/2+actorHeight*.115,'right card clears the protected head area');
+    const visibleActor=Math.min(actorHeight,(l.table.y-l.table.ry)*l.scale-actorTop);
+    assert.ok(visibleActor>(height-l.ui.headerHeight)*.45,'width fitting still gives the character enough visible height');
+  }
+  const a=tableLayout(390,844),b=tableLayout(391,845);
+  assert.ok(Math.abs(a.dealer.height*a.scale-b.dealer.height*b.scale)<5);
+  assert.ok(Math.abs(a.progress.y-b.progress.y)<2,'nearby phone sizes do not jump between layouts');
 });
 
 test('Pixi Yakyuken chrome: slot-sized header preserves readable typography without a bottom deck',()=>{
