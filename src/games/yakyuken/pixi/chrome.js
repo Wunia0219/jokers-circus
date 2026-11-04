@@ -3,27 +3,26 @@ import {icon} from '../../../ui/shared/icons.js';
 import {label,PALETTE,PixiButton,slotIcon} from './ui.js';
 import {TABLE_MOVE_NAMES} from './layout.js';
 import {yakyukenHeaderLayout} from './header-layout.js';
-import {difficultyRule} from '../challenge.js';
+import {characterRule} from '../characters.js';
 
 function at(node,x,y,parent){node.position.set(x,y);parent.addChild(node);return node;}
 function leftLabel(text,size,color,x,y,parent,options={}){const node=label(text,size,color,options);node.anchor.set(0,.5);return at(node,x,y,parent);}
 
 function buildProgress(scene,hud){
-  const {progress,dealerCard,scale}=scene.layout,{x,y,width:w,height:h}=progress,rule=difficultyRule(scene.selectedDifficulty);
+  const {progress,dealerCard,scale}=scene.layout,{x,y,width:w,height:h}=progress,rule=characterRule(scene.selectedCharacter);
   const score=at(new Container({label:'challenge-progress',eventMode:'none'}),x,y,hud);scene.score=score;
   const frame=new Sprite(scene.cardTextures.progress);frame.anchor.set(.5);frame.width=w;frame.height=h;score.addChild(frame);
-  const titleSize=Math.max(12,Math.min(14,w*.09)),titleY=y-h/2-15;
+  const titleSize=Math.max(12,w*.08),titleY=y-h/2-15;
   at(label('本場進度',titleSize,PALETTE.gold,{letterSpacing:1}),x,titleY,hud);
   at(label('荷官出牌',titleSize,PALETTE.gold,{letterSpacing:1}),dealerCard.x*scale,titleY,hud);
-  at(label('難度'+rule.name,Math.max(11,w*.08),PALETTE.gold),0,-h*.36,score);
   for(const [index,[name,target,color]] of [['勝',rule.winsRequired,PALETTE.bright],['敗',rule.lossLimit,0xe8b9bc]].entries()){
-    const rowY=index?h*.24:-h*.10;
-    at(label(name,Math.max(12,w*.095),color),-w*.29,rowY,score);
-    const number=at(label('0',Math.max(28,w*.34),color,{fontFamily:['Georgia','serif'],fontWeight:'bold'}),-w*.055,rowY,score);
-    at(label('/ '+target,Math.max(12,w*.105),PALETTE.muted),w*.25,rowY+w*.025,score);
+    const rowY=(index?1:-1)*h*.22;
+    at(label(name,Math.max(12,w*.095),color),-w*.28,rowY,score);
+    const number=at(label('0',Math.max(28,w*.34),color,{fontFamily:['Georgia','serif'],fontWeight:'bold'}),0,rowY,score);
+    at(label('/ '+target,Math.max(12,w*.105),PALETTE.muted),w*.28,rowY+w*.025,score);
     if(index)scene.scoreLosses=number;else scene.scoreWins=number;
   }
-  score.addChild(new Graphics().moveTo(-w*.27,h*.07).lineTo(w*.27,h*.07).stroke({color:PALETTE.gold,width:.7,alpha:.22}));
+  score.addChild(new Graphics().moveTo(-w*.27,0).lineTo(w*.27,0).stroke({color:PALETTE.gold,width:.7,alpha:.22}));
 }
 
 export function buildSlotHud(scene){
@@ -73,11 +72,11 @@ export function updateSlotHud(scene){
   scene.lobbyButton?.setEnabled(scene.phase!=='presenting' && !scene.changing);
   if(scene.screen!=='table' || !scene.confirmButton)return;
   const {phase,selected,duel}=scene,confirmed=phase==='confirmed';
-  const rule=difficultyRule(scene.selectedDifficulty),challenge=scene.challenge,finished=challenge?.status!=='playing';
+  const rule=characterRule(scene.selectedCharacter),challenge=scene.challenge,finished=challenge?.status!=='playing';
   const pending=phase==='presenting'?duel?.outcome:null;
   const wins=(challenge?.wins || 0)-Number(pending==='win'),losses=(challenge?.losses || 0)-Number(pending==='loss');
   scene.scoreWins.text=String(wins);scene.scoreLosses.text=String(losses);
-  scene.scoreDescription='難度'+rule.name+'，'+wins+' 勝，目標 '+rule.winsRequired+' 勝；'+losses+' 敗，上限 '+rule.lossLimit+' 敗';
+  scene.scoreDescription=rule.name+'，'+wins+' 勝，目標 '+rule.winsRequired+' 勝；'+losses+' 敗，上限 '+rule.lossLimit+' 敗';
   const next=finished?'再挑戰一次':'下一局';
   scene.confirmButton.setText(confirmed?next:phase==='presenting'?'荷官出牌中…':'確認出牌');
   scene.confirmButton.setName(confirmed?next:'確認出牌');

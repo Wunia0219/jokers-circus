@@ -22,10 +22,10 @@ test('yakyuken: charge once, draw free, cumulative wins survive a loss and pay o
   assert.deepEqual([state.session.wins,state.session.losses,state.session.status],[1,1,'playing']);
   state = playRound(state,'scissors','paper');
   assert.equal(state.session.status,'won');
-  assert.equal(state.balance,11000);
+  assert.equal(state.balance,11500);
   assert.throws(() => playRound(state,'paper','rock'));
   const restored = restorePreview(JSON.stringify(state));
-  assert.equal(restored.balance,11000);
+  assert.equal(restored.balance,11500);
   assert.throws(() => playRound(restored,'paper','rock'));
 });
 
@@ -85,10 +85,10 @@ test('yakyuken: opponent chosen before input, double clicks ignored and reload d
   release(); await first;
   assert.equal(choices,2);
   const second = controller.play('paper');
-  assert.equal(JSON.parse(saved).balance,11000);
+  assert.equal(JSON.parse(saved).balance,11500);
   const reloaded = new PreviewController({view:{render(){}},storage,chooseMove:() => {throw new Error('Terminal must not redraw');}});
-  assert.equal(reloaded.state.balance,11000); assert.equal(await reloaded.play('paper'),false);
-  release(); await second; assert.equal(controller.state.balance,11000);
+  assert.equal(reloaded.state.balance,11500); assert.equal(await reloaded.play('paper'),false);
+  release(); await second; assert.equal(controller.state.balance,11500);
 });
 
 test('yakyuken: presentation failure cannot reverse settlement, storage failure remains playable', async () => {
@@ -98,7 +98,7 @@ test('yakyuken: presentation failure cannot reverse settlement, storage failure 
   await assert.rejects(controller.play('paper'),/Visual failed/);
   assert.equal(controller.state.session.wins,1); assert.equal(controller.busy,false);
   await assert.rejects(controller.play('paper'),/Visual failed/);
-  assert.equal(controller.state.balance,11000);
+  assert.equal(controller.state.balance,11500);
   controller.destroy(); assert.equal(controller.start(),false);
 });
 

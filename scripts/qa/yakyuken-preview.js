@@ -5,7 +5,7 @@ import {launchBrowser} from './helpers/browser.js';
 import {ENTRY_TIMING} from '../../src/games/yakyuken/pixi/entry-state.js';
 import {slotHeaderLayout,yakyukenHeaderLayout} from '../../src/games/yakyuken/pixi/header-layout.js';
 import {tableLayout,TABLE_MOVES} from '../../src/games/yakyuken/pixi/layout.js';
-import {DIFFICULTIES} from '../../src/games/yakyuken/challenge.js';
+import {DEALER} from '../../src/games/yakyuken/characters.js';
 
 const port=4196,origin=`http://127.0.0.1:${port}`,output='test-results/yakyuken-pixi';
 mkdirSync(output,{recursive:true});
@@ -32,7 +32,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
 const checks=[],errors=[],requests=[],entryEvidence=[],entryReleases=[];
 let browser;
 const watchEntryBindings=context=>context.on('page',page=>page.on('console',message=>{if(message.type()==='warning' && message.text().includes('[BindGroup]'))errors.push(message.text());}));
-const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===21 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
+const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===22 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => document.querySelector('canvas')?.dataset.phase===expected,value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
@@ -98,7 +98,7 @@ const returnLobby=async page=>{
   await assertHeader(page,(await canvasState(page)).screen);
   await page.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(page,'games');
 };
-const startTable=async(page,screenshots,difficulty)=>{
+const startTable=async(page,screenshots)=>{
   await phase(page,'games');
   await assertHeader(page,'games');
   if(screenshots)await page.screenshot({path:`${output}/${screenshots}-lobby.png`});
@@ -109,16 +109,9 @@ const startTable=async(page,screenshots,difficulty)=>{
   assert.equal(await page.getByRole('button',{name:'選擇第二位來賓',exact:true}).count(),0,'unavailable characters cannot enter');
   await assertHeader(page,'characters');
   if(screenshots)await page.screenshot({path:`${output}/${screenshots}-characters.png`});
-  if(difficulty){
-    await page.getByRole('button',{name:'選擇難度',exact:true}).click();
-    for(const rule of DIFFICULTIES){
-      const box=await page.getByRole('button',{name:`難度${rule.name}`,exact:true}).boundingBox();
-      assert.ok(box.width>=44 && box.height>=44 && box.x>=0 && box.x+box.width<=page.viewportSize().width,'difficulty has a visible touch target');
-    }
-    await page.getByRole('button',{name:`難度${DIFFICULTIES[difficulty-1].name}`,exact:true}).click();
-    if(screenshots)await page.screenshot({path:`${output}/${screenshots}-difficulty.png`});
-    await page.getByRole('button',{name:'使用此難度',exact:true}).click();
-  }
+  assert.equal(await page.getByRole('button',{name:'選擇難度',exact:true}).count(),0);
+  await page.evaluate(()=>window.__yakyukenTest.selectCharacter('guest-4'));
+  assert.equal((await canvasState(page)).character,'dealer','unavailable characters cannot change the selected rules');
   await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(page,'selecting');
   await assertTableWings(page);
   await assertHeader(page,'table');
@@ -161,6 +154,12 @@ try {
   assert.equal((await canvasState(page)).selected,'rock');
   await page.getByRole('button',{name:'選擇剪刀',exact:true}).click();
   assert.equal((await canvasState(page)).selected,'scissors');
+  await page.waitForFunction(()=>{
+    const s=window.__yakyukenTest,c=s.playerCards.find(card=>card.selected);
+    return Math.abs(c.y-(c.baseY-s.layout.selectedLift))<.1;
+  });
+  assert.ok(await page.evaluate(()=>{const s=window.__yakyukenTest,c=s.playerCards.find(card=>card.selected);return (c.baseY-c.y)*s.layout.scale>=28;}),'click selection visibly raises the card before confirmation');
+  await page.screenshot({path:`${output}/desktop-hand-picked.png`});
   await page.evaluate(() => {
     window.__dealerStages=[];window.__dealerFaces=[];
     new MutationObserver(() => {const data=document.querySelector('canvas').dataset;if(!window.__dealerStages.includes(data.dealerStage))window.__dealerStages.push(data.dealerStage);window.__dealerFaces.push({stage:data.dealerStage,fronts:data.dealerFrontCount,scale:window.__yakyukenTest.dealerCards[0].visual.scale.x});}).observe(document.querySelector('canvas'),{attributes:true,attributeFilter:['data-dealer-stage','data-dealer-front-count']});
@@ -276,11 +275,11 @@ try {
   assert.ok(requests.some(url=>url.includes('/yakyuken/challenge.js')));
   checks.push('resize preserves selection and pose; probability engine loads without wallet, legacy controller or Discord');
 
-  for(const rule of DIFFICULTIES){
-    const viewports=[[320,568],[390,844],[844,390],[768,1024],[1600,900]], [width,height]=viewports[rule.id-1];
+  for(const [width,height] of [[320,568],[390,844],[844,390],[768,1024],[1600,900]]){
+    const rule=DEALER;
     const challengeContext=await browser.newContext({viewport:{width,height},reducedMotion:'reduce'});
     const challengePage=await challengeContext.newPage();challengePage.on('pageerror',error=>errors.push(error.message));
-    await challengePage.goto(`${origin}/yakyuken-preview.html`);await startTable(challengePage,`difficulty-${rule.id}`,rule.id);
+    await challengePage.goto(`${origin}/yakyuken-preview.html`);await startTable(challengePage,`character-dealer-${width}`);
     const play=async outcome=>{
       await challengePage.evaluate(value=>{window.__duelWeights=[value];},{win:0,loss:4000,draw:8000}[outcome]);
       await challengePage.getByRole('button',{name:'選擇拳頭',exact:true}).click();
@@ -299,7 +298,7 @@ try {
     }
     assert.equal((await canvasState(challengePage)).reward,String(rule.reward));
     assert.equal(await challengePage.getByRole('button',{name:'下一局',exact:true}).count(),0);
-    await challengePage.screenshot({path:`${output}/difficulty-${rule.id}-won.png`});
+    await challengePage.screenshot({path:`${output}/character-dealer-${width}-won.png`});
     await challengePage.getByRole('button',{name:'再挑戰一次',exact:true}).click();
     assert.deepEqual([(await canvasState(challengePage)).wins,(await canvasState(challengePage)).losses,(await canvasState(challengePage)).round],['0','0','0']);
     for(let losses=1;losses<=rule.lossLimit;losses++){
@@ -307,11 +306,34 @@ try {
       if(losses<rule.lossLimit)await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
     }
     assert.equal((await canvasState(challengePage)).reward,'0');
-    await challengePage.screenshot({path:`${output}/difficulty-${rule.id}-lost.png`});
+    await challengePage.screenshot({path:`${output}/character-dealer-${width}-lost.png`});
     assert.equal(await challengePage.evaluate(()=>Object.hasOwn(window.__yakyukenTest,'history')),false);
     await challengeContext.close();
   }
-  checks.push('all five difficulty selectors, draws, cumulative wins, exact win/loss endings, rewards and fresh retry work across screen sizes without game history');
+  checks.push('character-bound rules, draws, cumulative wins, exact win/loss endings, rewards and fresh retry work across five screen sizes without game history');
+
+  const fluid=await context.newPage();fluid.on('pageerror',error=>errors.push(error.message));
+  await fluid.goto(`${origin}/yakyuken-preview.html`);await phase(fluid,'games');
+  await fluid.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(fluid,'characters');
+  let previous;
+  for(const width of [1400,1499,1500,1600,1920,2560]){
+    const height=Math.round(width*9/16);await fluid.setViewportSize({width,height});await frame(fluid);
+    const box=await fluid.getByRole('button',{name:'進入野球拳試玩',exact:true}).boundingBox();
+    assert.ok(box.width>=280 && box.height>=48 && box.x+box.width<width && box.y+box.height<height);
+    if(previous && width-previous.width===1)assert.ok(Math.abs(box.width/previous.buttonWidth-1)<.003,'adjacent desktop widths do not jump in size');
+    previous={width,buttonWidth:box.width};
+    if(width===1920 || width===2560)await fluid.screenshot({path:`${output}/fluid-${width}-characters.png`});
+  }
+  await fluid.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(fluid,'selecting');
+  for(const width of [1400,1499,1500,1600,1920,2560]){
+    await fluid.setViewportSize({width,height:Math.round(width*9/16)});await frame(fluid);await assertTableWings(fluid);
+    assert.equal(await fluid.evaluate(()=>window.__yakyukenTest.score.children.some(node=>String(node.text || '').includes('難度'))),false);
+    if(width>=1920){
+      assert.ok(await fluid.evaluate(()=>window.__yakyukenTest.layout.progress.width)>=300,'large displays use large side panels');
+      await fluid.screenshot({path:`${output}/fluid-${width}-table.png`});
+    }
+  }
+  await fluid.close();checks.push('large desktop character panels and mirrored table wings scale fluidly, with no difficulty labels or adjacent-width size jump');
 
   const resizing=await context.newPage();resizing.on('pageerror',error => errors.push(error.message));
   await resizing.goto(`${origin}/yakyuken-preview.html`);await startTable(resizing);

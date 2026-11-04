@@ -5,9 +5,12 @@ export function tableLayout(width,height,{touch=false}={}) {
   if(!(width>0 && height>0))throw new Error('Viewport must have a positive size');
   const portrait=width/height<1.05,w=portrait?760:1600,scale=width/w,h=height/scale;
   const ui=slotChrome(width,height,touch),roomHeight=height-ui.headerHeight;
-  const compact=height<=500,stackedControls=ui.mobile || !compact && width<1500;
+  const compact=height<=500,stackedControls=ui.mobile || !compact && width<1000;
   const compactFeedback=stackedControls && roomHeight<600;
-  const footerSpace=stackedControls?(compactFeedback?106:130):32;
+  // Gradually reclaim the bottom margin on desktop, instead of changing the
+  // stage and both wings in one jump at a desktop width breakpoint.
+  const desktopRoom=Math.max(0,Math.min(1,(width-1000)/400));
+  const footerSpace=stackedControls?(compactFeedback?106:130):compact?32:130-98*desktopRoom;
   const gap=Math.min(18,Math.max(12,roomHeight*.025)),cardHalfRatio=113/156*.92+.035;
   let nearWidth=Math.max(52,Math.min(156,width*.25,roomHeight*(height<=500 ? .225 : .21)));
   if(compactFeedback)nearWidth=Math.min(nearWidth,Math.max(52,(roomHeight*.55-8-footerSpace-gap-2)/(2*cardHalfRatio)));
@@ -17,10 +20,10 @@ export function tableLayout(width,height,{touch=false}={}) {
   const actorTop=ui.headerHeight+8,actorHeight=(farEdge-actorTop)/.44;
   const nearGap=nearWidth*1.27;
   // Mirrored wings share their centre line, top edge, and visual weight.
-  const sideWidth=Math.min(184,width*.22,(farEdge-actorTop)*.58*156/214);
+  const sideWidth=Math.min(width*(ui.mobile ? .22 : .17),(farEdge-actorTop)*.70*156/214,(farEdge-actorTop-48)*156/214);
   const sideHeight=sideWidth*214/156,sideY=actorTop+(farEdge-actorTop)*.50;
   const sideX=width*(ui.mobile ? .18 : .25);
-  const lift=Math.min(10,gap*.45);
+  const lift=Math.min(32,nearWidth*.20);
   const actionWidth=stackedControls?200:210;
   const actionX=stackedControls?width/2:compact?width-12-actionWidth/2:width-sideX;
   const actionY=stackedControls?height-32:nearY+10;
@@ -34,7 +37,7 @@ export function tableLayout(width,height,{touch=false}={}) {
     dealerCard:{x:(width-sideX)/scale,y:sideY/scale,scale:sideWidth/156/scale,perspective:1},
     progress:{x:sideX,y:sideY,width:sideWidth,height:sideHeight},
     playerCards:{x:nearX/scale,y:nearY/scale,gap:nearGap/scale,scale:nearWidth/156/scale,perspective:.92},
-    selectedLift:lift*.75/scale,confirmedLift:lift/scale,hoverLift:Math.min(5,lift*.5)/scale,
+    selectedLift:lift/scale,confirmedLift:lift/scale,hoverLift:Math.min(8,lift*.3)/scale,
     dealerLift:0,
     playZone:{x:nearX/scale,y:nearY/scale},
     action:{x:actionX,y:actionY,width:actionWidth,height:52},

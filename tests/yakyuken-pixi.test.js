@@ -46,6 +46,29 @@ test('Pixi Yakyuken chrome: slot-sized header preserves readable typography with
   assert.equal(SLOT_UI.bodySize,13);assert.equal(SLOT_UI.dialogTitleSize,19);
 });
 
+test('desktop content grows with available space and stays continuous across nearby viewport sizes',()=>{
+  let previous;
+  for(const width of [1000,1100,1400,1499,1500,1600,1920,2560]){
+    const height=Math.round(width*9/16),table=tableLayout(width,height),menu=lobbyLayout(width,height,table.ui.headerHeight).character;
+    assert.ok(table.selectedLift*table.scale>=20,'selected card has a clear lift before confirmation');
+    assert.ok(table.confirmedLift>=table.selectedLift,'confirmation cannot lower the selected card');
+    assert.ok(menu.enterY+menu.buttonHeight/2<height);
+    assert.ok(menu.panel.x+menu.panel.width/2<=width);
+    if(width>=1920){
+      assert.ok(table.progress.width>=300,'large desktop side panels use the available room');
+      assert.ok(menu.slots[0].width>=130 && menu.buttonWidth>=400,'selection controls enlarge with the scene');
+    }
+    if(previous){
+      assert.ok(table.progress.width>=previous.wing,'a larger screen cannot shrink the wings');
+      if(width-previous.width===1){
+        assert.ok(Math.abs(table.progress.width/previous.wing-1)<.003);
+        assert.ok(Math.abs(menu.slots[0].width/previous.slot-1)<.003);
+      }
+    }
+    previous={width,wing:table.progress.width,slot:menu.slots[0].width};
+  }
+});
+
 test('Yakyuken shares slot avatar, checkin and five 48px tools at every viewport, without a logo',()=>{
   for(const [width,height] of [[320,568],[390,844],[544,680],[768,1024],[844,390],[1600,900]]){
     const h=yakyukenHeaderLayout(width,height);

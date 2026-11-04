@@ -1,10 +1,9 @@
 import {Container,Graphics,Sprite} from 'pixi.js';
-import {CHARACTERS,ENTRY_FEE} from '../characters.js';
+import {CHARACTERS,ENTRY_FEE,characterRule} from '../characters.js';
 import {label,PALETTE,PixiButton} from './ui.js';
 import {lobbyLayout} from './lobby-layout.js';
 import {createGameCover} from './game-cover.js';
 import {LOBBY_COVERS} from '../lobby-art.js';
-import {difficultyRule} from '../challenge.js';
 
 const at=(node,x,y,parent)=>{node.position.set(x,y);parent.addChild(node);return node;};
 function portrait(texture,parent,area,fullHeight){
@@ -31,24 +30,29 @@ export function buildLobby(scene){
     }
 
   }else{
-    const c=l.character;
+    const c=l.character,s=c.contentScale,rule=characterRule(scene.selectedCharacter);
     portrait(scene.dealerTextures[0],root,c.art,c.art.height/.58);
-    title('野球拳・選擇對手',c.infoX,c.headingY,root,ui.mobile?17:19);
-    title('命運荷官',c.infoX,c.nameY,root,ui.mobile?19:26,PALETTE.cream,{fontWeight:'500'});
-    if(!ui.mobile)title('酒紅襯衫、黑色背心，邀你入局。',c.infoX,c.descriptionY,root,13,PALETTE.muted);
+    if(!c.vertical){
+      const p=c.panel,frame=new Graphics({label:'character-selection-frame',eventMode:'none'});
+      frame.roundRect(p.x-p.width/2,p.y-p.height/2,p.width,p.height,18*s).fill({color:0x171525,alpha:.55}).stroke({color:PALETTE.gold,alpha:.35,width:s});
+      for(const sign of [-1,1])frame.moveTo(p.x+sign*p.width*.32,p.y-p.height/2).lineTo(p.x+sign*p.width*.42,p.y-p.height/2).stroke({color:PALETTE.gold,alpha:.85,width:2*s});
+      root.addChild(frame);
+    }
+    title('野球拳・選擇對手',c.infoX,c.headingY,root,c.vertical?17:20*s);
+    title(rule.name,c.infoX,c.nameY,root,c.vertical?19:30*s,PALETTE.cream,{fontWeight:'500'});
+    if(!c.vertical)title('酒紅襯衫、黑色背心，邀你入局。',c.infoX,c.descriptionY,root,14*s,PALETTE.muted);
+    title(`${rule.winsRequired} 勝通關 · ${rule.lossLimit} 敗結束 · 獎金 ${rule.reward.toLocaleString('en-US')}`,c.infoX,c.rulesY,root,c.vertical?Math.min(13,(width-24)/25):15*s,PALETTE.gold);
     CHARACTERS.forEach((character,index)=>{
       const r=c.slots[index],button=new PixiButton({name:`選擇${character.name}`,width:r.width,height:r.height,onPress:()=>scene.selectCharacter(character.id)});
       button.position.set(r.x,r.y);root.addChild(button);
-      button.background.clear().roundRect(-r.width/2,-r.height/2,r.width,r.height,9).fill(index?0x211a2b:0x57302f).stroke({color:index?0x6a5259:PALETTE.gold,width:index?1:2});
+      button.background.clear().roundRect(-r.width/2,-r.height/2,r.width,r.height,9*s).fill(index?0x211a2b:0x57302f).stroke({color:index?0x6a5259:PALETTE.gold,width:(index?1:2)*s});
       if(!index){portrait(scene.dealerTextures[0],button,{x:-r.width/2+3,y:-r.height/2+3,width:r.width-6,height:r.height-6},r.height*2.4);}
-      else title(['','II','III','IV','V'][index],0,-8,button,22,0x887783,{fontFamily:['Georgia','serif']});
-      button.addChild(new Graphics().rect(-r.width/2+3,r.height/2-24,r.width-6,21).fill({color:0x201522,alpha:.92}));
-      title(index?'準備中':'荷官',0,r.height/2-13,button,11,index?0xa493a0:PALETTE.gold);
+      else title(['','II','III','IV','V'][index],0,-8*s,button,22*s,0x887783,{fontFamily:['Georgia','serif']});
+      button.addChild(new Graphics().rect(-r.width/2+3,r.height/2-24*s,r.width-6,21*s).fill({color:0x201522,alpha:.92}));
+      title(index?'準備中':'荷官',0,r.height/2-13*s,button,Math.max(11,11*s),index?0xa493a0:PALETTE.gold);
       if(!character.enabled)button.setEnabled(false);
     });
-    title(`入場 ${ENTRY_FEE.toLocaleString('en-US')} 戲籌・本機暫不扣款`,c.infoX,c.feeY,root,12,PALETTE.muted);
-    const buttonWidth=Math.min(176,(width-44)/2),offset=(buttonWidth+12)/2;
-    at(new PixiButton({text:`難度${difficultyRule(scene.selectedDifficulty).name}`,name:'選擇難度',width:buttonWidth,height:44,fontSize:14,onPress:()=>scene.openModal('difficulty')}),c.infoX-offset,c.enterY,root);
-    at(new PixiButton({text:'進入試玩',name:'進入野球拳試玩',variant:'gold',width:buttonWidth,height:44,fontSize:14,onPress:()=>scene.enterCharacter()}),c.infoX+offset,c.enterY,root);
+    title(`入場 ${ENTRY_FEE.toLocaleString('en-US')} 戲籌・本機暫不扣款`,c.infoX,c.feeY,root,Math.max(12,12*s),PALETTE.muted);
+    at(new PixiButton({text:'進入試玩',name:'進入野球拳試玩',variant:'gold',width:c.buttonWidth,height:c.buttonHeight,fontSize:16*s,onPress:()=>scene.enterCharacter()}),c.infoX,c.enterY,root);
   }
 }
