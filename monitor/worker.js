@@ -9,7 +9,7 @@ export class CircusMonitor extends DurableObject {
   async fetch(request){
     if(request.method==='GET'&&new URL(request.url).pathname==='/status'){
       const state=await this.storage.get('monitor-state');
-      return Response.json({checkedAt:state?.checkedAt??null,alerts:state?.alerts||[],confirmed:(state?.count||0)>=2,delivery:state?.pending?.status||'idle',nextAttempt:state?.pending?.nextAttempt??null},{headers:{'Cache-Control':'no-store'}});
+      return Response.json({checkedAt:state?.checkedAt??null,alerts:state?.alerts||[],confirmed:(state?.count||0)>=2,delivery:state?.pending?.status||'idle',nextAttempt:state?.pending?.nextAttempt??null,lastAttemptAt:state?.lastAttemptAt??null,lastNotificationAt:state?.lastNotificationAt??null},{headers:{'Cache-Control':'no-store'}});
     }
     if(request.method!=='POST'||new URL(request.url).pathname!=='/check')return new Response(null,{status:404});
     return Response.json(await this.monitor.check());

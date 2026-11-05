@@ -77,6 +77,8 @@ Windows ARM 建議在 **Node 24 x64 環境**內完成以上全部步驟，確保
 
 單獨執行 `test:security` 前需先 build；`verify` 已按此順序執行。全新目錄沒有荷官的本機影格基準時，`test:dealer` 仍檢查格數、時長及資源生命週期；要比較修改前後像素，先依[素材文件](assets.md)保存同機基準。
 
+Discord SDK 隔離測試預設使用 `127.0.0.1:4195`。若既有開發預覽占用此埠，可設定 `DISCORD_SDK_QA_PORT` 為另一個固定的未占用埠，再執行 `verify:ci`；測試父頁／iframe、來源檢查與全部斷言使用同一個測試 origin，不會停止既有預覽或自動重試換埠。
+
 `.github/workflows/verify.yml` 在 pull request、main 推送或手動觸發時執行 `verify:ci`；安裝前先檢查 `.node-version`、`packageManager`、engine、lockfile、Netlify、Docker 與 CI 是否一致，搭配 Java 21、Chromium 與經雜湊核對的官方 emulator。安裝後先稽核，high／critical 漏洞會阻止驗證通過。workflow 只有讀取程式碼權限，不注入正式憑證、不部署、不執行正式資料清理。Actions 提交已鎖定；遠端結果以實際 workflow 執行為準。設定參考 [Playwright CI 文件](https://playwright.dev/docs/ci-intro)與 [GitHub 診斷附件](https://docs.github.com/en/actions/tutorials/store-and-share-data)。
 
 ## 本機完整錢包

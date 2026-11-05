@@ -39,4 +39,4 @@ Paid 不解除技術容量限制：完整加密快照仍限制 128 MiB／8,192 �
 
 ## 用量監測
 
-外部排程依方案處理：Free 提供每日門檻與耗盡預估；Paid 保留每日觀測及 API 故障／恢復通知，不再把 Free 額度當作停服上限。每日查詢未涵蓋月累計、Worker CPU 與 GB-month，不能取代 Cloudflare Billing。Firestore 八成提醒與備份監控另行保留，見[監控](monitoring.md)。
+外部排程依方案處理：Free 提供每日門檻與耗盡預估；Paid 保留每日觀測及 API 故障／恢復通知，不再把 Free 額度當作停服上限。每日查詢未涵蓋月累計、Worker CPU 與 GB-month，不能取代 Cloudflare Billing。Firestore 免費額度八成推播已依 2026-11-05 指示移除，用量記錄與備份實體容量／故障監控保留，見[監控](monitoring.md)。

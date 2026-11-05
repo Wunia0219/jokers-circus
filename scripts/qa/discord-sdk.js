@@ -4,9 +4,11 @@ import {launchBrowser,createQaServer} from './helpers/browser.js';
 import {checkDiscordSdk} from '../security/patch-discord-sdk.js';
 
 checkDiscordSdk();
-const out='test-results/discord-sdk',origin='http://127.0.0.1:4195';
+const port=Number(process.env.DISCORD_SDK_QA_PORT||4195);
+assert.ok(Number.isInteger(port)&&port>=1024&&port<=65535,'Invalid isolated SDK QA port');
+const out='test-results/discord-sdk',origin='http://127.0.0.1:'+port;
 await mkdir(out,{recursive:true});
-const server=await createQaServer(4195,[{name:'isolated-discord-host',configureServer(server){
+const server=await createQaServer(port,[{name:'isolated-discord-host',configureServer(server){
   server.middlewares.use((req,res,next)=>{
     if(!req.url.startsWith('/__sdk-'))return next();
     res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><body></body></html>');

@@ -34,10 +34,10 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  const source=join(dir,'source.sqlite'),local=new WalletStore({filename:source,environment:'test',guildIds:[guild],clock:()=>Date.now()-86400000,spinDelay:0});local.checkin(guild,user);local.spin(guild,user,20,'runtime-original-spin-0001');local.close();
  const settings={projectId:'demo-jokers-circus',environment:'test',namespace,schemaVersion:2,emulator:process.env.FIRESTORE_EMULATOR_HOST,quota:{filename:join(dir,'sdk-quota.sqlite'),projectId:'demo-jokers-circus'}};
  const sdk=new FirestoreWalletStore(settings,{guildIds:[guild]});t.after(()=>sdk.close());const plan=firestoreImportPlan(source,'test',{version:2});await importFirestore(sdk,plan);
- const rsa=generateKeyPairSync('rsa',{modulusLength:2048}),ed=generateKeyPairSync('ed25519'),key=randomBytes(32).toString('hex'),admin=randomBytes(32).toString('hex'),replies=[],announcements=[];
+ const rsa=generateKeyPairSync('rsa',{modulusLength:2048}),ed=generateKeyPairSync('ed25519'),key=randomBytes(32).toString('hex'),admin=randomBytes(32).toString('hex'),replies=[],announcements=[];let metadataReads=0;
  const config={modules:true,scriptPath:process.env.TEST_CLOUD_BUNDLE||'test-results/cloud-bundle/worker.js',compatibilityDate:'2026-07-30',compatibilityFlags:['nodejs_compat'],durableObjects:{CIRCUS_PROJECT:{className:'CircusProject',useSQLite:true}},resourcePersistencePath:join(dir,'durable'),bindings:{CLOUD_PLAN:'free',APP_ENV:'test',FIRESTORE_PROJECT_ID:settings.projectId,FIRESTORE_NAMESPACE:namespace,DISCORD_CLIENT_ID:client,DISCORD_CLIENT_SECRET:'isolated-fixture-secret',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'https://discord.com/api/webhooks/100000000000000005/isolated-fake-webhook',DISCORD_PUBLIC_KEY:ed.publicKey.export({format:'der',type:'spki'}).subarray(-32).toString('hex'),ALLOWED_GUILD_IDS:guild,CLOUD_ADMIN_TOKEN:admin,CLOUD_ENCRYPTION_KEY:key,GOOGLE_SERVICE_ACCOUNT_JSON:JSON.stringify({type:'service_account',project_id:settings.projectId,client_email:'fixture@example.invalid',private_key:rsa.privateKey.export({format:'pem',type:'pkcs8'})})},outboundService:async request=>{
    const u=new URL(request.url);if(u.hostname==='oauth2.googleapis.com')return MFResponse.json({access_token:'emulator-only',expires_in:3600});
-   if(u.hostname==='firestore.googleapis.com'||u.hostname==='firestore.asia-east1.rep.googleapis.com'){assert.ok(u.pathname.includes('/projects/demo-jokers-circus/'));const r=await fetch('http://127.0.0.1:8787'+u.pathname+u.search,{method:request.method,headers:{'Content-Type':'application/json',Authorization:'Bearer owner'},body:await request.text()});return new MFResponse(await r.text(),{status:r.status,headers:{'Content-Type':'application/json'}});}
+   if(u.hostname==='firestore.googleapis.com'||u.hostname==='firestore.asia-east1.rep.googleapis.com'){assert.ok(u.pathname.includes('/projects/demo-jokers-circus/'));const body=await request.text();if(JSON.parse(body).documents?.some(name=>name.endsWith('/meta/state')))metadataReads++;const r=await fetch('http://127.0.0.1:8787'+u.pathname+u.search,{method:request.method,headers:{'Content-Type':'application/json',Authorization:'Bearer owner'},body});return new MFResponse(await r.text(),{status:r.status,headers:{'Content-Type':'application/json'}});}
    if(request.url==='https://discord.com/api/oauth2/token')return MFResponse.json({access_token:'fixture-oauth-secret',scope:'identify guilds.members.read',expires_in:3600});
    if(u.pathname==='/api/v10/users/@me')return MFResponse.json(request.headers.get('authorization')?.startsWith('Bot ')?{id:client,bot:true}:{id:user,username:'isolated-runtime-test'});
    if(u.pathname==='/api/v10/channels/100000000000000006')return MFResponse.json({id:'100000000000000006',guild_id:guild,type:0});
@@ -95,7 +95,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  const checkin=await call('/api/checkin',{token,body:{}});assert.equal(checkin.status,200);assert.equal((await call('/api/checkin',{token,body:{}})).data.duplicate,true);
  const spin=await call('/api/spin',{token,body:{bet:20,requestId:'runtime-new-spin-request-0002'},headers:{'x-wallet-view':'compact-v1'}});assert.equal(spin.status,200,JSON.stringify(spin));
  if(casino)assert.equal(spin.data.round.recordCode,'P000001');
- if(casino){const current=(await call('/__ops/status',{headers:monitorHeaders})).data;assert.ok(current.quota.used.writes>20000);assert.equal(current.quota.enforcement,'notify-only');assert.equal(current.quota.scopes.highlights.enforcement,'notify-only');assert.deepEqual(current.operations.alerts.filter(alert=>alert.code.startsWith('QUOTA_')),[{code:'QUOTA_HIGH',severity:'warning',scope:'global'}],'quota stays a warning even before the first maintenance alarm has run');}
+ if(casino){const current=(await call('/__ops/status',{headers:monitorHeaders})).data;assert.ok(current.quota.used.writes>20000);assert.equal(current.quota.enforcement,'notify-only');assert.equal(current.quota.scopes.highlights.enforcement,'notify-only');assert.deepEqual(current.operations.alerts.filter(alert=>alert.code.startsWith('QUOTA_')),[],'paid usage is still recorded beyond the free allowance without threshold alerts');}
  const statusWithoutMeasurements=await call('/__ops/status?database=info',{adminAuth:true});assert.equal(statusWithoutMeasurements.status,200);assert.equal('spinTiming' in statusWithoutMeasurements.data,false);assert.equal('database' in statusWithoutMeasurements.data,false);
  if(casino){
    for(let i=0;i<150&&!announcements.some(p=>p.content?.includes('進入賭場'));i++)await delay(100);
@@ -126,6 +126,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    const previousBackup=(await call('/__ops/status',{headers:monitorHeaders})).data.backup.at;
    const started=await call('/__ops/backup',{adminAuth:true,body:{}});
    assert.equal(started.status,200);assert.equal(started.data.complete,false);
+   const metadataBeforeContinuation=metadataReads;
    await call('/api/casino-visit',{token,body:{action:'leave',instanceId:visitId}});
    for(let i=0;i<150&&!announcements.some(p=>p.content?.includes('離開賭場'));i++)await delay(100);
    assert.equal(announcements.filter(p=>p.content?.includes('進入賭場')).length,1);
@@ -135,6 +136,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    const deadline=Date.now()+90000;let completed;
    do{completed=(await call('/__ops/status',{headers:monitorHeaders})).data.backup;if(completed.at>previousBackup)break;await delay(250);}while(Date.now()<deadline);
    assert.ok(completed.at>previousBackup,'short casino alarms must continue an active backup without waiting ten minutes');
+   assert.ok(metadataReads-metadataBeforeContinuation<=1,'backup checkpoints must not repeat metadata housekeeping on every alarm');
  }
  assert.equal((await call('/__ops/pause',{adminAuth:true,body:{}})).status,200);
  for(let i=0;i<20;i++){const b=await call('/__ops/backup',{adminAuth:true,body:{}});assert.equal(b.status,200);if(i===0){await mf.dispose();mf=new Miniflare(convertV4MiniflareOptions(config));}if(b.data.complete)break;if(i===19)assert.fail('Resumed backup did not finish');}

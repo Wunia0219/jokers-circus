@@ -56,6 +56,9 @@ export class CircusProject extends DurableObject {
       if(quota)quota.scopes=Object.fromEntries(['maintenance','highlights'].map(scope=>[scope,{used:this.quota.totals(scope),limits:this.quota.identity().limits[scope],...(quota.enforcement?{enforcement:quota.enforcement}: {})}]));
       const backup=this.state.get('backup-status'),manifest=this.state.get('backup:'+this.state.get('backup-latest'));
       const status={version:APP_VERSION,cloudPlan:this.env.CLOUD_PLAN,mode:this.state.get('mode')||'unseeded',source:this.state.get('source'),backup:backup?{...backup,...(Number.isSafeInteger(manifest?.bytes)?{bytes:manifest.bytes,limitBytes:manifest.limitBytes,parts:manifest.parts,limitParts:manifest.format===2?BACKUP_MAX_PARTS:200}: {})}:null,alarm:this.state.get('alarm-status'),quota};
+      const job=this.state.get('backup-job'),retry=this.state.get('backup-retry');
+      if(job)status.backupProgress={phase:job.phase,cursor:job.cursor,target:job.target,startedAt:job.startedAt};
+      if(retry)status.backupRetry=retry;
       const casino=casinoVisitStatus(this.state.get('casino-visits'));
       if(casino)status.casino=casino;
       return json({...status,operations:operationsHealth(status)});
@@ -134,24 +137,38 @@ export class CircusProject extends DurableObject {
     try{
       const r=await this.runtime();
       const highlightDue=r.highlights&&(!r.casinoMaintenanceChecked||this.state.get('highlights-dirty'))&&now>=r.highlights.nextAttempt;
-      if(now>=due||highlightDue||this.state.get('backup-job')){await this.runMaintenanceAlarm();r.casinoMaintenanceChecked=true;if(now>=due)this.state.set('casino-maintenance-at',now+600000);}
+      const retry=this.state.get('backup-retry');
+      if(now>=due||highlightDue||this.state.get('backup-job')||retry&&now>=retry.nextAttempt){await this.runMaintenanceAlarm();r.casinoMaintenanceChecked=true;if(now>=due)this.state.set('casino-maintenance-at',now+600000);}
       await r.visits.sweep();await r.visits.flush();
       await this.schedule(r.visits.nextDelay());
     }catch{console.warn('Casino visit announcements deferred');await this.schedule(30000);}
   }
   async runMaintenanceAlarm(){
     try{
-      this.ctx.storage.sql.exec('DELETE FROM sessions WHERE expires<=?',Date.now());
-      const r=await this.runtime(),meta=await r.store.read(r.store.meta);r.store.checkMeta(meta);
-      const revision=meta.highlightsRevision??(meta.highlights?meta.nextId:0);
-      if(r.highlights&&(this.state.get('highlights-dirty')||revision!==(this.state.get('highlights-revision')||0))){
-        r.highlights.dirty=true;await r.highlights.flush();this.state.set('highlights-dirty',r.highlights.dirty);if(!r.highlights.dirty)this.state.set('highlights-revision',revision);
-        if(r.highlights.dirty)await this.schedule(Math.max(10000,r.highlights.nextAttempt-Date.now()));
+      const r=await this.runtime(),now=Date.now(),housekeepingDue=!r.maintenanceChecked||now>=(this.state.get('maintenance-next')||0);
+      const highlightDue=r.highlights&&this.state.get('highlights-dirty')&&now>=r.highlights.nextAttempt;
+      // Backup continuation must not turn metadata/outbox housekeeping into a
+      // per-second Firestore poll. Keep normal maintenance on its own clock.
+      if(housekeepingDue||highlightDue){
+        const meta=await r.store.read(r.store.meta);r.store.checkMeta(meta);
+        const revision=meta.highlightsRevision??(meta.highlights?meta.nextId:0);
+        if(r.highlights&&(this.state.get('highlights-dirty')||revision!==(this.state.get('highlights-revision')||0))){
+          r.highlights.dirty=true;await r.highlights.flush();this.state.set('highlights-dirty',r.highlights.dirty);if(!r.highlights.dirty)this.state.set('highlights-revision',revision);
+          if(r.highlights.dirty)await this.schedule(Math.max(10000,r.highlights.nextAttempt-Date.now()));
+        }
+        if(housekeepingDue){
+          this.ctx.storage.sql.exec('DELETE FROM sessions WHERE expires<=?',now);
+          this.ctx.storage.sql.exec('DELETE FROM quota_usage WHERE slot<?',now-86520000);
+          this.state.set('maintenance-next',now+600000);
+          r.maintenanceChecked=true;
+        }
       }
-      const b=this.state.get('backup-status');if(this.state.get('backup-job')||!b||Date.now()-b.at>=24*3600000){const result=await this.backupStep(r);if(!result.complete)await this.schedule(10000);}
-      this.ctx.storage.sql.exec('DELETE FROM quota_usage WHERE slot<?',Date.now()-86520000);
-      this.state.set('alarm-status',{ok:true,at:Date.now()});
-    }catch{this.state.set('alarm-status',{ok:false,at:Date.now()});}
+      const b=this.state.get('backup-status');if(this.state.get('backup-job')||this.state.get('backup-retry')||!b||Date.now()-b.at>=24*3600000){const result=await this.backupStep(r);if(!result.complete)await this.schedule(r.backup.nextDelay);}
+      this.state.set('alarm-status',{ok:!this.state.get('backup-retry'),at:Date.now()});
+    }catch{
+      this.state.set('alarm-status',{ok:false,at:Date.now()});
+      const retry=this.state.get('backup-retry');if(retry)await this.schedule(Math.max(1000,retry.nextAttempt-Date.now()));
+    }
     finally{if(this.state.get('mode')==='active')await this.schedule(600000);}
   }
 }

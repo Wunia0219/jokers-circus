@@ -8,7 +8,10 @@ const unpack=d=>{if(!d.exists)throw new Error('Backup document missing');return 
 // Each step uses at most 20 new ledger entries and the SAME Firestore readTime.
 // In-progress generations are never advertised as recoverable snapshots.
 export class CloudBackup {
-  constructor(store,state,vault){Object.assign(this,{store,state,vault});}
+  constructor(store,state,vault,{clock=Date.now}={}){Object.assign(this,{store,state,vault,clock});}
+  // Yield between bounded checkpoints without spending most of the one-hour
+  // Firestore snapshot window asleep. Retry deadlines survive DO restarts.
+  get nextDelay(){return Math.max(1000,(this.state.get('backup-retry')?.nextAttempt||0)-this.clock());}
   // REST batchGet/query send exactly one request, without SDK/transaction retries.
   // Reserve BEFORE each attempt; a failed/uncertain attempt is never refunded.
   // A subsequent alarm reserves again. Unknown adapters retain the old margin.
@@ -18,18 +21,35 @@ export class CloudBackup {
     const latest=this.state.get('backup-latest');if(!latest)throw new Error('Verified backup baseline required');
     const doc=(await this.read([this.store.meta]))[0],meta=unpack(doc);this.store.checkMeta(meta);const baseline=this.vault.manifest(latest);const snapshot=baseline.format===2?baseline.header:this.vault.load(latest);
     if(meta.nextId<snapshot.revision||snapshot.upstreamImportFingerprint!==(meta.importFingerprint??null))throw new Error('Backup source changed');
-    const generation=randomUUID(),job={generation,readTime:doc.readTime,target:meta.nextId,cursor:snapshot.revision,phase:'ledger',startedAt:Date.now(),collection:0,cursorId:null,highlights:meta.highlights===1};
+    const generation=randomUUID(),job={generation,readTime:doc.readTime,target:meta.nextId,cursor:snapshot.revision,phase:'ledger',startedAt:this.clock(),collection:0,cursorId:null,highlights:meta.highlights===1};
     if(!job.readTime)throw new Error('Missing consistent read time');
     this.vault.storage.transactionSync(()=>{this.vault.fork(generation,latest);this.state.set('backup-job',job);});return job;
   }
   async step(){
-    const job=this.state.get('backup-job')||await this.start();if(Date.now()-job.startedAt>50*60000){this.vault.storage.transactionSync(()=>{this.vault.discard(job.generation);this.state.set('backup-job',null);});throw new Error('Backup snapshot expired; retry from last verified generation');}
+    const retry=this.state.get('backup-retry');
+    if(retry?.nextAttempt>this.clock())return {complete:false,retryAt:retry.nextAttempt};
+    try{
+      const result=await this.checkpoint();
+      if(retry)this.state.set('backup-retry',null);
+      return result;
+    }catch(error){
+      const attempts=Math.min(16,(retry?.attempts||0)+1),now=this.clock();
+      // Never persist upstream messages, document paths or credentials.
+      this.state.set('backup-retry',{attempts,at:now,nextAttempt:now+Math.min(30*60000,60000*2**(attempts-1))});
+      throw error;
+    }
+  }
+  async checkpoint(){
+    const job=this.state.get('backup-job')||await this.start();
+    // Audit is local: once all remote pages are checkpointed, an old readTime
+    // does not invalidate them. Never discard a complete candidate before audit.
+    if(job.phase!=='audit'&&this.clock()-job.startedAt>50*60000){this.vault.storage.transactionSync(()=>{this.vault.discard(job.generation);this.state.set('backup-job',null);});throw new Error('Backup snapshot expired; retry from last verified generation');}
     const s=this.store,t={};
     // Convert an interrupted legacy checkpoint once, without changing its cursor.
     if(this.vault.manifest(job.generation).format===1)this.vault.save(job.generation,this.vault.load(job.generation));
     if(job.phase==='audit'){
       const result=this.vault.audit(job.generation);
-      this.vault.storage.transactionSync(()=>{this.vault.publish(job.generation);this.state.set('backup-job',null);this.state.set('backup-status',{ok:true,at:Date.now(),revision:result.revision,readTime:job.readTime});});return {complete:true};
+      this.vault.storage.transactionSync(()=>{this.vault.publish(job.generation);this.state.set('backup-job',null);this.state.set('backup-retry',null);this.state.set('backup-status',{ok:true,at:this.clock(),revision:result.revision,readTime:job.readTime});});return {complete:true};
     }
     for(const name of ['ledger','operations','rounds','wallets','highlight_events','highlight_boards'])t[name]=[];
     if(job.phase==='ledger'&&job.cursor<job.target){

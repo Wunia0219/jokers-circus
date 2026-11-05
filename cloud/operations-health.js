@@ -27,11 +27,9 @@ export function operationsHealth(status,{now=Date.now()}={}){
       add('QUOTA_UNAVAILABLE','critical',scope);continue;
     }
     quotaPercent[scope]=Object.fromEntries(metrics.map(key=>[key,Math.round(quota.used[key]/quota.limits[key]*1000)/10]));
-    if(quota.enforcement==='notify-only'){
-      if(metrics.some(key=>quota.used[key]>=quota.limits[key]*.8))add('QUOTA_HIGH','warning',scope);
-    }
-    else if(quota.blocked===true||metrics.some(key=>quota.used[key]>=quota.limits[key]))add('QUOTA_EXHAUSTED','critical',scope);
-    else if(metrics.some(key=>quota.used[key]>=quota.limits[key]*.8))add('QUOTA_HIGH','warning',scope);
+    // Free allowance percentages remain observable, but are not incidents.
+    // Keep real enforcement failures and invalid accounting visible.
+    if(quota.enforcement!=='notify-only'&&(quota.blocked===true||metrics.some(key=>quota.used[key]>=quota.limits[key])))add('QUOTA_EXHAUSTED','critical',scope);
   }
   alerts.sort((a,b)=>(a.code+':'+(a.scope||'')).localeCompare(b.code+':'+(b.scope||'')));
   return {ok:alerts.length===0,level:alerts.some(a=>a.severity==='critical')?'critical':alerts.length?'warning':'ok',checkedAt:now,alerts,backupAgeSeconds:backupAge===null?null:Math.floor(backupAge/1000),alarmAgeSeconds:alarmAge===null?null:Math.floor(alarmAge/1000),quotaPercent};

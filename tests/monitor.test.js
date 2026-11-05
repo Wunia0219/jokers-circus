@@ -44,7 +44,7 @@ test('maintenance health reports backup/alarm failures and every quota scope wit
   const status=healthy();assert.equal(operationsHealth(status,{now:START}).ok,true);
   status.backup.at=START-49*3600000;status.alarm.ok=false;status.quota.scopes.maintenance.used.reads=80;status.quota.scopes.highlights.used.reads=100;
   const result=operationsHealth(status,{now:START});
-  assert.deepEqual(result.alerts.map(a=>[a.code,a.scope||null]),[['ALARM_FAILED',null],['BACKUP_STALE',null],['QUOTA_EXHAUSTED','highlights'],['QUOTA_HIGH','maintenance']]);
+  assert.deepEqual(result.alerts.map(a=>[a.code,a.scope||null]),[['ALARM_FAILED',null],['BACKUP_STALE',null],['QUOTA_EXHAUSTED','highlights']]);
   assert.equal(result.quotaPercent.maintenance.reads,80);assert.equal(result.level,'critical');
   status.backup.at=START+61000;status.alarm.at=0;status.quota=null;
   assert.deepEqual(operationsHealth(status,{now:START}).alerts.map(a=>a.code),['ALARM_MISSING','BACKUP_MISSING','QUOTA_UNAVAILABLE']);
@@ -69,23 +69,151 @@ test('unchanged healthy checks stay quiet; persistent alerts and recovery each n
   const f=fixture();let monitor=f.create();await monitor.check();await tick(f,monitor);assert.equal(f.messages.length,0);
   f.target(()=>new Response(null,{status:503}));await tick(f,monitor);assert.equal(f.messages.length,0);await tick(f,monitor);assert.equal(f.messages.length,1);
   monitor=f.create();await tick(f,monitor);assert.equal(f.messages.length,1);
-  f.target(()=>Response.json(healthy(f.now)));await tick(f,monitor);await tick(f,monitor);assert.equal(f.messages.length,2);assert.match(f.messages[1].content,/服務恢復/);
+  f.target(()=>Response.json(healthy(f.now)));await tick(f,monitor);await tick(f,monitor);assert.equal(f.messages.length,1,'brief recovery cannot re-arm flapping alarms');
+  await tick(f,monitor);await tick(f,monitor);assert.equal(f.messages.length,2);assert.match(f.messages[1].content,/服務恢復/);
   await tick(f,f.create());assert.equal(f.messages.length,2);assert.ok(!JSON.stringify([...f.values]).includes(f.env.MONITORED_TOKEN));
 });
 
-test('quota percentage changes do not spam while a newly exhausted budget gets a new alert',async()=>{
+test('free allowance percentages stay quiet while a real enforced exhaustion still notifies',async()=>{
   const f=fixture();let used=80;f.target(()=>{const s=healthy(f.now);s.quota.used.reads=used;return Response.json(s);});const monitor=f.create();
-  await monitor.check();await tick(f,monitor);assert.equal(f.messages.length,1);
-  used=90;await tick(f,monitor);assert.equal(f.messages.length,1);
-  used=100;await tick(f,monitor);await tick(f,monitor);assert.equal(f.messages.length,2);
+  await monitor.check();await tick(f,monitor);assert.equal(f.messages.length,0);
+  used=90;await tick(f,monitor);assert.equal(f.messages.length,0);
+  used=100;await tick(f,monitor);await tick(f,monitor);assert.equal(f.messages.length,1);assert.match(f.messages[0].content,/使用額度已達上限/);
 });
 
-test('notification-only quota warns at 80 percent and stays quiet beyond 100 without declaring an outage',async()=>{
- const f=fixture();let used=79;f.target(()=>{const s=healthy(f.now);s.quota.used.reads=used;s.quota.enforcement='notify-only';return Response.json(s);});
- let monitor=f.create();await monitor.check();await tick(f,monitor);assert.equal(f.messages.length,0);
- used=80;await tick(f,monitor);await tick(f,monitor);assert.equal(f.messages.length,1);assert.match(f.messages[0].content,/八成/);
- for(const value of [99,100,150]){used=value;monitor=f.create();await tick(f,monitor);const result=await tick(f,monitor);assert.equal(f.messages.length,1);assert.deepEqual(result.alerts,[{code:'QUOTA_HIGH',severity:'warning',scope:'global'}]);}
- used=10;await tick(f,monitor);await tick(f,monitor);assert.equal(f.messages.length,2);assert.match(f.messages[1].content,/恢復/);
+test('individual incidents survive changing alert sets and restarts; stable warnings are not reposted',async()=>{
+ const f=fixture();let failed=false,stale=false,monitor=f.create();
+ f.target(()=>{const s=healthy(f.now);s.backup.at=f.now-(stale?49:30)*3600000;s.alarm.ok=!failed;s.quota.enforcement='notify-only';s.quota.used.reads=90;return Response.json(s);});
+ for(const value of [false,true,false,true,false]){
+   failed=value;monitor=f.create();await tick(f,monitor);await tick(f,monitor);
+ }
+ assert.equal(f.messages.length,2,'one backup message and one new alarm incident');
+ assert.match(f.messages[0].content,/備份超過 26 小時/);
+ assert.match(f.messages[1].content,/背景排程失敗/);
+ assert.doesNotMatch(f.messages[1].content,/備份超過|八成/,'new incident does not repeat old warnings');
+ // A genuine escalation must still notify despite the existing warning receipt.
+ stale=true;await tick(f,monitor);await tick(f,monitor);assert.equal(f.messages.length,3);
+ assert.match(f.messages[2].content,/備份超過 48 小時/);
+ // A sustained partial recovery alone must not bypass the family cooldown.
+ for(let i=0;i<4;i++)await tick(f,monitor);
+ failed=true;await tick(f,monitor);await tick(f,monitor);assert.equal(f.messages.length,3);
+ f.advance(6*3600000);await tick(f,monitor);assert.equal(f.messages.length,4);
+ assert.match(f.messages[3].content,/背景排程失敗/);
+});
+
+test('a stable warning confirms independently of a flapping alarm, and legacy receipts migrate quietly',async()=>{
+ const f=fixture();let failed=true;
+ f.target(()=>{const s=healthy(f.now);s.backup.at=f.now-30*3600000;s.alarm.ok=!failed;return Response.json(s);});
+ await tick(f,f.create());failed=false;await tick(f,f.create());assert.equal(f.messages.length,1);
+ assert.match(f.messages[0].content,/備份超過 26 小時/);
+ assert.doesNotMatch(f.messages[0].content,/背景排程失敗/);
+ const state=f.values.get('monitor-state');delete state.incidents;delete state.hadIncident;f.values.set('monitor-state',state);
+ await tick(f,f.create());assert.equal(f.messages.length,1,'upgrade retains existing delivered alert receipts');
+});
+
+test('uncertain delivery stays acknowledged when other incidents appear and disappear',async()=>{
+ const f=fixture();let failed=false;
+ f.target(()=>{const s=healthy(f.now);s.backup.at=f.now-30*3600000;s.alarm.ok=!failed;return Response.json(s);});
+ f.delivery(()=>{throw new Error('Unknown POST outcome');});
+ await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,1);
+ failed=true;await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,2);
+ assert.doesNotMatch(f.messages[1].content,/備份超過/);
+ failed=false;await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,2);
+ failed=true;await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,2,'set changes cannot resend either uncertain incident');
+});
+
+test('legacy blocked incidents and global Retry-After survive changes in the outgoing alert set',async()=>{
+ const f=fixture();const blocked=[{code:'BACKUP_DELAYED',severity:'warning'},{code:'ALARM_FAILED',severity:'critical'}];
+ f.values.set('monitor-state',{notified:alertFingerprint([]),count:0,pending:{fingerprint:alertFingerprint(blocked),status:'blocked'}});
+ f.target(()=>{const s=healthy(f.now);s.backup.at=f.now-30*3600000;return Response.json(s);});
+ await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,0,'partial recovery must not bypass a legacy blocked receipt');
+ const g=fixture();let failed=false;
+ g.target(()=>{const s=healthy(g.now);s.backup.at=g.now-30*3600000;s.alarm.ok=!failed;return Response.json(s);});
+ g.delivery(()=>Response.json({retry_after:3600},{status:429}));
+ await tick(g,g.create());await tick(g,g.create());assert.equal(g.messages.length,1);
+ failed=true;await tick(g,g.create());await tick(g,g.create());assert.equal(g.messages.length,1,'new alert must honor the existing webhook retry deadline');
+ g.delivery(()=>Response.json({id:'100000000000000009'}));g.advance(3600000);await g.create().check();assert.equal(g.messages.length,2);assert.match(g.messages[1].content,/背景排程失敗/);
+});
+
+test('notification-only allowance crossing stays quiet for every metric/scope and preserves accounting',async()=>{
+ const f=fixture();let used=79;
+ const status=()=>{const s=healthy(f.now);for(const q of [s.quota,...Object.values(s.quota.scopes)]){q.enforcement='notify-only';for(const key of Object.keys(q.used))q.used[key]=q.limits[key]*used/100;}return s;};
+ f.target(()=>Response.json(status()));
+ for(const value of [79,80,99,100,150,5000,10]){
+   used=value;const s=status(),original=structuredClone(s),health=operationsHealth(s,{now:f.now});
+   assert.deepEqual(s,original,'health never changes counters or caps');assert.deepEqual(health.alerts,[]);
+   for(const scope of ['global','maintenance','highlights'])for(const percent of Object.values(health.quotaPercent[scope]))assert.equal(percent,value);
+   for(let i=0;i<4;i++)await tick(f,f.create());
+ }
+ assert.equal(f.messages.length,0,'no threshold or artificial recovery notifications');
+});
+
+test('six hours of overnight flapping and alarm label changes generate one incident and one recovery',async()=>{
+ const f=fixture();let failure=null;
+ f.target(()=>{const s=healthy(f.now);if(failure==='failed')s.alarm.ok=false;if(failure==='stale')s.alarm.at=f.now-31*60000;return Response.json(s);});
+ for(let cycle=0;cycle<6;cycle++){
+   failure=cycle%2?'stale':'failed';for(let i=0;i<2;i++)await tick(f,f.create());
+   failure=null;for(let i=0;i<4;i++)await tick(f,f.create());
+ }
+ assert.equal(f.messages.length,2,'same-family hourly flapping cannot create an overnight message storm');
+ assert.match(f.messages[0].content,/背景排程失敗/);assert.match(f.messages[1].content,/服務恢復/);
+ failure='stale';await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,3,'genuine recurrence can notify after six hours');
+ f.target(()=>new Response(null,{status:401}));await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,4,'independent critical authorization failure is not muted');
+ assert.match(f.messages[3].content,/監控授權失效/);
+});
+
+test('a backup severity escalation bypasses family cooldown while downgrade stays quiet',async()=>{
+ const f=fixture();let hours=30;
+ f.target(()=>{const s=healthy(f.now);s.backup.at=f.now-hours*3600000;return Response.json(s);});
+ await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,1);
+ hours=49;await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,2);assert.match(f.messages[1].content,/48 小時/);
+ hours=0;for(let i=0;i<4;i++)await tick(f,f.create());assert.equal(f.messages.length,3);
+ hours=30;await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,3,'downgrading after recovery cannot bypass a recent critical receipt');
+});
+
+test('retired quota-only receipts and pending sends disappear without synthetic recovery messages',async()=>{
+ for(const status of ['sent','retry','sending','uncertain','blocked','unconfigured']){
+   const f=fixture(),old=[{code:'QUOTA_HIGH',severity:'warning',scope:'global'},{code:'QUOTA_HIGH',severity:'warning',scope:'maintenance'}],fp=alertFingerprint(old);
+   f.values.set('monitor-state',{notified:fp,hadIncident:true,count:2,observed:fp,alerts:old,pending:{fingerprint:fp,status,at:START,nextAttempt:START+3600000},incidents:Object.fromEntries(old.map(a=>[JSON.stringify([a.code,a.severity,a.scope]),{announced:true,count:2}]))});
+   f.target(()=>{const s=healthy(f.now);s.quota.enforcement='notify-only';s.quota.used.reads=10000;return Response.json(s);});
+   for(let i=0;i<6;i++)await tick(f,f.create());
+   const state=f.values.get('monitor-state');assert.equal(f.messages.length,0,status);assert.equal(state.hadIncident,false);assert.equal(state.pending,null);assert.deepEqual(state.alerts,[]);
+ }
+ // An unsent real incident bundled with a retired quota warning is not a recovery.
+ const f=fixture(),quotaAlert={code:'QUOTA_HIGH',severity:'warning',scope:'global'};
+ f.values.set('monitor-state',{notified:alertFingerprint([quotaAlert]),hadIncident:true,pending:{fingerprint:alertFingerprint([quotaAlert,{code:'ALARM_FAILED',severity:'critical'}]),status:'retry',nextAttempt:START+3600000}});
+ for(let i=0;i<6;i++)await tick(f,f.create());assert.equal(f.messages.length,0);
+ // The previous real backup issue may have recovered while quota warnings kept
+ // the old global incident open. Policy removal must not send its late recovery.
+ const g=fixture(),old=alertFingerprint([quotaAlert,{code:'BACKUP_DELAYED',severity:'warning'}]);
+ g.values.set('monitor-state',{notified:old,hadIncident:true,alerts:[quotaAlert],pending:{fingerprint:old,status:'sent',at:START}});
+ for(let i=0;i<6;i++)await tick(g,g.create());assert.equal(g.messages.length,0,'no belated recovery from the retired policy');
+});
+
+test('retiring mixed pending warnings preserves real incidents and all uncertain outcome receipts',async()=>{
+ for(const status of ['retry','sending','uncertain']){
+   const f=fixture(),alarm={code:'ALARM_FAILED',severity:'critical'},old=[alarm,{code:'QUOTA_HIGH',severity:'warning',scope:'global'}];
+   f.values.set('monitor-state',{notified:status==='uncertain'?alertFingerprint(old):alertFingerprint([]),pending:{fingerprint:alertFingerprint(old),status,at:START,nextAttempt:START+3600000}});
+   f.target(()=>{const s=healthy(f.now);s.alarm.ok=false;return Response.json(s);});
+   for(let i=0;i<2;i++)await tick(f,f.create());assert.equal(f.messages.length,0,'no early retry or unknown-outcome resend');
+   f.advance(3600000);await tick(f,f.create());
+   assert.equal(f.messages.length,status==='retry'?1:0,status);
+   if(status==='retry'){assert.match(f.messages[0].content,/背景排程失敗/);assert.doesNotMatch(f.messages[0].content,/Firestore|八成/);}
+ }
+});
+
+test('persistent short Discord rate limits gain durable exponential backoff across changed alert sets',async()=>{
+ const f=fixture();let authFailure=false;
+ f.target(()=>authFailure?new Response(null,{status:401}):new Response(null,{status:503}));
+ f.delivery(()=>Response.json({retry_after:1},{status:429}));
+ await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,1);
+ for(let attempt=2;attempt<=8;attempt++){
+   const previous=f.values.get('monitor-state'),deadline=previous.retryAfter;
+   f.advance(Math.max(60000,deadline-f.now));await f.create().check();
+   assert.equal(f.messages.length,attempt);const state=f.values.get('monitor-state');
+   assert.equal(state.retryAfter-f.now,Math.min(3600000,60000*2**(attempt-1)));
+ }
+ const count=f.messages.length;authFailure=true;await tick(f,f.create());await tick(f,f.create());assert.equal(f.messages.length,count,'changed alerts cannot shorten global backoff');
 });
 
 test('missing notification destination records confirmed health without sending; later configuration can notify',async()=>{
