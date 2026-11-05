@@ -1,0 +1,17 @@
+{
+  "$schema":"node_modules/wrangler/config-schema.json",
+  "name":"jokers-circus-yakyuken-test",
+  "main":"cloud/yakyuken-playtest-worker.js",
+  "compatibility_date":"2026-07-30",
+  "compatibility_flags":["nodejs_compat"],
+  "workers_dev":true,
+  "durable_objects":{"bindings":[{"name":"YAKYUKEN_TEST","class_name":"YakyukenTestPlayer"}]},
+  "migrations":[{"tag":"v1","new_sqlite_classes":["YakyukenTestPlayer"]}],
+  "vars":{
+    "APP_ENV":"test",
+    "FIRESTORE_PROJECT_ID":"slot-game-203db",
+    "FIRESTORE_NAMESPACE":"yakyuken-playtest-20261105-test",
+    "FIRESTORE_ENDPOINT":"https://firestore.us.rep.googleapis.com"
+  },
+  "observability":{"enabled":false}
+}

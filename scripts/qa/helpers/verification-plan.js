@@ -2,7 +2,7 @@ export const CI_SUITES=['browser','wallet','services'];
 
 const integrationFiles={
   wallet:['firestore','firestore-v2','firestore-state-cache'],
-  services:['firestore-backup','firestore-highlights','firestore-live-migration','cloud-rest','cloud-runtime','cloud-welcome','cloud-backup-scale','segmented-runtime','customer-recovery','test-data-reset'],
+  services:['firestore-backup','firestore-highlights','firestore-live-migration','cloud-rest','cloud-runtime','cloud-welcome','cloud-backup-scale','segmented-runtime','customer-recovery','test-data-reset','yakyuken-playtest'],
 };
 
 export function verificationPlan({ci=false,full=false,suite='all',node=process.execPath,integrationNode=node}={}){

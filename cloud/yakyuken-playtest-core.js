@@ -1,0 +1,96 @@
+import {canEnterCharacter,characterRule,ENTRY_FEE} from '../src/games/yakyuken/characters.js';
+import {weightedDuel} from '../src/games/yakyuken/challenge.js';
+import {checkinReceipt,weeklyCheckinState} from '../server/wallet/weekly-checkin.js';
+import {taipeiDay} from '../server/wallet/wallet-common.js';
+
+export const PLAYTEST_IDENTITY=Object.freeze({projectId:'slot-game-203db',namespace:'yakyuken-playtest-20261105-test',worker:'jokers-circus-yakyuken-test'});
+export const PLAYTEST_PLAYERS=Object.freeze({'qa-a':'測試玩家 A','qa-b':'測試玩家 B','qa-low':'低餘額玩家','qa-zero':'零餘額玩家'});
+const rewards=[500,500,1000,1000,1000,2000,4000];
+const fail=(status,message)=>Object.assign(new Error(message),{status});
+export function assertPlaytestIdentity(env){
+  if(env.APP_ENV!=='test'||env.FIRESTORE_PROJECT_ID!==PLAYTEST_IDENTITY.projectId||env.FIRESTORE_NAMESPACE!==PLAYTEST_IDENTITY.namespace)throw new Error('Dedicated test identity required');
+}
+export function newPlaytestWallet(player){
+  if(!Object.hasOwn(PLAYTEST_PLAYERS,player))throw fail(400,'找不到測試玩家。');
+  return {version:1,player,balance:player==='qa-low'?50:player==='qa-zero'?0:10000,revision:0,records:[],unlocks:{},activeId:null,checkin:null};
+}
+export function publicPlaytestWallet(state){
+  const {lastReceipt,...wallet}=state;
+  return {...wallet,environment:'test',cloud:true,name:PLAYTEST_PLAYERS[state.player],checkinView:weeklyCheckinState(state.checkin?.day,state.checkin?.receipt,taipeiDay(Date.now()),rewards)};
+}
+function apply(state,intent){
+  const next=structuredClone(state),{action,body,requestId,now,duel}=intent;
+  if(action==='begin'){
+    if(!canEnterCharacter(body.characterId))throw fail(400,'這位荷官尚未開放。');
+    const active=next.records.find(r=>r.id===next.activeId);
+    if(active?.status==='playing')return {next,changed:false};
+    if(next.balance<ENTRY_FEE)throw fail(409,'戲籌不足，請先簽到或選擇其他測試玩家。');
+    next.balance-=ENTRY_FEE;
+    const record={id:requestId,characterId:body.characterId,wins:0,losses:0,status:'playing',fee:ENTRY_FEE,reward:0,net:-ENTRY_FEE,startedAt:now,updatedAt:now};
+    next.records=[record,...next.records].slice(0,100);next.activeId=record.id;next.unlocks[body.characterId]=Math.max(next.unlocks[body.characterId]??-1,0);
+  }else if(action==='hand'){
+    const record=next.records.find(r=>r.id===body.matchId);
+    if(!record||next.activeId!==record.id||record.status!=='playing')throw fail(409,'這場挑戰已結束，請重新確認紀錄。');
+    if(!['rock','paper','scissors'].includes(body.move)||!duel)throw fail(400,'不支援的出拳。');
+    if(duel.outcome==='draw')return {next,changed:false};
+    const rule=characterRule(record.characterId);
+    record.wins+=Number(duel.outcome==='win');record.losses+=Number(duel.outcome==='loss');record.updatedAt=now;
+    next.unlocks[record.characterId]=Math.max(next.unlocks[record.characterId]??0,Math.min(record.wins,2));
+    if(record.wins>=rule.winsRequired){record.status='won';record.reward=rule.reward;next.balance+=rule.reward;}
+    else if(record.losses>=rule.lossLimit)record.status='lost';
+    record.net=record.reward-record.fee;
+  }else if(action==='leave'){
+    const record=next.records.find(r=>r.id===body.matchId);
+    if(record?.id===next.activeId&&record.status==='playing'){record.status='left';record.updatedAt=now;next.activeId=null;}
+    else return {next,changed:false};
+  }else if(action==='checkin'){
+    const day=taipeiDay(now);
+    if(next.checkin?.day===day)return {next,changed:false};
+    const receipt=checkinReceipt(next.checkin?.day,next.checkin?.receipt,day,rewards);
+    next.balance+=receipt.rewards[receipt.cycleDay-1];next.checkin={day,receipt};
+  }else throw fail(404,'找不到此測試功能。');
+  next.revision++;return {next,changed:true};
+}
+const result=(state,intent)=>({wallet:publicPlaytestWallet(state),...(intent.duel?{duel:intent.duel}:{}),matchId:intent.action==='begin'?state.activeId:intent.body.matchId});
+
+// The dedicated player DO serializes calls. Firestore is authoritative; durable
+// intents bridge an unknown Firestore commit and the subsequent DO receipt.
+export class PlaytestService{
+  constructor({repository,storage,player,clock=Date.now,entropy=globalThis.crypto}){Object.assign(this,{repository,storage,player,clock,entropy});}
+  async load(){this.state ||= await this.repository.read(this.player) ?? newPlaytestWallet(this.player);return this.state;}
+  async recover(){
+    const intent=await this.storage.get('pending');if(!intent)return;
+    const state=await this.repository.mutate(this.player,current=>{
+      const prior=current??newPlaytestWallet(this.player);
+      if(prior.lastReceipt?.requestId===intent.requestId){if(prior.lastReceipt.fingerprint!==intent.fingerprint)throw fail(409,'測試請求編號衝突。');return prior;}
+      const {next}=apply(prior,intent);next.lastReceipt={requestId:intent.requestId,fingerprint:intent.fingerprint};return next;
+    });
+    this.state=state;const response=result(state,intent);
+    await this.storage.transaction(async tx=>{await tx.put('receipt:'+intent.requestId,{fingerprint:intent.fingerprint,response});await tx.delete('pending');});
+    return response;
+  }
+  async stateView(){await this.recover();return {wallet:publicPlaytestWallet(await this.load())};}
+  async execute(action,body){
+    if(!body||typeof body!=='object'||Array.isArray(body)||!/^[-a-zA-Z0-9]{16,80}$/.test(body.requestId??''))throw fail(400,'無效的測試請求。');
+    const allowed={begin:['requestId','characterId'],hand:['requestId','matchId','move'],leave:['requestId','matchId'],checkin:['requestId']}[action];
+    if(!allowed||Object.keys(body).some(k=>!allowed.includes(k)))throw fail(400,'無效的測試操作欄位。');
+    const fingerprint=JSON.stringify([action,body.characterId??null,body.matchId??null,body.move??null]);
+    await this.recover();
+    const old=await this.storage.get('receipt:'+body.requestId);
+    if(old){if(old.fingerprint!==fingerprint)throw fail(409,'測試請求編號已用於其他操作。');return old.response;}
+    const state=await this.load(),record=state.records.find(r=>r.id===body.matchId);
+    const intent={action,body,requestId:body.requestId,fingerprint,now:this.clock()};
+    if(action==='hand'){
+      if(!record||record.id!==state.activeId||record.status!=='playing')throw fail(409,'這場挑戰已結束，請重新確認紀錄。');
+      if(!['rock','paper','scissors'].includes(body.move))throw fail(400,'不支援的出拳。');
+      intent.duel=weightedDuel(record.characterId,body.move,this.entropy);
+    }
+    const {changed}=apply(state,intent);
+    if(!changed){
+      const response=result(state,intent);
+      await this.storage.put('receipt:'+body.requestId,{fingerprint,response});return response;
+    }
+    await this.storage.put('pending',intent);
+    try{return await this.recover();}catch(error){this.state=null;throw error;}
+  }
+}

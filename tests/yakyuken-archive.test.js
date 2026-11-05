@@ -11,11 +11,11 @@ test('archive keeps one record per match across draws, wins, losses, resize-styl
   const disk=storage(),archive=fixtures(disk),id=archive.begin('dealer');let state=createChallenge();
   assert.equal(archive.isUnlocked('dealer',0),true);assert.equal(archive.isUnlocked('dealer',1),false);
   for(const outcome of ['draw','loss','win','win']){
-    state=hand(state,outcome);assert.equal(archive.update(id,state),true);assert.equal(archive.update(id,state),false);
+    state=hand(state,outcome);assert.equal(archive.update(id,state),outcome!=='draw');assert.equal(archive.update(id,state),false);
     assert.equal(archive.records().length,1);
   }
   archive.leave(id);const restored=fixtures(disk).records()[0];
-  assert.deepEqual([restored.wins,restored.losses,restored.draws,restored.rounds,restored.status],[2,1,1,4,'won']);
+  assert.deepEqual([restored.wins,restored.losses,restored.status],[2,1,'won']);assert.equal(Object.hasOwn(restored,'draws'),false);assert.equal(Object.hasOwn(restored,'rounds'),false);
   assert.equal(restored.reward,2500);
   assert.equal(fixtures(disk).isUnlocked('dealer',2),true);
   const losing=archive.begin('dealer');let loss=createChallenge();

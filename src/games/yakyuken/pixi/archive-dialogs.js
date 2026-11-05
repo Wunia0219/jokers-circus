@@ -24,7 +24,7 @@ function thumbnail(texture,parent,{x,y,width,height}){
   parent.addChild(image,mask);image.mask=mask;
 }
 function storageCaption(scene,body,mw,y){
-  text(scene.archive.persistent?'收藏與紀錄儲存在這台裝置':'目前無法儲存，資料只保留在此頁',11,0,y,body,PALETTE.muted,{wordWrap:true,wordWrapWidth:mw-32,lineHeight:15});
+  text(scene.archive.cloud?'收藏與紀錄儲存在測試雲端':scene.archive.persistent?'收藏與紀錄儲存在這台裝置':'目前無法儲存，資料只保留在此頁',11,0,y,body,PALETTE.muted,{wordWrap:true,wordWrapWidth:mw-32,lineHeight:15});
 }
 function collectionFooter(scene,body,mw,mh){
   const bottom=mh/2;

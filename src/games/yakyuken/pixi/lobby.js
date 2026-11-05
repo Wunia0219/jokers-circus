@@ -60,7 +60,7 @@ export function buildLobby(scene){
       title(index?'準備中':'荷官',0,r.height/2-13*s,button,Math.max(11,11*s),index?0xa493a0:PALETTE.gold);
       if(!character.enabled)button.setEnabled(false);
     });
-    title(`入場 ${ENTRY_FEE.toLocaleString('en-US')} 戲籌・本機暫不扣款`,c.infoX,c.feeY,root,Math.max(12,12*s),PALETTE.muted);
+    title(`入場 ${ENTRY_FEE.toLocaleString('en-US')} 戲籌・${scene.wallet?'從測試錢包扣除':'本機暫不扣款'}`,c.infoX,c.feeY,root,Math.max(12,12*s),PALETTE.muted);
     at(new PixiButton({text:'進入試玩',name:'進入野球拳試玩',variant:'gold',width:c.buttonWidth,height:c.buttonHeight,fontSize:16*s,onPress:()=>scene.enterCharacter()}),c.infoX,c.enterY,root);
   }
 }

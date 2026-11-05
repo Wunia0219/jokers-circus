@@ -10,8 +10,8 @@ function validRecord(record,id){
   if(!record || record.id!==id || !ID.test(id) || !CHARACTERS.some(c=>c.id===record.characterId))return false;
   const rule=characterRule(record.characterId);
   if(record.reward!==undefined && record.reward!==(record.status==='won'?rule.reward:0))return false;
-  if(![record.wins,record.losses,record.draws,record.rounds,record.startedAt,record.updatedAt].every(number))return false;
-  if(record.wins>rule.winsRequired || record.losses>rule.lossLimit || record.rounds!==record.wins+record.losses+record.draws || record.updatedAt<record.startedAt || !stateNames.has(record.status))return false;
+  if(![record.wins,record.losses,record.startedAt,record.updatedAt].every(number))return false;
+  if(record.wins>rule.winsRequired || record.losses>rule.lossLimit || record.updatedAt<record.startedAt || !stateNames.has(record.status))return false;
   if(record.wins===rule.winsRequired)return record.status==='won' && record.losses<rule.lossLimit;
   if(record.losses===rule.lossLimit)return record.status==='lost';
   return record.status==='playing' || record.status==='left';
@@ -42,7 +42,12 @@ export class PlayerArchive {
   }
   getRecord(id){
     if(!ID.test(id || ''))return null;
-    try{const record=JSON.parse(this.read(this.prefix+'match:'+id));return validRecord(record,id)?{...record,reward:record.reward ?? (record.status==='won'?characterRule(record.characterId).reward:0)}:null;}catch{return null;}
+    try{
+      const record=JSON.parse(this.read(this.prefix+'match:'+id));if(!validRecord(record,id))return null;
+      // Project legacy records onto the current shape, dropping throw/draw counts.
+      const {characterId,wins,losses,status,startedAt,updatedAt}=record;
+      return {id,characterId,wins,losses,status,startedAt,updatedAt,reward:record.reward ?? (status==='won'?characterRule(characterId).reward:0)};
+    }catch{return null;}
   }
   records(){
     return this.keys().filter(key=>key.startsWith(this.prefix+'match:')).map(key=>this.getRecord(key.slice((this.prefix+'match:').length))).filter(Boolean)
@@ -62,13 +67,14 @@ export class PlayerArchive {
   begin(characterId){
     const rule=characterRule(characterId),id=this.id(),now=this.clock();
     if(!rule.enabled || !ID.test(id) || !number(now))throw new Error('Invalid archive entry');
-    const record={id,characterId,wins:0,losses:0,draws:0,rounds:0,reward:0,status:'playing',startedAt:now,updatedAt:now};
+    const record={id,characterId,wins:0,losses:0,reward:0,status:'playing',startedAt:now,updatedAt:now};
     this.write(this.prefix+'match:'+id,JSON.stringify(record));this.unlock(characterId,0);return id;
   }
   update(id,challenge){
+    if(challenge.last?.outcome==='draw')return false;
     const previous=this.getRecord(id);
-    if(!previous || previous.status!=='playing' || previous.characterId!==challenge.characterId || challenge.rounds<=previous.rounds)return false;
-    const record={...previous,wins:challenge.wins,losses:challenge.losses,draws:challenge.draws,rounds:challenge.rounds,reward:challenge.reward,status:challenge.status,updatedAt:Math.max(previous.updatedAt,this.clock())};
+    if(!previous || previous.status!=='playing' || previous.characterId!==challenge.characterId || challenge.wins+challenge.losses<=previous.wins+previous.losses)return false;
+    const record={...previous,wins:challenge.wins,losses:challenge.losses,reward:challenge.reward,status:challenge.status,updatedAt:Math.max(previous.updatedAt,this.clock())};
     if(!validRecord(record,id))throw new Error('Invalid challenge archive state');
     this.write(this.prefix+'match:'+id,JSON.stringify(record));
     for(let pose=0;pose<=Math.min(challenge.wins,2);pose++)this.unlock(record.characterId,pose);

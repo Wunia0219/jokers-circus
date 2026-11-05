@@ -27,7 +27,7 @@ import {YakyukenScreenFade} from './pixi/screen-fade.js';
 import {waitForEntryTask} from './pixi/entry-state.js';
 import {PREVIEW_SLOT_PATH} from '../../platform/game-navigation.js';
 
-// Local probability challenge; wallet settlement remains disconnected.
+// The release entry stays separate; only the explicit test preview uses a wallet.
 export class YakyukenScene {
   app = new Application();
   motion = new Motion();
@@ -58,8 +58,8 @@ export class YakyukenScene {
   historyScroll = 0;
   cgIndex = 0;
 
-  constructor({playerId='local-guest',storage}={}){
-    this.archive=new PlayerArchive({playerId,...(storage===undefined?{}:{storage})});
+  constructor({playerId='local-guest',storage,wallet=null}={}){
+    this.wallet=wallet;this.archive=wallet?.archive??new PlayerArchive({playerId,...(storage===undefined?{}:{storage})});
   }
 
   async init(host) {
@@ -183,6 +183,7 @@ export class YakyukenScene {
   buildHud() { buildSlotHud(this); }
 
   visitScreen(screen){
+    if(this.settling||this.wallet?.pending)return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.phase==='presenting' || this.changing || !['games','characters'].includes(screen))return;
     if(screen==='characters' && this.screen!=='games')return;
     if(screen==='characters')void this.audio.background.setMusicEnabled(true,{retryBlockedPlayback:true});
@@ -240,10 +241,16 @@ export class YakyukenScene {
     try{
       await overlay.open();if(this.disposed)return false;
       if(kind==='game' && !await waitForEntryTask(this.prepareEntry(overlay),this.abort.signal))return false;
+      if(this.wallet&&kind==='table')await this.wallet.begin(this.selectedCharacter);
+      if(this.wallet&&kind==='lobby')await this.wallet.leave(this.matchId);
       if(this.disposed)return false;
       overlay.update?.(76,'正在準備選角舞台…');
       this.screen=kind==='table'?'table':kind==='game' || kind==='reselect'?'characters':'games';this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';
-      if(kind==='table'){this.completedRounds=0;this.challenge=createChallenge(this.selectedCharacter);this.pose=0;this.presentedRound=0;this.dialogue='';}
+      if(kind==='table'){
+        const active=this.wallet?.active();this.selectedCharacter=active?.characterId??this.selectedCharacter;
+        this.challenge=active?{...active,rounds:active.wins+active.losses,last:null}:createChallenge(this.selectedCharacter);
+        this.completedRounds=this.challenge.rounds;this.pose=active?Math.min(active.wins,2):0;this.presentedRound=this.challenge.rounds;this.dialogue='';
+      }
       this.resize();
       if(!await waitForEntryTask(this.app.renderer.prepare.upload([this.backgroundTexture,...this.dealerTextures,...Object.values(this.cardTextures),this.logoTexture]),this.abort.signal))return false;
       if(this.disposed)return false;
@@ -257,13 +264,14 @@ export class YakyukenScene {
       if(kind==='reselect'){this.matchId=null;this.challenge=null;this.completedRounds=0;this.presentedRound=0;this.dialogue='';this.pose=0;this.ending=false;}
       this.entering=false;overlay.destroy();this.entryOverlay=null;
       this.world.interactiveChildren=true;this.world.accessibleChildren=true;this.updateControls();return true;
-    }catch{
+    }catch(error){
       if(this.disposed)return false;
       this.entering=false;
       if(kind==='reselect'){
         this.screen='characters';this.phase='selecting';this.matchId=null;this.challenge=null;this.completedRounds=0;this.presentedRound=0;this.dialogue='';this.pose=0;this.ending=false;this.resize();
       }else if(this.screen!==source){this.screen=source;this.phase='selecting';this.resize();}
-      overlay.fail();this.updateControls();this.world.interactiveChildren=false;this.world.accessibleChildren=false;return false;
+      const uncertain=!!this.wallet?.pending;
+      overlay.fail(this.wallet&&['table','lobby'].includes(kind)?`${error.message}\n${uncertain?'請重試原操作，以確認戲籌結果。':'請再試一次，或返回上一頁。'}`:undefined,!uncertain);this.updateControls();this.world.interactiveChildren=false;this.world.accessibleChildren=false;return false;
     }
   }
   cancelEntry(){
@@ -272,13 +280,16 @@ export class YakyukenScene {
     this.world.interactiveChildren=true;this.world.accessibleChildren=true;this.updateControls();
   }
   select(move) {
+    if(this.settling||this.wallet?.pending)return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.challenge?.status==='lost' || this.changing || this.modal || this.screen!=='table' || this.phase !== 'selecting' || !TABLE_MOVES.includes(move))return;
     this.selected=move;this.playerCards.forEach(card => card.choose(card.move === move));this.updateControls();
   }
   async confirm() {
+    if(this.settling)return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.challenge?.status==='lost' || this.changing || this.modal || this.screen!=='table' || this.phase === 'presenting')return;
     if(this.phase === 'confirmed'){
       const restarting=this.challenge.status!=='playing';
+      if(restarting&&this.wallet)return this.beginEntry('table');
       if(restarting){
         this.challenge=createChallenge(this.selectedCharacter);this.completedRounds=0;this.presentedRound=0;
         this.matchId=this.archive.begin(this.selectedCharacter);
@@ -289,7 +300,18 @@ export class YakyukenScene {
       this.updateControls();if(restarting && this.pose!==0)await this.changePose(0);return;
     }
     if(!this.selected)return;
-    this.challenge=playChallengeRound(this.challenge,this.selected);
+    if(this.wallet){
+      this.settling=true;this.phase='requesting';this.playerCards.forEach(card=>card.lock(true));this.updateControls();
+      try{
+        const data=await this.wallet.hand(this.matchId,this.selected);if(this.disposed)return;
+        const record=data.wallet.records.find(r=>r.id===this.matchId);
+        this.challenge={...record,rounds:this.challenge.rounds+1,last:data.duel};
+      }catch(error){
+        if(this.disposed)return;
+        this.phase='selecting';this.settling=false;this.playerCards.forEach(card=>card.lock(false));this.updateControls();
+        this.status.text='出牌尚未確認';this.statusDetail.text=error.message;return;
+      }finally{this.settling=false;}
+    }else this.challenge=playChallengeRound(this.challenge,this.selected);
     this.archive.update(this.matchId,this.challenge);
     this.duel=this.challenge.last;this.completedRounds=this.challenge.rounds;
     this.phase='presenting';this.dealerStage='thinking';this.playerCards.forEach(card => card.lock(true));this.updateControls();
@@ -332,10 +354,11 @@ export class YakyukenScene {
     Object.assign(this.app.canvas.dataset,{screen:this.screen,phase:this.entering?'entering':this.screen==='table'?this.phase:this.screen,selected:this.selected || '',pose:String(this.pose),scene:this.screen==='table'?'yakyuken-table':'circus-lobby',dealerStage:this.dealerStage,
       dealerFrontCount:String(fronts),dealerMove:fronts?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds),uiStyle:'theatre-cards',character:this.selectedCharacter,entries:String(this.entries),changing:String(!!this.changing),dialogue:this.dialogue,
       wins:String(this.challenge?.wins || 0),losses:String(this.challenge?.losses || 0),draws:String(this.challenge?.draws || 0),challengeStatus:this.challenge?.status || '',reward:String(this.challenge?.reward || 0)});
-    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。${this.dialogue?'荷官說：'+this.dialogue+'。':''}右側荷官牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':'野球拳角色選擇，共五個角色位置。目前開放命運荷官，本機入場暫不扣款。');
+    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。${this.dialogue?'荷官說：'+this.dialogue+'。':''}右側荷官牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':`野球拳角色選擇，共五個角色位置。目前開放命運荷官，${this.wallet?'入場將扣除測試戲籌。':'本機入場暫不扣款。'}`);
   }
 
   openModal(type) {
+    if(this.settling||this.wallet?.pending)return;
     if(!['menu','collection','cg','history','settings'].includes(type))return;
     if(type==='cg' && !this.archive.isUnlocked(this.selectedCharacter,this.cgIndex))return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.phase === 'presenting' || this.changing)return;
@@ -352,6 +375,13 @@ export class YakyukenScene {
     this.app.canvas.dataset.modal='';
   }
   buildModal(type) { buildSlotDialog(this,type); }
+
+  async claimDaily(){
+    if(!this.wallet||this.settling||this.wallet.pending&&this.wallet.pending.action!=='checkin'||this.phase==='presenting'||this.entering)return;
+    this.settling=true;this.updateControls();
+    try{await this.wallet.checkin();}catch(error){if(!this.disposed&&this.walletCaption)this.walletCaption.text=error.message;}
+    finally{this.settling=false;if(!this.disposed)this.updateControls();}
+  }
 
   async changePose(index) {
     if(this.changing || this.disposed || this.entering || this.entryOverlay || this.screen!=='table' || !this.dealerTextures[index])return;

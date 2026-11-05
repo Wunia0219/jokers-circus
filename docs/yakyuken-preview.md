@@ -1,8 +1,26 @@
 # 野球拳：純 Pixi 牌桌框架
 
-大廳、選角與野球拳遊戲都使用同一個 Pixi Canvas，沒有 HTML 網頁版的主視覺、卡片、按鈕或 dialog。2026-11-03 已依使用者提供的通關勝率表接入五位角色的每拳機率、累積勝敗、整場結束與獎金顯示，詳見[機率規則](yakyuken-probability.md)。沿用先前「暫不實際扣款」的本機驗收設定，不發獎入帳、不讀寫舊試玩帳本、不連接 Discord。2026-11-04 依最新要求加入本機 CG 收藏與單場遊玩紀錄，資料保存在同裝置訪客的獨立儲存區。
+大廳、選角與野球拳遊戲都使用同一個 Pixi Canvas，沒有 HTML 網頁版的主視覺、卡片、按鈕或 dialog。2026-11-03 已依使用者提供的通關勝率表接入五位角色的每拳機率、累積勝敗、整場結束與獎金顯示，詳見[機率規則](yakyuken-probability.md)。一般本機預覽仍不扣款、不發獎入帳、不連接 Discord，收藏與紀錄儲存在同裝置訪客的獨立儲存區。2026-11-05 新增使用者指定的獨立測試雲端模式，啟動方式及資料邊界見下節。
 
-使用者指定後續錢包驗收沿用舊的本機測試資料庫。本機既有路徑為 `data/validation/wallet.sqlite`（見 `scripts/qa/validation-server.js` 與 `docs/testing.md`）；本次僅核對檔案存在，沒有開啟、重設或改寫它。錢包接線前仍須核對測試入口指向此舊庫，不能改接正式庫或另建一份取代。
+先前指定的本機 SQLite 測試資料庫仍保留於 `data/validation/wallet.sqlite`（見 `scripts/qa/validation-server.js` 與 `docs/testing.md`），沒有開啟、重設、遷移或取代它。使用者於 2026-11-05 明確選擇既有獨立測試雲端；目前野球拳雲端測試錢包使用下述獨立資料區，與舊 SQLite／老虎機錢包分開。
+
+## 使用測試雲端實玩（2026-11-05）
+
+- 啟動：`node scripts/game/yakyuken-preview.js --cloud-test`，入口仍為 `http://127.0.0.1:4195/yakyuken-preview.html`。一般無參數預覽及正式建置不啟用測試雲端。
+- 既有測試 Firestore 專案為 `slot-game-203db`，野球拳專用 namespace 為 `yakyuken-playtest-20261105-test`；Worker 為 `jokers-circus-yakyuken-test`。既有測試 Worker、正式 Worker、正式 Firestore 及舊測試 SQLite 均不修改。雲端程式、部署工具及本機閘道各自檢查專用測試身分，禁止切至正式專案或其他 Worker。
+- 預設為測試玩家 A（`qa-a`），新錢包 10,000 戲籌；可用 `?testPlayer=qa-b` 切換玩家 B。`qa-low`／`qa-zero` 為餘額不足情境。這些是此資料區的合成測試玩家，不使用 Discord 登入、正式玩家識別或正式餘額。真人實測前的遠端驗證只使用 B，A 保留給使用者。
+- 入場由伺服器扣 1,000 戲籌；命運荷官 2 勝通關後發 2,500，該場淨變化為 +1,500；敗場或離場為 −1,000。重新載入後可續玩尚未結束的場次，不重扣入場費。每拳由伺服器依原角色權重決定，不接受客戶端金額、勝敗或獎勵。七日簽到亦只發放此測試錢包的戲籌。
+- 本機瀏覽器只呼叫同源 `/api/playtest/*`；閘道使用私有存取權杖連至上述 Worker。權杖及 Google 憑證不放入前端；`.tools`、環境檔、帳本與私密檔不能透過預覽伺服器下載，外站 Origin 及轉送標頭亦拒絕。部署工具使用 `node scripts/game/yakyuken-test-deploy.js --deploy`，只支援專用測試設定；私有閘道設定保存在忽略版控的 `.tools/yakyuken-playtest.json`。
+- 每名玩家一個持久 Durable Object，序列化操作；Firestore 保存餘額、最近 100 場的勝敗摘要、CG 解鎖與最近提交憑證。入場、有效勝敗、離場及新簽到以交易更新同一玩家文件；原請求 ID、先行持久化意圖與去重憑證處理未知提交結果，重試不重扣、不重發獎。紀錄與金額一起提交，沒有持續輪詢或 Discord 推播。
+- 平手不累計、不儲存次數，也不改寫遊玩紀錄。已載入的對局發生平手時零 Firestore 讀寫；僅在 Durable Object 冷啟動時載入玩家文件。平手仍保留 Durable Object 的原出拳回應憑證，確保斷線重送不改抽另一個結果。舊本機紀錄讀取時捨棄平手／總拳數欄位，新平手不觸發本機存檔讀寫。
+- 紀錄摘要使用「戲籌變化」，中央加入與遊戲一致的金色勝數／淡紅敗數；手機窄版將勝敗放在摘要下方中央，避免與正負金額重疊。展開只列勝敗及狀態，測試模式明示資料儲存在測試雲端。
+
+### 本次驗證
+
+- 單元檢查涵蓋身分邊界、扣款／發獎去重、未知提交後恢復、平手零存取、資料隔離、餘額不足、簽到及客戶端原請求恢復；`tests/yakyuken-playtest.integration.js` 另以官方 emulator 與真正 workerd 驗證 Firestore 實際文件、重啟及跨玩家隔離，已加入完整 CI 的 services 清單。
+- `node scripts/qa/yakyuken-cloud-test.js` 以隔離 fixture 驗證實際瀏覽器接線、四尺寸金額排版、斷線重試、續玩、私密檔拒絕與外站拒絕；`--live` 明確使用上述測試 Worker 的玩家 B，已驗證真實扣款、出拳及重載保存。證據在 `test-results/yakyuken-cloud-isolated/`、`test-results/yakyuken-cloud-live/` 及 `test-results/yakyuken-wallet-runtime.log`。
+- 最終野球拳單元檢查 48 項、隔離錢包 UI 10 組、真實測試雲端 3 組及獨立預覽建置均通過；既有野球拳整體瀏覽器回歸 24 組通過，最後的簽到／失敗提示與摘要高度調整另以上述 10 組補驗。日誌分別為 `test-results/yakyuken-cloud-wallet-unit-final.log`、`test-results/yakyuken-cloud-isolated.log`、`test-results/yakyuken-cloud-live.log`、`test-results/yakyuken-cloud-wallet-build.log` 與 `test-results/yakyuken-wallet-ui.log`。早期失敗的原因是新 Worker 未沿用 workerd fetch 適配器、emulator 文件名稱映射，以及瀏覽器 fetch 綁定／測試初始化同步；修正對應原因後驗證，沒有調整機率、放寬玩法參數或略過案例。
+- 完整本機 `npm run verify:ci` 14/14 步通過，一般回歸 544 項通過、1 項既有條件略過；含新增的專用測試 Worker／Firestore 整合。日誌為 `test-results/yakyuken-cloud-wallet-verify-ci.log`，彙整快照為 `test-results/yakyuken-cloud-wallet-verification.json`。預覽 4195 已切換 `--cloud-test` 並確認 HTTP 200，玩家 A 在交付前為 10,000 測試戲籌、零紀錄；舊 SQLite 修改時間仍為 2026-10-27。最終簽到重試／入場失敗提示另以上述 UI 補驗與最終預覽建置確認。只部署專用測試後端，未執行遠端 CI、正式部署、版本更新、commit、merge 或 push。
 
 ## 場景與風格
 

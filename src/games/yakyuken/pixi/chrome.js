@@ -15,7 +15,7 @@ function buildProgress(scene,hud){
   const titleSize=Math.max(12,w*.08),titleY=y-h/2-15;
   at(label('本場進度',titleSize,PALETTE.gold,{letterSpacing:1}),x,titleY,hud);
   at(label('荷官出牌',titleSize,PALETTE.gold,{letterSpacing:1}),dealerCard.x*scale,titleY,hud);
-  for(const [index,[name,target,color]] of [['勝',rule.winsRequired,PALETTE.bright],['敗',rule.lossLimit,0xe8b9bc]].entries()){
+  for(const [index,[name,target,color]] of [['勝',rule.winsRequired,PALETTE.win],['敗',rule.lossLimit,PALETTE.loss]].entries()){
     const rowY=(index?1:-1)*h*.22;
     at(label(name,Math.max(12,w*.095),color),-w*.28,rowY,score);
     const number=at(label('0',Math.max(28,w*.34),color,{fontFamily:['Georgia','serif'],fontWeight:'bold'}),0,rowY,score);
@@ -51,16 +51,16 @@ export function buildSlotHud(scene){
   const portrait=new Graphics().circle(0,0,avatarSize/2-.5).fill(new FillGradient({start:{x:0,y:0},end:{x:1,y:1},colorStops:[{offset:0,color:0x825342},{offset:.58,color:0x442638},{offset:1,color:0x281d30}]})).stroke({color:0xbf925e,width:1,alpha:.53});
   portrait.circle(avatarSize/2-5,avatarSize/2-5,3).fill(0xb5a0b1).stroke({color:0x24182c,width:2});avatar.addChild(portrait,slotIcon(icon('user'),narrow?19:23,0xf4d59b));
   const textX=left+avatarSize+(narrow?8:12),textWidth=h.checkin.x-12-textX;
-  leftLabel('訪客玩家',narrow?14:height<=500?13:15,PALETTE.cream,textX,identityY-10,hud,{fontWeight:'500'});
-  leftLabel('本機試玩・暫不扣款',small?11:12,0xd7bfbf,textX,identityY+11,hud,{wordWrap:true,wordWrapWidth:textWidth,align:'left'});
-  const c=h.checkin,checkin=at(new PixiButton({name:'週簽到・介面預覽',width:c.width,height:56}),c.x+c.width/2,c.y+28,hud);checkin.cursor='default';
+  leftLabel(scene.wallet?.wallet.name||'訪客玩家',narrow?14:height<=500?13:15,PALETTE.cream,textX,identityY-10,hud,{fontWeight:'500'});
+  scene.walletCaption=leftLabel(scene.wallet?`測試戲籌 ${scene.wallet.wallet.balance.toLocaleString('en-US')}`:'本機試玩・暫不扣款',small?11:12,0xd7bfbf,textX,identityY+11,hud,{wordWrap:true,wordWrapWidth:textWidth,align:'left'});
+  const c=h.checkin,checkin=at(new PixiButton({name:scene.wallet?'領取測試週簽到':'週簽到・介面預覽',width:c.width,height:56,onPress:()=>scene.claimDaily()}),c.x+c.width/2,c.y+28,hud);checkin.cursor=scene.wallet?'pointer':'default';scene.checkinButton=checkin;
   checkin.background.clear().roundRect(-c.width/2,-28,c.width,56,12).fill(new FillGradient({start:{x:0,y:0},end:{x:1,y:.2},colorStops:[{offset:0,color:0x73452f},{offset:1,color:0x5c2f39}]})).stroke({color:0xc79a5f,width:1});
   const copyWidth=6*(narrow?11:12),giftSize=narrow?18:20,giftGap=narrow?8:10;
   const contentX=-(copyWidth+(small?0:giftSize+giftGap))/2;
   if(!small){const gift=slotIcon(icon('gift'),giftSize);gift.position.set(contentX,-giftSize/2);checkin.addChild(gift);}
   const copyX=contentX+(small?0:giftSize+giftGap);
   leftLabel('週簽到',narrow?12:14,0xffe9bc,copyX,-10,checkin,{fontWeight:'500'});
-  leftLabel('查看七日獎勵',narrow?11:12,0xffdfab,copyX,11,checkin);
+  scene.checkinCopy=leftLabel('查看七日獎勵',narrow?11:12,0xffdfab,copyX,11,checkin);
   const {toolsX,toolsY,toolsWidth,toolsHeight,centers}=h,cy=toolsY+toolsHeight/2;
   hud.addChild(new Graphics().roundRect(toolsX,toolsY,toolsWidth,toolsHeight,narrow?11:12).fill({color:0x2b1d2d,alpha:.85}).stroke({color:0xc99b5b,alpha:.21,width:1}));
   const sound=at(new PixiButton({name:'音效尚未加入',variant:'utility',width:48,height:48,icon:icon('muted')}),centers[0],cy,hud);sound.setEnabled(false);sound.alpha=1;sound.glyph.tint=0xc1b1bf;
@@ -85,7 +85,13 @@ export function buildSlotHud(scene){
 }
 
 export function updateSlotHud(scene){
-  scene.lobbyButton?.setEnabled(scene.phase!=='presenting' && !scene.changing && !scene.ending);
+  if(scene.wallet&&scene.walletCaption&&!scene.walletCaption.destroyed){
+    scene.walletCaption.text=`測試戲籌 ${scene.wallet.wallet.balance.toLocaleString('en-US')}`;
+    const view=scene.wallet.wallet.checkinView,retry=scene.wallet.pending?.action==='checkin';scene.checkinCopy.text=retry?'點此重試簽到':view.claimed?'今日已領取':`領取 ${view.daily.toLocaleString('en-US')} 戲籌`;
+    scene.checkinButton.setName(retry?'重試測試週簽到':'領取測試週簽到');
+    scene.checkinButton.setEnabled(!view.claimed&&!scene.settling&&(!scene.wallet.pending||retry));
+  }
+  scene.lobbyButton?.setEnabled(!scene.settling&&!scene.wallet?.pending&&scene.phase!=='presenting' && !scene.changing && !scene.ending);
   if(scene.screen!=='table' || !scene.confirmButton)return;
   const {phase,selected,duel}=scene,confirmed=phase==='confirmed';
   const rule=characterRule(scene.selectedCharacter),challenge=scene.challenge,finished=challenge?.status!=='playing';
@@ -94,9 +100,9 @@ export function updateSlotHud(scene){
   scene.scoreWins.text=String(wins);scene.scoreLosses.text=String(losses);
   scene.scoreDescription=rule.name+'，'+wins+' 勝，目標 '+rule.winsRequired+' 勝；'+losses+' 敗，上限 '+rule.lossLimit+' 敗';
   const next=challenge?.status==='lost'?'返回選擇荷官…':finished?'再挑戰一次':'下一局';
-  scene.confirmButton.setText(confirmed?next:phase==='presenting'?'荷官出牌中…':'確認出牌');
+  scene.confirmButton.setText(confirmed?next:phase==='requesting'?'正在確認出牌…':phase==='presenting'?'荷官出牌中…':scene.wallet?.pending?'重試上一拳':'確認出牌');
   scene.confirmButton.setName(confirmed?next:'確認出牌');
-  scene.confirmButton.setEnabled(!scene.changing && !scene.ending && challenge?.status!=='lost' && (confirmed || phase==='selecting' && !!selected));
+  scene.confirmButton.setEnabled(!scene.settling&&!scene.changing && !scene.ending && challenge?.status!=='lost' && (confirmed || phase==='selecting' && !!selected));
   scene.status.text=confirmed?{win:'你贏了',loss:'荷官獲勝',draw:'平手，再來一拳'}[duel.outcome]:phase==='presenting'?'荷官即將揭牌':selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
   scene.statusDetail.text=confirmed?'你出'+TABLE_MOVE_NAMES[selected]+' · 荷官出'+TABLE_MOVE_NAMES[duel.dealer]:phase==='presenting'?'好戲，即將揭曉':selected?'準備好了，就出這一張':'選擇手牌，與命運一決勝負';
   if(confirmed && finished){

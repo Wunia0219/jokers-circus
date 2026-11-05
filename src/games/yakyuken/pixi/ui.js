@@ -1,7 +1,7 @@
 import {Container,FillGradient,Graphics,Rectangle,Text} from 'pixi.js';
 import {SLOT_UI} from './slot-theme.js';
 
-export const PALETTE=Object.freeze({gold:SLOT_UI.gold,bright:0xffe5b0,cream:SLOT_UI.cream,muted:SLOT_UI.muted,wine:0x5c2f39,navy:0x211426,edge:0xc59a53});
+export const PALETTE=Object.freeze({gold:SLOT_UI.gold,bright:0xffe5b0,win:0xffe5b0,loss:0xe8b9bc,cream:SLOT_UI.cream,muted:SLOT_UI.muted,wine:0x5c2f39,navy:0x211426,edge:0xc59a53});
 export function label(text,size=13,color=PALETTE.cream,options={}){
   const node=new Text({text,style:{fontFamily:SLOT_UI.font,fontSize:size,fill:color,align:'center',fontWeight:'400',...options}});
   node.anchor.set(.5);node.eventMode='none';return node;

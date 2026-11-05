@@ -26,7 +26,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
       return {code:code.replace('this.host = host;','globalThis.__yakyukenTest=this;this.host = host;')
         .replace('playChallengeRound(this.challenge,this.selected)','playChallengeRound(this.challenge,this.selected,{getRandomValues:values=>{values[0]=globalThis.__duelWeights?.shift() ?? 0;}})'),map:null};
     }
-    if(path.endsWith('/src/games/yakyuken/main.js'))return {code:code.replace('new YakyukenScene()',"new YakyukenScene({playerId:globalThis.__qaPlayer || 'local-guest'})"),map:null};
+    if(path.endsWith('/src/games/yakyuken/main.js'))return {code:code.replace('new YakyukenScene({wallet:testWallet})',"new YakyukenScene({wallet:testWallet,playerId:globalThis.__qaPlayer || 'local-guest'})"),map:null};
     if(!path.endsWith('/src/main.js'))return;
     assert.ok(code.includes('startGame();'),'isolated slot ticker hook must match the real entry');
     return {code:code.replace('startGame();','globalThis.__slotNavigationTest={scene,controls};startGame();'),map:null};
@@ -347,7 +347,7 @@ try {
   await returnLobby(archiveA);await archiveA.reload();await phase(archiveA,'games');
   await archiveA.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(archiveA,'characters');
   const savedArchive=await archiveA.evaluate(()=>window.__yakyukenTest.archive.records());
-  assert.equal(savedArchive.length,1);assert.deepEqual([savedArchive[0].characterId,savedArchive[0].wins,savedArchive[0].losses,savedArchive[0].draws,savedArchive[0].status],['dealer',1,1,1,'left']);
+  assert.equal(savedArchive.length,1);assert.deepEqual([savedArchive[0].characterId,savedArchive[0].wins,savedArchive[0].losses,savedArchive[0].status],['dealer',1,1,'left']);assert.equal(Object.hasOwn(savedArchive[0],'draws'),false);
   await archiveA.getByRole('button',{name:'遊玩紀錄',exact:true}).click();await assertArchiveControls(archiveA);
   const beforeHistory=await archiveA.evaluate(()=>JSON.stringify(window.__yakyukenTest.archive.records()));
   await archiveA.screenshot({path:`${output}/archive-mobile-history.png`});

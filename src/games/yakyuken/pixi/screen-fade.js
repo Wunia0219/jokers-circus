@@ -22,11 +22,12 @@ export class YakyukenScreenFade {
     this.root.hitArea=new Rectangle(0,0,width,height);
     this.backdrop=new Graphics().rect(0,0,width,height).fill(0x0b1020);this.root.addChild(this.backdrop);
     if(this.stage==='error'){
-      const message=label('舞台暫時未能準備好\n請再試一次，或返回上一頁。',14,0xf0d6d4,{lineHeight:24});
+      const message=label(this.errorMessage||'舞台暫時未能準備好\n請再試一次，或返回上一頁。',14,0xf0d6d4,{lineHeight:24,wordWrap:true,wordWrapWidth:width-40});
       message.position.set(width/2,height/2-46);this.root.addChild(message);
       const w=Math.min(168,(width-60)/2);
       const retry=new PixiButton({text:'再試一次',name:'重試野球拳轉場',variant:'gold',width:w,height:48,onPress:this.onRetry});
       const back=new PixiButton({text:'返回上一頁',name:'取消野球拳轉場',width:w,height:48,onPress:this.onBack});
+      back.setEnabled(this.allowBack!==false);
       retry.position.set(width/2-(w+12)/2,height/2+30);back.position.set(width/2+(w+12)/2,height/2+30);this.root.addChild(retry,back);
     }
     this.tick(0);
@@ -41,7 +42,7 @@ export class YakyukenScreenFade {
     await this.motion.to(this.cover,{value:0},ENTRY_TIMING.reveal);
     if(this.disposed)return false;this.stage='complete';this.notify();return true;
   }
-  fail(){if(this.disposed)return;this.stage='error';this.cover.value=1;this.resize(this.app.screen.width,this.app.screen.height);this.notify();}
+  fail(message,allowBack=true){if(this.disposed)return;this.errorMessage=message;this.allowBack=allowBack;this.stage='error';this.cover.value=1;this.resize(this.app.screen.width,this.app.screen.height);this.notify();}
   tick(elapsed){if(this.disposed)return;this.motion.tick(elapsed);this.backdrop.alpha=this.cover.value;}
   destroy(){if(this.disposed)return;this.disposed=true;this.motion.destroy();this.root.destroy({children:true});}
 }
