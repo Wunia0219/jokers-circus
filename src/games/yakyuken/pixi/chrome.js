@@ -73,7 +73,7 @@ export function buildSlotHud(scene){
   };scene.refreshAudioIcons();
   hud.addChild(new Graphics().moveTo(centers[1]+33,toolsY+9).lineTo(centers[1]+33,toolsY+toolsHeight-9).stroke({color:0xc99b5b,width:1,alpha:.19}));
   at(new PixiButton({name:'CG 收藏',variant:'utility',width:48,height:48,icon:icon('gallery'),onPress:()=>scene.openModal('collection')}),centers[2],cy,hud);
-  at(new PixiButton({name:'遊玩紀錄',variant:'utility',width:48,height:48,icon:icon('clock'),onPress:()=>{scene.historyPage=0;scene.openModal('history');}}),centers[3],cy,hud);
+  at(new PixiButton({name:'遊玩紀錄',variant:'utility',width:48,height:48,icon:icon('clock'),onPress:()=>{scene.historyScroll=0;scene.openModal('history');}}),centers[3],cy,hud);
   scene.lobbyButton=at(new PixiButton({name:'返回遊戲大廳',variant:'utility',width:48,height:48,icon:icon('lobby'),onPress:()=>scene.visitScreen('games')}),centers[4],cy,hud);
   if(scene.screen!=='table')return;
   const {action,status}=scene.layout;

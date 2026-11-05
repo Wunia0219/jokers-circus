@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdirSync,writeFileSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {createServer} from 'vite';
 import {launchBrowser} from './helpers/browser.js';
 import {ENTRY_TIMING} from '../../src/games/yakyuken/pixi/entry-state.js';
@@ -9,10 +9,12 @@ import {DEALER} from '../../src/games/yakyuken/characters.js';
 import {APP_VERSION} from '../../src/version.js';
 
 const port=4196,origin=`http://127.0.0.1:${port}`,output='test-results/yakyuken-pixi';
+const downloadRequests=[];
 mkdirSync(output,{recursive:true});
 const server=await createServer({configFile:false,envDir:false,cacheDir:`${output}/vite-cache`,
   optimizeDeps:{include:['pixi.js','pixi.js/unsafe-eval','pixi.js/prepare'],noDiscovery:true},
   plugins:[{name:'isolated-pixi-lifecycle',configureServer(dev){dev.middlewares.use((request,response,next) => {
+    if(request.url?.startsWith('/downloads/yakyuken/'))downloadRequests.push(request.url);
     if(request.url!=='/__yakyuken_lifecycle')return next();
     response.setHeader('Content-Type','text/html');response.end(`<div id="host"></div><script type="module">import {YakyukenScene} from '/src/games/yakyuken/scene.js';const scene=new YakyukenScene();const host=document.querySelector('#host');const init=scene.init(host);await scene.destroy();await init;document.body.dataset.disposed='true';</script>`);
   });},transform(code,id){
@@ -278,6 +280,7 @@ try {
   checks.push('resize preserves selection and pose; probability engine loads without wallet, legacy controller or Discord');
 
   const archiveContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});watchEntryBindings(archiveContext);
+  const pngRequests=[];archiveContext.on('request',request=>{if(request.url().includes('/downloads/yakyuken/'))pngRequests.push(request.url());});
   const playerPage=async player=>{
     const tab=await archiveContext.newPage();tab.on('pageerror',error=>errors.push(error.message));await tab.addInitScript(id=>{window.__qaPlayer=id;},player);
     await tab.goto(`${origin}/yakyuken-preview.html`);await phase(tab,'games');return tab;
@@ -316,6 +319,12 @@ try {
   await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).click();
   assert.equal((await canvasState(archiveA)).pose,'1');assert.equal((await canvasState(archiveA)).modal,'cg');
   await archiveA.screenshot({path:`${output}/archive-mobile-cg.png`});await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  assert.equal(pngRequests.length,0,'neither entry, gallery nor full CG loads download PNGs');assert.equal(downloadRequests.length,0,'server receives no download request until activation');
+  assert.equal(await archiveA.evaluate(async()=>{const {downloadCG}=await import('/src/games/yakyuken/cg-download.js');return downloadCG(window.__yakyukenTest.archive,'dealer',2);}),false,'locked CG cannot initiate a download');
+  await archiveA.getByRole('button',{name:'CG 收藏',exact:true}).click();await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).click();
+  const downloadEvent=archiveA.waitForEvent('download');await archiveA.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).click();const download=await downloadEvent;
+  assert.deepEqual(readFileSync(await download.path()),readFileSync('public/downloads/yakyuken/dealer-stage-1.png'),'download is the original PNG file');assert.ok(download.suggestedFilename().endsWith('.png'));assert.deepEqual(downloadRequests,['/downloads/yakyuken/dealer-stage-1.png']);
+  await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   await returnLobby(archiveA);await archiveA.reload();await phase(archiveA,'games');
   await archiveA.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(archiveA,'characters');
   const savedArchive=await archiveA.evaluate(()=>window.__yakyukenTest.archive.records());
@@ -333,8 +342,11 @@ try {
   await archiveB.getByRole('button',{name:'關閉視窗',exact:true}).click();
   await archiveB.evaluate(()=>{const a=window.__yakyukenTest.archive;for(let i=0;i<14;i++)a.leave(a.begin('dealer'));});
   await archiveB.setViewportSize({width:320,height:568});await frame(archiveB);
-  await archiveB.getByRole('button',{name:'遊玩紀錄',exact:true}).click();await archiveB.getByRole('button',{name:'下一頁遊玩紀錄',exact:true}).click();
-  await archiveB.getByRole('button',{name:'上一頁遊玩紀錄',exact:true}).waitFor();await archiveB.screenshot({path:`${output}/archive-small-history-page-2.png`});
+  await archiveB.getByRole('button',{name:'遊玩紀錄',exact:true}).click();
+  const list=archiveB.locator('[title="遊玩紀錄清單，使用方向鍵或滑動查看更多"]');const wheelBox=await list.boundingBox();await archiveB.mouse.move(wheelBox.x+wheelBox.width/2,wheelBox.y+wheelBox.height/2);await archiveB.mouse.wheel(0,300);await archiveB.waitForFunction(()=>window.__yakyukenTest.historyScroll>0);
+  await archiveB.keyboard.press('End');const end=await archiveB.evaluate(()=>window.__yakyukenTest.historyScroll);assert.ok(end>300);await archiveB.keyboard.press('Home');assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.historyScroll),0);
+  const listBox=await list.boundingBox();await archiveB.mouse.move(listBox.x+listBox.width/2,listBox.y+listBox.height-30);await archiveB.mouse.down();await archiveB.mouse.move(listBox.x+listBox.width/2,listBox.y+30,{steps:8});await archiveB.mouse.up();assert.ok(await archiveB.evaluate(()=>window.__yakyukenTest.historyScroll)>0,'drag scrolls the same list');
+  await archiveB.screenshot({path:`${output}/archive-small-history-scroll.png`});
   assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.archive.records().length),1,"another player cannot replace A's matches");
   await archiveA.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(archiveA,'selecting');
   await archivePlay(archiveA,'win');await advance(archiveA);await archivePlay(archiveA,'win');

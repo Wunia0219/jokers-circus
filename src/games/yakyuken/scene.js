@@ -55,7 +55,7 @@ export class YakyukenScene {
   epoch = 0;
   disposed = false;
   matchId = null;
-  historyPage = 0;
+  historyScroll = 0;
   cgIndex = 0;
 
   constructor({playerId='local-guest',storage}={}){
@@ -72,7 +72,7 @@ export class YakyukenScene {
       background:0x0b1020,antialias:true,autoDensity:true,resolution:Math.min(devicePixelRatio || 1,2),
       preference:'webgl',autoStart:false,sharedTicker:false,
       accessibilityOptions:{enabledByDefault:true,deactivateOnMouseMove:false},
-      eventFeatures:{move:true,click:true,globalMove:false,wheel:false},
+      eventFeatures:{move:true,click:true,globalMove:false,wheel:true},
     });
     this.initialized = true;
     if(this.disposed){this.app.destroy({removeView:true},{children:true});return;}
@@ -346,6 +346,7 @@ export class YakyukenScene {
     this.cgIndex=index;this.openModal('cg');return this.modal==='cg';
   }
   closeModal() {
+    this.scrollHistory=null;
     this.modal=null;if(this.modalRoot){this.modalRoot.destroy({children:true});this.modalRoot=null;}
     if(this.world){this.world.interactiveChildren=true;this.world.accessibleChildren=true;}
     this.app.canvas.dataset.modal='';
@@ -373,6 +374,9 @@ export class YakyukenScene {
   keydown(event) {
     if(event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || this.disposed || this.entering || this.entryOverlay || this.ending || document.hidden)return;
     if(event.key==='Escape'){event.preventDefault();if(this.modal)this.closeModal();else if(!this.changing && this.screen!=='games')this.openModal('menu');return;}
+    if(this.modal==='history' && ['ArrowDown','ArrowUp','PageDown','PageUp','Home','End'].includes(event.key)){
+      event.preventDefault();this.scrollHistory?.(({ArrowDown:60,ArrowUp:-60,PageDown:300,PageUp:-300}[event.key] || 0),event.key==='Home'?'start':event.key==='End'?'end':undefined);return;
+    }
     if(this.modal || this.changing || this.screen!=='table')return;
     const move=TABLE_MOVES[Number(event.key)-1];
     if(move){event.preventDefault();this.select(move);}

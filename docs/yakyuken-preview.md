@@ -206,3 +206,14 @@
 - 新增 320×568、390×844、844×390、1600×900 的可見範圍／觸控尺寸、品牌資訊、無額外選單及兩條政策連結的實際瀏覽器斷言；24 項瀏覽器檢查與隔離預覽建置通過。證據為 `collection-brand-ui.log`、`collection-brand-*.png`、`browser-report.json` 與 `collection-brand-build.log`。
 - 完整本機 `npm run verify:ci` 14/14 項通過，日誌為 `collection-brand-verify-ci.log`，快照為 `collection-brand-verification.json`。4195 預覽已恢復；未執行遠端 CI，未部署、更新版本、commit 或 merge。
 - 後續依老虎機樣式統一條款與隱私文字連結：滑鼠停留／點擊不畫外框或底色，保留手形游標、44px 點擊高度與鍵盤焦點提示。320px、390px、1600px 已實際驗證兩個政策連結、滑鼠／鍵盤狀態與一般工具列原有回饋，隔離建置通過；補驗為 `collection-text-links-report.json`、`collection-text-links.log`、`collection-text-links-build.log`。
+
+### 共用頁尾、紀錄清單與原畫下載（2026-11-04）
+
+- 頁尾沿用一致的 `JOKER’S CIRCUS` 字串、Georgia 11px／1px 字距、分隔線、條款文字間距 24px 與手機 16px／桌機 24px 留白；兩款遊戲的實際 DOM／Pixi 字型尺寸、品牌字串與留白已在四尺寸交叉核對。現行版本繼續讀取 APP_VERSION。老虎機只調整規則頁尾的桌機左右留白。
+- 野球拳遊玩紀錄改為與老虎機同類型的 800px／760px 視窗及直向捲動卡片清單，不再以翻頁收納。支援滑鼠滾輪、觸控拖曳與方向鍵／Page Up／Page Down／Home／End；清單只繪製當前可見卡片，保留所有舊紀錄。較大襯線勝敗數字、綠色獎勵數字與金色通關標記突顯結果；時間、狀態與試玩未入帳說明留在次要層級。
+- 每場另存當時獲得獎勵 `reward`；敗場／離場／進行中為 0，通關為該角色獎金。舊格式未帶 reward 的紀錄可相容讀取；沒有接入錢包或實際發獎。
+- CG 卡片只保留「已解鎖」。全圖頁新增下載圖示及「下載去背 PNG」，下載前再次核對解鎖與圖號。遊戲繼續載入 `images/yakyuken/dealer/stage-*.webp`；獨立原畫位於 `public/downloads/yakyuken/dealer-stage-*.png`，只在玩家點擊時由瀏覽器原生下載，不加入 Assets／入場準備、貼圖或預載依賴。
+- 三張 PNG 均由 `art/yakyuken/dealer/stage-*-master.webp` 直接無損轉檔，保留原生 1024×1536 與完整透明像素，無放大或再次有損壓縮；單張約 1.47MB。可用 `python scripts/assets/export-yakyuken-cg.py` 重建。逐像素與母圖比對通過。
+- 6 項 archive 單元檢查、24 項遊戲瀏覽器檢查、隔離預覽建置與四尺寸補驗通過；補驗含原生觸控、捲動限制、無預載下載請求，以及三張實際下載檔與原 PNG 全檔位元組相同。主要證據為 `cg-download-ui-final.log`、`cg-polish-report.json`、`cg-polish.log`、`polish-*.png` 與 `cg-download-build.log`。原生下載不一定出現在 Playwright Page request 事件，因此按需請求以隔離 Vite 伺服器紀錄和實際下載事件交叉確認；早期觀察方式的測試失敗保留於 `cg-download-ui.log`。
+- 完整本機 `verify:ci` 首次結果 12/14 步通過，日誌與彙整保留於 `cg-download-verify-ci.log`、`cg-download-verification.json`。一般回歸的「全部禁止 PNG」舊規格與最新需求衝突，已改為精確列舉三張下載檔，並驗證原生尺寸、RGBA、完整透明像素及未授權新增／缺檔的反向案例；該資源檢查補驗通過（`cg-png-guard-final.log`）。REST 整合另在 `tests/cloud-rest.integration.js:24` 的併發簽到發生 HTTP 409／ABORTED，保留失敗、沒有重試到成功或修改錢包／重試次數。未執行遠端 CI，未部署、更新版本、commit 或 merge。
+- 最終一般回歸補驗 534 項通過、1 項既有條件略過、0 失敗，保留於 `cg-download-unit-passed.log`；完整回歸仍維持上述原始失敗結果，沒有將補驗冒充整套 CI 成功。

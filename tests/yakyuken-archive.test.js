@@ -16,17 +16,27 @@ test('archive keeps one record per match across draws, wins, losses, resize-styl
   }
   archive.leave(id);const restored=fixtures(disk).records()[0];
   assert.deepEqual([restored.wins,restored.losses,restored.draws,restored.rounds,restored.status],[2,1,1,4,'won']);
+  assert.equal(restored.reward,2500);
   assert.equal(fixtures(disk).isUnlocked('dealer',2),true);
   const losing=archive.begin('dealer');let loss=createChallenge();
   for(let i=0;i<2;i++){loss=hand(loss,'loss');archive.update(losing,loss);}
-  assert.equal(archive.getRecord(losing).status,'lost');assert.equal(archive.records().length,2);
+  assert.equal(archive.getRecord(losing).status,'lost');assert.equal(archive.getRecord(losing).reward,0);assert.equal(archive.records().length,2);
 });
 
 test('leaving saves partial results; watching a CG does not unlock later stages',()=>{
   const archive=fixtures(storage()),id=archive.begin('dealer');archive.update(id,hand(createChallenge(),'win'));archive.leave(id);
   assert.equal(archive.getRecord(id).status,'left');assert.equal(archive.getRecord(id).wins,1);
+  assert.equal(archive.getRecord(id).reward,0);
   for(let i=0;i<4;i++)assert.equal(archive.isUnlocked('dealer',2),false);
   assert.equal(archive.isUnlocked('guest-1',0),false);
+});
+
+test('legacy match rewards remain readable; invalid prize amounts are rejected',()=>{
+  const disk=storage(),archive=fixtures(disk),id=archive.begin('dealer');
+  archive.update(id,hand(hand(createChallenge(),'win'),'win'));
+  const key=archive.prefix+'match:'+id,legacy=JSON.parse(disk.getItem(key));delete legacy.reward;disk.setItem(key,JSON.stringify(legacy));
+  assert.equal(fixtures(disk).getRecord(id).reward,2500);
+  disk.setItem(key,JSON.stringify({...legacy,reward:50000}));assert.equal(fixtures(disk).getRecord(id),null);
 });
 
 test('different players are isolated; two stale tabs retain independent matches and monotonic CG unlocks',()=>{
