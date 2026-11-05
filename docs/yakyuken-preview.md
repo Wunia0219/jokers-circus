@@ -1,5 +1,15 @@
 # 野球拳：純 Pixi 牌桌框架
 
+## 玩家身分、戲籌與離場確認（2026-11-05）
+
+- 左上比照老虎機：Discord 頭貼、`global_name`／`username` 與 `ID <Discord user id>`，不再以餘額取代 UID。兩款遊戲共用 `discordAvatarUrl`；野球拳以圓形遮罩繪製頭貼，保留相同尺寸、留白與連線標記。頭貼非同步載入，失敗保留人物圖示；縮放重用貼圖，場景結束才釋放，不重啟對局或額外讀取錢包。
+- 選角與牌桌共用酒紅、金邊的籌碼徽章，置於工具列下方獨立的 40px 區域；顯示伺服器已確認餘額，入場、發獎與簽到後同步更新。本機無錢包預覽顯示「—」，不虛構餘額。左上身分與原工具列尺寸維持老虎機規格；牌桌依扣除餘額列的可用空間縮放，保留至少 44px 的操作範圍。
+- 入場仍由既有雲端 `begin` 在進桌前扣 1,000；相同請求與尚未完成對局的恢復不重扣。未完成時返回大廳，先顯示「入場已扣除 1,000 戲籌，現在離開不會退還」；繼續遊戲、關閉或 Esc 均不送出離場請求。確認離開後才提交既有 `leave`，不加扣、不退款；之後開始新場才再扣一次入場費。已結束場次不顯示未完成警告。
+- 簽到失敗的提示使用獨立視窗，保持 UID 與餘額正確；未知提交結果仍以原 request ID 重試，不重複入帳。
+- 已通過 13 尺寸排版、24 項遊戲 UI、10 項隔離雲端錢包檢查，日誌分別為 `test-results/player-balance-responsive-ui.log`、`player-chrome-game-ui-final.log`、`player-wallet-cloud-ui-final.log`。Discord SDK 測試比對兩款遊戲的名稱、UID 與頭貼，並驗證取消離場零請求、確認離場只送一次、不退款及重新入場再扣款；父頁明確宣告 UTF-8 與手機 viewport，使用實際 390px／320px 視窗。完整本機 CI 15/15 項通過（一般回歸 557 項通過、1 項既有條件略過），日誌與快照為 `test-results/player-chrome-verify-ci.log`、`player-chrome-verification.json`；未執行遠端 CI。
+- 已更新獨立 Discord 測試 Worker，版本 ID 為 `b6111cf2-543f-4ba0-ac85-d59727bd3f3e`；健康檢查、未登入錢包拒絕及線上 HTML／入口程式位元組比對均通過。部署日誌為 `test-results/player-chrome-test-deploy.log`，比對結果為 `test-results/cg-responsive/test-deploy-report.json`。發布程式不包含隔離測試的 `__playerScene` 入口。
+- 沒有修改伺服器扣款／獎金規則、Firestore 結構、停輪設定或產品版本。更新僅針對獨立 Discord 測試活動，commit／merge 仍由使用者處理。
+
 ## 品牌下載站與兩種牌桌配置（2026-11-05）
 
 - 下載站使用 `https://jokers-circus-gallery.pages.dev`，是獨立的 Cloudflare Pages 純靜態專案；沒有 Functions、Worker、錢包、憑證或 Netlify 服務。三張圖片分別使用 `/cg/yakyuken/dealer/invitation`、`/first-win`、`/finale`。可見文字只保留品牌、圖片名稱與下載／查看原圖，移除格式術語與手機操作教學；保留原生 1024×1536 透明 PNG。

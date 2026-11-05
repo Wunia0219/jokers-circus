@@ -12,6 +12,7 @@ import {CHARACTERS,canEnterCharacter} from '../src/games/yakyuken/characters.js'
 test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit around the character',() => {
   for(const [width,height,touch] of [[1600,900,false],[1440,1000,false],[1100,800,false],[390,844,true],[320,568,true],[324,699,true],[360,640,true],[360,740,true],[844,390,true],[600,420,true],[700,500,true],[768,1024,true],[544,680,true],[544,680,false]]){
     const l=tableLayout(width,height,{touch});
+    assert.equal(l.contentTop-l.ui.headerHeight,40,'balance has its own row without changing the slot identity/tools geometry');
     assert.equal(TABLE_MOVES.length,3);
     const row=l.playerCards,halfWidth=(84+113*row.perspective*.06)*row.scale,halfHeight=(113*row.perspective+84*.06)*row.scale;
     assert.ok(row.x-row.gap-halfWidth>0 && row.x+row.gap+halfWidth<l.w,`${width}x${height}: rotated player cards fit horizontally`);
@@ -19,7 +20,7 @@ test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit a
     const cardBottom=l.playerCards.y+halfHeight;
     assert.ok(cardBottom*l.scale<height,`${width}x${height}: player cards stay inside the viewport`);
     const visibleActor=Math.min(l.dealer.height,(l.table.y-l.table.ry)-l.dealer.y)*l.scale;
-    assert.ok(visibleActor>(height-l.ui.headerHeight)*.45,`${width}x${height}: the visible character remains the focus`);
+    assert.ok(visibleActor>(height-l.contentTop)*.45,`${width}x${height}: the visible character remains the focus below the balance row`);
     assert.equal(l.ui.deck,undefined);
     if(height<550)assert.equal(l.logo.width,0,'compact landscape keeps the progress wing clear of the logo');
     if(l.stackedControls)assert.ok(cardBottom*l.scale<l.status.y-16,`${width}x${height}: cards clear the result text and bottom action`);
@@ -47,7 +48,7 @@ test('tall phones keep the head and shoulder gestures clear of the raised side c
     assert.ok(p.x+p.width/2<width/2-actorHeight*.115,'left card clears the protected head area');
     assert.ok(width-p.x-p.width/2>width/2+actorHeight*.115,'right card clears the protected head area');
     const visibleActor=Math.min(actorHeight,(l.table.y-l.table.ry)*l.scale-actorTop);
-    assert.ok(visibleActor>(height-l.ui.headerHeight)*.45,'width fitting still gives the character enough visible height');
+    assert.ok(visibleActor>(height-l.contentTop)*.45,'width fitting still gives the character enough visible height below the balance row');
   }
   const a=tableLayout(390,844),b=tableLayout(391,845);
   assert.ok(Math.abs(a.dealer.height*a.scale-b.dealer.height*b.scale)<5);

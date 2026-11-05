@@ -52,7 +52,7 @@ try{
     }
     await page.waitForFunction(()=>!window.__cloudScene.ending&&!window.__cloudScene.entering);
     if((await wallet(page)).records.find(r=>r.id===matchId)?.status==='playing'){
-      await page.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(page,'games');await page.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(page,'characters');
+      await page.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await page.getByRole('button',{name:'確認離開',exact:true}).click();await phase(page,'games');await page.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(page,'characters');
     }
     await history(page);await page.screenshot({path:output+'/history.png'});checks.push('real test cloud hands, wallet delta and persisted history');
     const saved=await wallet(page);await page.reload();await phase(page,'games');assert.equal((await wallet(page)).balance,saved.balance);assert.deepEqual((await wallet(page)).records,saved.records);checks.push('real Firestore state survives browser reload');
@@ -81,7 +81,7 @@ try{
     failAction='hand';await page.getByRole('button',{name:'選擇拳頭',exact:true}).click();await page.getByRole('button',{name:'確認出牌',exact:true}).click();await page.waitForFunction(()=>window.__cloudScene.wallet.pending&&window.__cloudScene.phase==='selecting');
     const committed=docs.get(player).balance,beforeRetryWrites=writes;await page.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(page,'confirmed');assert.equal((await wallet(page)).balance,committed);assert.equal(writes,beforeRetryWrites);assert.equal((await wallet(page)).balance,12000);checks.push('lost settlement response retries original hand without a second prize');
     await page.screenshot({path:output+'/wallet-header.png'});
-    failAction='checkin';await page.getByRole('button',{name:'領取測試週簽到',exact:true}).click();await page.getByRole('button',{name:'重試測試週簽到',exact:true}).click();
+    failAction='checkin';await page.getByRole('button',{name:'領取測試週簽到',exact:true}).click();await page.getByRole('button',{name:'重試簽到',exact:true}).click();
     await page.waitForFunction(()=>window.__cloudScene.wallet.wallet.checkinView.claimed);assert.equal((await wallet(page)).balance,12500);await page.getByRole('button',{name:'領取測試週簽到',exact:true}).waitFor({state:'detached'});checks.push('lost daily claim response remains retryable and credits only once');
     const other=await context.newPage();await other.goto('http://127.0.0.1:4201/yakyuken-preview.html?testPlayer=qa-b');await phase(other,'games');assert.equal((await wallet(other)).balance,10000);assert.equal((await wallet(other)).records.length,0);checks.push('test players remain isolated');
     await other.goto('http://127.0.0.1:4201/yakyuken-preview.html?testPlayer=qa-low');await phase(other,'games');await other.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(other,'characters');

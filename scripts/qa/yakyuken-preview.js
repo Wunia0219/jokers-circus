@@ -62,7 +62,7 @@ const assertTableWings=async page=>{
   assert.ok(Math.abs(geometry.left.y-geometry.right.y)<1,'progress and dealer reveal align vertically');
   assert.ok(Math.abs(geometry.left.x+geometry.right.x-page.viewportSize().width)<1,'wings mirror about the character');
   assert.ok(geometry.numberSize>=28,'progress uses large readable numbers');
-  assert.ok(geometry.playerWidth>=70,'player hands have enlarged touch targets');
+  assert.ok(geometry.playerWidth>=44,'player hands retain usable touch targets below the separate balance row');
   for(const card of geometry.cards){
     const a=geometry.action;
     assert.ok(card.x+card.width<=a.x-a.width/2 || card.x>=a.x+a.width/2 || card.y+card.height<=a.y-a.height/2 || card.y>=a.y+a.height/2,'action never covers player cards');
@@ -110,7 +110,9 @@ const assertHeader=async(page,screen)=>{
 };
 const returnLobby=async page=>{
   await assertHeader(page,(await canvasState(page)).screen);
-  await page.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(page,'games');
+  await page.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();
+  if((await canvasState(page)).modal==='leave')await page.getByRole('button',{name:'確認離開',exact:true}).click();
+  await phase(page,'games');
 };
 const startTable=async(page,screenshots)=>{
   await phase(page,'games');
@@ -269,7 +271,9 @@ try {
       assert.equal(await phone.locator('#dialog').evaluate(node=>node.open),false);
       assert.equal(await phone.locator('#player-header #return-lobby').count(),1);
       await phone.screenshot({path:`${output}/mobile-slot-header.png`});
-      await phone.getByRole('button',{name:'返回遊戲大廳',exact:true}).tap();await phase(phone,'games');
+      await phone.getByRole('button',{name:'返回遊戲大廳',exact:true}).tap();
+      if((await canvasState(phone)).modal==='leave')await phone.getByRole('button',{name:'確認離開',exact:true}).tap();
+      await phase(phone,'games');
     }
     await phoneContext.close();
   }
@@ -584,7 +588,7 @@ try {
   await slot.screenshot({path:`${output}/slot-return-fade-in.png`});
   await slot.evaluate(()=>window.__yakyukenTest.app.start());await phase(slot,'games');
   checks.push('slot entry keeps its logo and loader; return fades out and the lobby fades in without loading UI');
-  await startTable(slot);await slot.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase(slot,'games');
+  await startTable(slot);await returnLobby(slot);
   checks.push('both games return to the lobby only from the top UI and can switch games without relaunching');
 
   await slot.getByRole('button',{name:'選擇老虎機',exact:true}).click();await slot.waitForURL(`${origin}/?lobby=preview`);
@@ -666,7 +670,9 @@ try {
     const trigger=entry.getByRole('button',{name:kind==='table'?'進入野球拳試玩':'返回遊戲大廳',exact:true});
     await trigger.waitFor();
     await entry.evaluate(()=>window.__yakyukenTest.app.stop());
-    await trigger.click();await phase(entry,'entering');
+    await trigger.click();
+    if(kind==='lobby'){await entry.evaluate(()=>window.__yakyukenTest.app.render());await entry.getByRole('button',{name:'確認離開',exact:true}).click();}
+    await phase(entry,'entering');
     await tickEntry(entry,ENTRY_TIMING.cover/2);
     assert.equal((await canvasState(entry)).entryKind,kind);assert.equal(await entry.getByRole('progressbar').count(),0);
     assert.ok(await entry.evaluate(()=>{const overlay=window.__yakyukenTest.entryOverlay;return overlay.cover.value>0 && overlay.cover.value<1 && overlay.root.children.length===1 && !overlay.content;}),'fade-out contains only its plain cover');

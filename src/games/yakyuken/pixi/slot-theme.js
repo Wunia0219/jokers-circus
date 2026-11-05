@@ -7,6 +7,7 @@ export const SLOT_UI = Object.freeze({
   playerNameSize:15,playerDetailSize:12,dialogTitleSize:19,bodySize:13,
   englishButtonSize:22,chineseButtonSize:12,
 });
+export const BALANCE_ROW_HEIGHT=40;
 
 export function slotChrome(width,height,touch=false) {
   const narrow=width<=700;

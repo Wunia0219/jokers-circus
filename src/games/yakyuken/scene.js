@@ -26,6 +26,7 @@ import {YakyukenEntryLoading,createYakyukenEntryGradients} from './pixi/entry-lo
 import {YakyukenScreenFade} from './pixi/screen-fade.js';
 import {waitForEntryTask} from './pixi/entry-state.js';
 import {slotEntryPath} from '../../platform/game-navigation.js';
+import {loadPlayerPortrait} from './pixi/player-display.js';
 
 // The release entry stays separate; only the explicit test preview uses a wallet.
 export class YakyukenScene {
@@ -64,6 +65,7 @@ export class YakyukenScene {
 
   async init(host) {
     this.host = host;
+    loadPlayerPortrait(this);
     const lobbyArrival=new URLSearchParams(location.search).get('transition')==='fade';
     this.audio.start({target:document,signal:this.abort.signal});
     installPointerFeedback(document,this.abort.signal);
@@ -203,9 +205,15 @@ export class YakyukenScene {
     if(this.disposed || this.modal || this.screen!=='characters' || !canEnterCharacter(this.selectedCharacter))return Promise.resolve(false);
     return this.beginEntry('table');
   }
-  beginEntry(kind){
+  needsLeaveConfirmation(){return this.screen==='table'&&(this.wallet?this.wallet.active()?.status:this.challenge?.status)==='playing';}
+  confirmLeave(){
+    if(this.modal!=='leave'||this.disposed||this.entering||this.settling||this.wallet?.pending)return;
+    return this.beginEntry('lobby',{leaveConfirmed:true});
+  }
+  beginEntry(kind,{leaveConfirmed=false}={}){
     if(this.disposed)return Promise.resolve(false);
     if(this.entering)return this.entryPromise;
+    if(kind==='lobby'&&this.needsLeaveConfirmation()&&!leaveConfirmed){this.openModal('leave');return Promise.resolve(false);}
     const source=this.screen;this.closeModal();this.app.canvas.dataset.entryKind=kind;
     this.entryOverlay?.destroy();this.entering=true;
     this.world.interactiveChildren=false;this.world.accessibleChildren=false;this.updateControls();
@@ -216,7 +224,7 @@ export class YakyukenScene {
         if(this.disposed)return;
         Object.assign(this.app.canvas.dataset,{entryStage:state.stage,entryProgress:String(Math.floor(state.target)),entryDisplayed:String(Math.floor(state.displayed))});
         this.app.canvas.setAttribute('aria-busy',String(state.stage!=='complete' && state.stage!=='error'));
-      },onRetry:()=>this.beginEntry(kind),onBack:()=>this.cancelEntry()});
+      },onRetry:()=>this.beginEntry(kind,{leaveConfirmed}),onBack:()=>this.cancelEntry()});
     const pending=this.performEntry(overlay,kind,source).finally(()=>{if(this.entryPromise===pending)this.entryPromise=null;});
     this.entryPromise=pending;return pending;
   }
@@ -358,8 +366,8 @@ export class YakyukenScene {
   }
 
   openModal(type) {
-    if(this.settling||this.wallet?.pending)return;
-    if(!['menu','collection','cg','history','settings'].includes(type))return;
+    if(this.settling||this.wallet?.pending&&type!=='wallet-error')return;
+    if(!['menu','collection','cg','history','settings','leave','wallet-error'].includes(type))return;
     if(type==='cg' && !this.archive.isUnlocked(this.selectedCharacter,this.cgIndex))return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.phase === 'presenting' || this.changing)return;
     this.closeModal();this.modal=type;this.buildModal(type);
@@ -378,9 +386,10 @@ export class YakyukenScene {
 
   async claimDaily(){
     if(!this.wallet||this.settling||this.wallet.pending&&this.wallet.pending.action!=='checkin'||this.phase==='presenting'||this.entering)return;
+    this.walletError=null;
     this.settling=true;this.updateControls();
-    try{await this.wallet.checkin();}catch(error){if(!this.disposed&&this.walletCaption)this.walletCaption.text=error.message;}
-    finally{this.settling=false;if(!this.disposed)this.updateControls();}
+    try{await this.wallet.checkin();}catch(error){this.walletError=error.message;}
+    finally{this.settling=false;if(!this.disposed){this.updateControls();if(this.walletError)this.openModal('wallet-error');}}
   }
 
   async changePose(index) {
@@ -423,6 +432,7 @@ export class YakyukenScene {
     this.wardrobeGradients?.forEach(gradient=>gradient.destroy());this.wardrobeGradients=null;
     this.portraitGradient?.destroy();this.portraitGradient=null;
     this.logoTexture?.destroy();this.entryLogoTexture?.destroy();
+    this.avatarTexture?.destroy(true);this.avatarTexture=null;this.renderAvatar=null;
     Object.values(this.cardTextures).forEach(texture=>texture.destroy());this.cardTextures={};await this.unload();
   }
 }
