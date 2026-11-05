@@ -74,6 +74,8 @@ jobs:
             test-results/verification.json
             test-results/browser-runtime.json
             test-results/discord-sdk/*.json
+            test-results/discord-test-activity/report.json
+            test-results/discord-test-activity/failure.json
             test-results/startup-resources/*.json
             test-results/dealer-resources/*.json
             test-results/number-rendering/*.json

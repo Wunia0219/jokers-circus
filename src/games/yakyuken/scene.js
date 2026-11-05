@@ -25,7 +25,7 @@ import {installPointerFeedback} from './pixi/pointer-feedback.js';
 import {YakyukenEntryLoading,createYakyukenEntryGradients} from './pixi/entry-loading.js';
 import {YakyukenScreenFade} from './pixi/screen-fade.js';
 import {waitForEntryTask} from './pixi/entry-state.js';
-import {PREVIEW_SLOT_PATH} from '../../platform/game-navigation.js';
+import {slotEntryPath} from '../../platform/game-navigation.js';
 
 // The release entry stays separate; only the explicit test preview uses a wallet.
 export class YakyukenScene {
@@ -192,7 +192,7 @@ export class YakyukenScene {
   openSlot(){
     if(this.disposed || this.entering || this.entryOverlay || this.screen!=='games' || this.modal)return;
     // This local preview opens the existing slot entry without changing its game.
-    location.assign(PREVIEW_SLOT_PATH);
+    location.assign(slotEntryPath(location));
   }
   selectCharacter(id){
     if(this.disposed || this.entering || this.entryOverlay || this.screen!=='characters' || !canEnterCharacter(id))return;

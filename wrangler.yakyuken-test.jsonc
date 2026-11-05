@@ -5,8 +5,8 @@
   "compatibility_date":"2026-07-30",
   "compatibility_flags":["nodejs_compat"],
   "workers_dev":true,
-  "durable_objects":{"bindings":[{"name":"YAKYUKEN_TEST","class_name":"YakyukenTestPlayer"}]},
-  "migrations":[{"tag":"v1","new_sqlite_classes":["YakyukenTestPlayer"]}],
+  "durable_objects":{"bindings":[{"name":"YAKYUKEN_TEST","class_name":"YakyukenTestPlayer"},{"name":"DISCORD_TEST_AUTH","class_name":"DiscordTestAuth"}]},
+  "migrations":[{"tag":"v1","new_sqlite_classes":["YakyukenTestPlayer"]},{"tag":"discord-test-v2","new_sqlite_classes":["DiscordTestAuth"]}],
   "vars":{
     "APP_ENV":"test",
     "FIRESTORE_PROJECT_ID":"slot-game-203db",

@@ -1,9 +1,15 @@
 import {YakyukenScene} from './scene.js';
 import {TestWalletClient} from './test-wallet-client.js';
+import {connectDiscordTestActivity,discordTestBuild,testReauthorization} from '../../platform/discord-test-activity.js';
 
 const root=document.querySelector('#yakyuken-app');
-const testWallet=import.meta.env.VITE_YAKYUKEN_CLOUD_TEST==='true'?new TestWalletClient({player:new URLSearchParams(location.search).get('testPlayer')||'qa-a'}):null;
+let testWallet=null,activity=null;
+if(discordTestBuild){
+  try{activity=await connectDiscordTestActivity();testWallet=new TestWalletClient({session:activity.session,reauthorize:testReauthorization(activity)});}
+  catch(error){root.textContent=error.message;throw error;}
+}else if(import.meta.env.VITE_YAKYUKEN_CLOUD_TEST==='true')testWallet=new TestWalletClient({player:new URLSearchParams(location.search).get('testPlayer')||'qa-a'});
 const scene=new YakyukenScene({wallet:testWallet});
+scene.activity=activity;
 const leave=event => {if(event.persisted)scene.pause();else void scene.destroy();};
 const restore=event => {if(event.persisted)scene.resume();};
 addEventListener('pagehide',leave);addEventListener('pageshow',restore);

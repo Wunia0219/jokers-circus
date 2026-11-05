@@ -1,0 +1,79 @@
+# 獨立 Discord 測試活動
+
+本入口專供兩款遊戲的 Discord 測試，不更新正式 App、正式 Worker、正式 Firestore 或既有 SQLite 測試帳本。產品版本維持 1.0.2，老虎機停輪與兩秒開轉冷卻沿用已驗收基準。
+
+## 固定環境邊界
+
+| 設定 | 值 |
+| --- | --- |
+| 測試 App | Joker’s Circus · Test |
+| App ID | `1567875182792544256` |
+| 測試伺服器 | `760012177326997544` |
+| 指定啟動頻道 | `1564243344857632818` |
+| Worker | `jokers-circus-yakyuken-test` |
+| 公開測試來源 | `https://jokers-circus-yakyuken-test.nini900219.workers.dev` |
+| Firestore 專案 | `slot-game-203db` |
+| Firestore namespace | `yakyuken-playtest-20261105-test` |
+
+現有正式／舊測試設定共用的 App `1561284960986599626` 不得交給新測試部署工具；工具與雲端執行器均明確拒絕該 App ID。正式 App 的 URL Mapping 不修改。
+
+## Portal 與部署
+
+新測試 App 已在 Codex 內建瀏覽器建立。名稱中的 Discord 一詞會被平台拒絕，因此使用上表名稱。已保存 OAuth Redirect `https://127.0.0.1`、根映射 `/` 至專用 Worker、Activity 啟用、網頁／iOS／Android 與手機直向設定。
+
+私有 App 設定保存在忽略版控的 `.tools/discord-test-app.json`，包含 `purpose: "discord-test"`、`clientId`、`clientSecret`、`publicKey`、固定 `guildId`／`channelId` 及可選 `testerIds`。Client Secret 不放入 Vite 環境變數、網頁、網址、聊天或報告。需要用內建瀏覽器保存時，可啟動只限本機的 `node scripts/game/discord-test-configure.js`；表單只寫入上述本機檔案。
+
+```sh
+node scripts/game/discord-test.js build
+node scripts/game/discord-test.js deploy
+node scripts/game/discord-test.js configure-entry
+node scripts/game/discord-test.js check
+```
+
+建置輸出為 `test-results/discord-test-dist`；部署設定為忽略版控的 `wrangler.discord-test.local.jsonc`。建立多入口的測試建置，不覆蓋正式 `dist`；新流程接管後，舊 `yakyuken-test-deploy.js` 會拒絕部署，以免移除 Discord 的前端與登入設定。前端、後端、加密會話與原測試玩家 DO 均在同一專用 Worker，保留既有測試資料。
+
+根路徑 `/` 顯示大廳，`/slot/` 顯示原有老虎機；HTML 自動轉址關閉，由 Worker 明確映射，避免 `/index.html` 被導回大廳。HTML 使用既有 Discord iframe CSP，手機音樂沿用原 Range 適配器。
+
+Portal 的 Interactions Endpoint 已保存為該來源的 `/api/interactions`，通過 Discord PING；條款／隱私網址已保存為 `/terms.html` 與 `/privacy.html`。`configure-entry` 已將新 App 唯一的 Activity 入口設為 APP_HANDLER（handler 1）；使用者啟動時回應 `type:12`，不自動張貼邀請。測試 App 已以單一 `applications.commands` scope 安裝至小丑俱樂部，沒有新增機器人權限或發送邀請訊息。其他測試員尚未邀請，須取得實際帳號後再加入 Portal 測試員名單。
+
+2026-11-05 最終短期會話恢復版本為 `ddc863d0-233b-4e29-a40a-05d4d6123d35`。公開頁面與未登入 API 保護檢查通過；部署、公開檢查及安靜入口證據保存在 `test-results/discord-test-deployment.json`、`test-results/discord-test-deploy-session.log`、`test-results/discord-test-public-check.log`、`test-results/discord-test-quiet-entry.log`。臨時密鑰設定服務在保存完成後已關閉。
+
+## 身分、權限與錢包
+
+- 啟動互動先驗證新 App 的 Ed25519 簽章、App ID、伺服器及頻道。錯誤範圍只回覆觸發者的私人提示；不產生公開推播。
+- OAuth 使用 `identify` 與 `guilds.members.read`。後端向 Discord 驗證使用者與伺服器成員資格，並要求先從指定頻道取得有效的簽章啟動紀錄；網址上的 `channel_id` 不能取代此檢查。
+- 會話最長一小時，保存在加密 Durable Object SQL；每次授權有持久請求限制，定期重新檢查成員資格。可用 `testerIds` 進一步限定 Discord 使用者；Portal 的 App 測試員名單也須允許對方使用未驗證活動。
+- 同一次活動的短期錢包會話暫存於該分頁的 sessionStorage，鍵包含測試 App、frame 與 instance；不保存 Discord OAuth access token。跨文件切換或重載時，先向 `/api/session` 重新驗證伺服器身分，不重新握手 SDK。身分不符會停止並清除暫存，過期會要求關閉活動後重新啟動；未確認遊戲操作仍保留原 ID。這項驗證使用 Auth DO，不讀寫 Firestore。
+- 玩家鍵固定由後端產生 `d_<guildId>_<userId>`。Discord 入口禁止指定 `player` 查詢參數；只有本機閘道持有的私有權杖可使用合成 `qa-*` 帳號。
+- 同一玩家的兩款遊戲共用測試餘額、同一份每日／七日簽到與權威 revision。野球拳、老虎機紀錄分開顯示，扣發款、最新紀錄及去重憑證在同一玩家文件交易完成。
+- 野球拳入場扣 1,000，通關發 2,500；暖機後平手不讀寫 Firestore、不累計平手數。老虎機沿用原條帶、算獎、下注額與兩秒冷卻，結果只由伺服器產生。
+- 切換遊戲保留 `frame_id`、`instance_id`、`platform`、`guild_id`、`channel_id`、`location_id`、`discord_shim` 及手機版本等必要啟動資訊，會話、OAuth token 與 proxy ticket 不複製至切換網址。真正 Discord 網頁測試發現，跨文件重新握手 SDK 會逾時，單純補齊 URL 參數仍無法解決；最終改用上述伺服器驗證的短期會話恢復。桌機／手機瀏覽器外框刻意拒絕第二次握手，防止這類回歸。簽到跨遊戲只領一次；未確認請求保留原 ID，不重新扣款或重抽結果。
+- 此 Worker 沒有 Discord 公告／維運推播工作，也沒有免費額度 80% 通知或持續 Firestore 輪詢。
+
+## 驗證分層
+
+1. `tests/discord-test.test.js`：拒絕正式 App、啟動參數白名單、共用餘額／簽到、原老虎機冷卻及客戶端同身分重授權。
+2. `tests/discord-test.integration.js`：官方 emulator 與真正 workerd，驗證簽章／頻道、OAuth、跨玩家隔離、兩款遊戲、持久會話及重啟；所有外部 Discord 回應皆是隔離 fixture，不傳送真實訊息。
+3. `scripts/qa/discord-test-activity.js`：已建置前端與真正 Embedded App SDK，透過模擬 Discord RPC 外框，在桌機與手機觸控跑完整大廳／野球拳／老虎機、CG 下載、共用簽到與重載。前端受原有 CSP 約束；這項自動檢查不冒充真實 Discord 客戶端驗收。
+4. `npm run verify:ci`：目前共 15 步，包含上述瀏覽器檢查與新後端整合，保留全部停輪、慢幀、安全與恢復檢查。CI services 不啟動瀏覽器；新的 SDK 雙遊戲檢查由 browser 組執行。
+5. 部署後實際核對公開頁面、未登入 API 401、Portal 設定與安靜入口；再由真正 Discord 桌機／手機及實際測試帳號確認使用體驗。真人／實機結果與上述隔離檢查分開記錄。
+
+測試證據位於 `test-results/discord-test-*`。Portal 憑證、加密金鑰、OAuth token、資料庫與實際玩家資料不得加入 CI 附件或版控。
+
+2026-11-05 本機 `verify:ci` 全部 15/15 步通過，一般回歸 549 項通過、1 項既有條件略過；結果與日誌為 `test-results/discord-test-verification.json`、`test-results/discord-test-verify-ci.log`。獨立 runtime 補驗 2 項通過；桌機與手機觸控的實際 SDK／已建置前端檢查皆通過，證據為 `test-results/discord-test-runtime.log`、`test-results/discord-test-activity/report.json` 及同目錄截圖。新瀏覽器檢查第一輪使用錯誤的簽到選擇器，修正為實際 `daily-checkin` 控制後通過，原始失敗另保留。這些是本機及隔離平台結果，未冒充遠端 CI 或真人 Discord 手機結果。
+
+跨頁連線修正後再次完整執行 `verify:ci`，15/15 步通過；結果與日誌為 `test-results/discord-test-verification-navigation.json`、`test-results/discord-test-verify-ci-navigation.log`。正式停輪與兩秒冷卻參數沒有調整。
+
+最終短期會話恢復版本另一次完整 `verify:ci` 為 15/15 步通過；結果與日誌為 `test-results/discord-test-verification-session.json`、`test-results/discord-test-verify-ci-session.log`。新增測試包含無效／跨來源／錯誤方法會話查詢、後端重啟恢復、無 Firestore 讀取、前端身分竄改／過期拒絕與只握手一次的雙遊戲往返。
+
+## 實際 Discord 網頁驗收與待辦
+
+在指定頻道的真正 Discord 網頁中，已確認 App 啟動器、簽章啟動、OAuth、測試身分、野球拳入場／勝敗／平手、遊玩紀錄及每日簽到。首場紀錄為 1 勝 2 敗、戲籌變化 -1,000；簽到後餘額 9,500。最終部署已成功切換老虎機，下注 100、獲得 200、餘額 9,600；返回大廳及野球拳後仍為 9,600，簽到仍為已領取。證據為 `test-results/discord-test-real-history.jpg`、`test-results/discord-test-real-slot.jpg`、`test-results/discord-test-real-shared-wallet.jpg`、`test-results/discord-test-ready.jpg`。沒有發送公開邀請或公告。
+
+尚未完成的項目：
+
+- CG 收藏可顯示，但實際 Discord 活動 iframe 沒有 `allow-downloads`，點擊原本的網頁下載按鈕沒有產生下載事件。原 PNG 在專用 Worker 回應 200；仍須接上 Discord 官方的外部連結流程，才能完成活動內下載相容。自動瀏覽器的下載通過不代表此項實機已通過；參考 [Discord User Actions](https://github.com/discord/discord-api-docs/blob/main/developers/activities/development-guides/user-actions.mdx)。
+- 一次實際獲勝動畫的 `win-018-Do4sWUNm.webp` 經 Discord 代理載入失敗；同一原始 Worker 檔案補查為 HTTP 200、1,065,920 bytes。權威結算與餘額同步成功；代理載入穩定性仍需追蹤，不以調整停輪參數掩蓋。
+- 真正手機 Discord 的音效、方向、下載及重連仍待實機驗收。其他測試員尚未提供帳號，未發出任何測試員邀請；遠端 GitHub CI 也未執行。
+
+測試服可供擁有者開始遊玩；以上待辦不能標示為全數驗收完成。所有修改留在 `add-function`，未 commit、merge 或 push；正式環境與原 SQLite 帳本未變更。

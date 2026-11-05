@@ -15,7 +15,8 @@ export function fadeToLobby(root,path){
   addEventListener('pageshow',restore,{once:true});
   pending=animation.finished.then(()=>{
     if(cancelled)return false;
-    cover.dataset.stage='covered';location.assign(`${path}?transition=fade`);return true;
+    const target=new URL(path,location.href);target.searchParams.set('transition','fade');
+    cover.dataset.stage='covered';location.assign(target.pathname+target.search);return true;
   },()=>false);
   return pending;
 }

@@ -6,6 +6,8 @@
 
 ## 使用測試雲端實玩（2026-11-05）
 
+Discord 測試服接線另見[獨立 Discord 測試活動](discord-test-activity.md)。該模式以真正 Discord 使用者分區，兩款遊戲共用測試錢包；下列 `qa-*` 模式仍保留作為本機合成帳號驗證。
+
 - 啟動：`node scripts/game/yakyuken-preview.js --cloud-test`，入口仍為 `http://127.0.0.1:4195/yakyuken-preview.html`。一般無參數預覽及正式建置不啟用測試雲端。
 - 既有測試 Firestore 專案為 `slot-game-203db`，野球拳專用 namespace 為 `yakyuken-playtest-20261105-test`；Worker 為 `jokers-circus-yakyuken-test`。既有測試 Worker、正式 Worker、正式 Firestore 及舊測試 SQLite 均不修改。雲端程式、部署工具及本機閘道各自檢查專用測試身分，禁止切至正式專案或其他 Worker。
 - 預設為測試玩家 A（`qa-a`），新錢包 10,000 戲籌；可用 `?testPlayer=qa-b` 切換玩家 B。`qa-low`／`qa-zero` 為餘額不足情境。這些是此資料區的合成測試玩家，不使用 Discord 登入、正式玩家識別或正式餘額。真人實測前的遠端驗證只使用 B，A 保留給使用者。

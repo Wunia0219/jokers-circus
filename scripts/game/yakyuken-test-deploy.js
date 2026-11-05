@@ -6,6 +6,7 @@ import {spawn} from 'node:child_process';
 import {PLAYTEST_IDENTITY,assertPlaytestIdentity} from '../../cloud/yakyuken-playtest-core.js';
 
 if(process.argv.slice(2).join(' ')!=='--deploy')throw new Error('Explicit --deploy required for the dedicated test Worker');
+if(existsSync('.tools/discord-test-app.json')&&JSON.parse(readFileSync('.tools/discord-test-app.json','utf8')).clientId)throw new Error('Discord test App is configured; use node scripts/game/discord-test.js deploy to preserve its assets and login configuration');
 const configPath='wrangler.yakyuken-test.jsonc',config=JSON.parse(readFileSync(configPath,'utf8'));
 assertPlaytestIdentity(config.vars);
 if(config.name!==PLAYTEST_IDENTITY.worker||config.main!=='cloud/yakyuken-playtest-worker.js'||config.assets||config.triggers||config.env||config.routes)throw new Error('Unexpected test deployment configuration');

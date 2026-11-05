@@ -1,16 +1,22 @@
 const profiles=new Set(['qa-a','qa-b','qa-low','qa-zero']);
 export class TestWalletClient{
-  constructor({player='qa-a',fetchImpl=globalThis.fetch.bind(globalThis),storage=globalThis.sessionStorage}={}){
-    if(!profiles.has(player))throw new Error('無效的測試玩家。');
-    Object.assign(this,{player,fetchImpl,storage});this.key='jokers-circus:yakyuken:cloud-test:pending:'+player;
+  constructor({player='qa-a',fetchImpl=globalThis.fetch.bind(globalThis),storage=globalThis.sessionStorage,session=null,reauthorize=null}={}){
+    if(session){if(session.environment!=='test'||!session.discordTest||!/^\d{17,20}$/.test(session.userId)||!/^\d{17,20}$/.test(session.guildId))throw new Error('Discord 測試會話無效。');player=`d_${session.guildId}_${session.userId}`;}
+    else if(!profiles.has(player))throw new Error('無效的測試玩家。');
+    Object.assign(this,{player,fetchImpl,storage,session,reauthorize});this.key='jokers-circus:yakyuken:cloud-test:pending:'+player;
     try{const pending=JSON.parse(storage?.getItem(this.key)||'null');if(pending&&['begin','hand','leave','checkin'].includes(pending.action)&&/^[-a-zA-Z0-9]{16,80}$/.test(pending.body?.requestId||''))this.pending=pending;}catch{}
     this.archive={cloud:true,persistent:true,owns:()=>false,records:()=>this.wallet?.records||[],
       isUnlocked:(character,pose)=>Number.isInteger(pose)&&pose>=0&&pose<=2&&(this.wallet?.unlocks[character]??-1)>=pose,
       begin:()=>this.wallet?.activeId,update:()=>{},leave:()=>{}};
   }
   persist(){try{if(this.pending)this.storage?.setItem(this.key,JSON.stringify(this.pending));else this.storage?.removeItem(this.key);}catch{}}
-  async request(action,body){
-    let response;try{response=await this.fetchImpl('/api/playtest/'+action+'?player='+this.player,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},...(body?{body:JSON.stringify(body)}:{}),cache:'no-store',signal:AbortSignal.timeout(30000)});}catch{throw new Error('測試雲端連線中斷，請重試原操作，不會重複扣款。');}
+  async request(action,body,retried=false){
+    let response;try{response=await this.fetchImpl('/api/playtest/'+action+(this.session?'':'?player='+this.player),{method:body?'POST':'GET',headers:{...(body?{'Content-Type':'application/json'}:{}),...(this.session?{Authorization:'Bearer '+this.session.token}:{})},...(body?{body:JSON.stringify(body)}:{}),cache:'no-store',signal:AbortSignal.timeout(30000)});}catch{throw new Error('測試雲端連線中斷，請重試原操作，不會重複扣款。');}
+    if(response.status===401&&this.reauthorize&&!retried){
+      this.reauthPromise ||= this.reauthorize().finally(()=>this.reauthPromise=null);const renewed=await this.reauthPromise;
+      if(renewed?.environment!=='test'||!renewed.discordTest||renewed.userId!==this.session.userId||renewed.guildId!==this.session.guildId)throw new Error('重新授權身分不符，請重新開啟測試版。');
+      this.session=renewed;return this.request(action,body,true);
+    }
     let data;try{data=await response.json();}catch{throw new Error('測試雲端回應中斷，請重試原操作。');}
     if(!response.ok)throw Object.assign(new Error(data.error||'測試雲端暫時無法使用。'),{status:response.status});
     if(data.wallet?.environment!=='test'||data.wallet?.player!==this.player||data.wallet?.cloud!==true)throw new Error('測試錢包身分不符，已停止連線。');

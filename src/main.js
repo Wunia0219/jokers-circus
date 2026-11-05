@@ -11,6 +11,7 @@ import { MUSIC_SOURCE } from './ui/audio/audio-cues.js';
 import {startDefaultMusic} from './ui/audio/default-music.js';
 import { presentRoundWin } from './ui/wins/round-win.js';
 import { connectActivity } from './platform/discord-activity.js';
+import {connectDiscordTestActivity,discordTestBuild} from './platform/discord-test-activity.js';
 import { connectLocalWallet } from './platform/local-wallet.js';
 import { createLoadingScreen } from './ui/shared/loading.js';
 import { BigWinPresentation } from './ui/wins/big-win.js';
@@ -333,7 +334,7 @@ async function startGame() {
   const loading = createLoadingScreen();
   loading.update(8, '正在連線…');
   let stageProgress, showStageProgress=false,casinoSession;
-  const activityReady=connectLocalWallet(window.location).then(activity=>activity||connectActivity());
+  const activityReady=discordTestBuild?connectDiscordTestActivity():connectLocalWallet(window.location).then(activity=>activity||connectActivity());
   const stageReady=Promise.all([scene.init($('#canvas-host'),(...progress)=>{
     stageProgress=progress;
     if(showStageProgress)loading.update(...progress);

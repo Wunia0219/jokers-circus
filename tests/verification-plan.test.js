@@ -41,7 +41,7 @@ test('each CI suite retains its prerequisites without sharing an emulator or bro
 test('local full verification retains its coverage and invalid suite selections fail closed',()=>{
   assert.equal(verificationPlan().length,10);
   assert.equal(verificationPlan({full:true}).length,12);
-  assert.equal(verificationPlan({ci:true}).length,14);
+  assert.equal(verificationPlan({ci:true}).length,15);
   for(const options of [{ci:true,suite:''},{ci:true,suite:'typo'},{suite:'wallet'}])assert.throws(()=>verificationPlan(options),/Use --suite/);
   for(const arg of ['--suite=','--suite=typo']){
     const result=spawnSync(process.execPath,['scripts/qa/verify.js','--ci','--list',arg],{encoding:'utf8',windowsHide:true});

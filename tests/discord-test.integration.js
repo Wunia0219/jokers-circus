@@ -1,0 +1,34 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createDiscordTestRuntime} from '../scripts/qa/helpers/discord-test-runtime.js';
+import {TEST_GUILD} from '../cloud/discord-test-auth.js';
+
+test('Discord test launch requires signed channel/guild scope; OAuth sessions isolate real players and share both games',async t=>{
+  const rt=await createDiscordTestRuntime();t.after(()=>rt.dispose());
+  assert.equal((await rt.launch('A',{forged:true})).status,401);
+  assert.equal((await rt.launch('A',{channel:'100000000000000999'})).data.type,4);
+  assert.equal((await rt.launch('A',{guild:'100000000000000999'})).data.type,4);
+  assert.equal((await rt.call('/api/token',{body:{code:'code-A',guildId:TEST_GUILD}})).status,403,'membership alone cannot bypass the signed channel launch');
+  assert.equal((await rt.launch('A')).data.type,12);assert.equal((await rt.launch('B')).data.type,12);
+  const loginA=await rt.call('/api/token',{body:{code:'code-A',guildId:TEST_GUILD}}),loginB=await rt.call('/api/token',{body:{code:'code-B',guildId:TEST_GUILD}});
+  assert.equal(loginA.status,200);assert.equal(loginA.data.session.environment,'test');assert.equal(loginA.data.session.discordTest,true);
+  const a=loginA.data.session.token,b=loginB.data.session.token;assert.notEqual(a,b);
+  const sessionReads=rt.firestoreCalls,principal=await rt.call('/api/session',{token:a});assert.equal(principal.status,200);assert.equal(principal.data.user,loginA.data.session.userId);assert.equal(principal.data.guild,TEST_GUILD);assert.equal(rt.firestoreCalls,sessionReads,'restoring a session does not read Firestore');
+  assert.equal((await rt.call('/api/session')).status,401);assert.equal((await rt.call('/api/session',{token:a,headers:{Origin:'https://untrusted.invalid'}})).status,403);
+  assert.equal((await rt.call('/api/session',{token:a,body:{}})).status,405);
+  assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,10000);
+  assert.equal((await rt.call('/api/playtest/state?player=qa-b',{token:a})).status,403);
+  assert.equal((await rt.call('/api/playtest/state',{token:'x'.repeat(43)})).status,401);
+  assert.equal((await rt.call('/api/wallet',{token:a,headers:{Origin:'https://untrusted.invalid'}})).status,403);
+  const entry=await rt.call('/api/playtest/begin',{token:a,body:{requestId:'discord-entry-00000001',characterId:'dealer'}});assert.equal(entry.status,200);assert.equal(entry.data.wallet.balance,9000);assert.equal(entry.data.wallet.name,'測試者 A');
+  assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,9000);
+  assert.equal((await rt.call('/api/checkin',{token:a,body:{}})).data.state.balance,9500);
+  assert.equal((await rt.call('/api/playtest/checkin',{token:a,body:{requestId:'discord-claim-00000001'}})).data.wallet.balance,9500);
+  const spinBody={requestId:'discord-spin-00000001',bet:100},spin=await rt.call('/api/spin',{token:a,body:spinBody});assert.equal(spin.status,200);assert.equal(spin.data.state.balance,9500+spin.data.round.net);
+  const before=rt.firestoreCalls,replay=await rt.call('/api/spin',{token:a,body:spinBody});assert.deepEqual(replay.data.round,spin.data.round);assert.equal(rt.firestoreCalls,before,'a replay uses its durable receipt without another Firestore read/write');
+  assert.equal((await rt.call('/api/spin',{token:a,body:{requestId:'discord-spin-00000002',bet:100}})).status,429);
+  for(let n=1;n<=2;n++)assert.equal((await rt.call('/api/playtest/hand',{token:a,body:{requestId:'discord-hand-0000000'+n,matchId:entry.data.matchId,move:'rock'}})).status,200);
+  const won=await rt.call('/api/playtest/state',{token:a});assert.equal(won.data.wallet.balance,spin.data.state.balance+2500);assert.equal(won.data.wallet.records[0].wins,2);
+  assert.equal((await rt.call('/api/wallet',{token:b})).data.state.balance,10000);assert.equal((await rt.call('/api/playtest/state',{token:b})).data.wallet.records.length,0);
+  await rt.restart();assert.equal((await rt.call('/api/session',{token:a})).data.user,loginA.data.session.userId);assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,won.data.wallet.balance,'encrypted sessions and player state survive a worker restart');
+});

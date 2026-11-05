@@ -8,7 +8,7 @@
 |---|---|
 | `npm run verify` | 固定順序：一般回歸、前端／Worker dry-run、啟動／荷官／數字／停輪／CSP 瀏覽器驗證 |
 | `npm run verify:full` | 上述全部，再跑官方 emulator、REST／workerd、備份恢復、重設與監控 |
-| `npm run verify:ci` | 完整驗證＋慢幀／輸入延遲＋CSP 延遲通知，共 14 項；彙整獨立失敗 |
+| `npm run verify:ci` | 完整驗證＋Discord 測試活動雙遊戲＋慢幀／輸入延遲＋CSP 延遲通知，共 15 項；彙整獨立失敗 |
 | `node scripts/qa/check-toolchain.js` | 安裝相依前核對 Node／npm、lockfile、Netlify、Docker 與 CI 的版本設定 |
 | `npm test` | 算獎、介面契約、Discord 權限、SQLite、備份、同步與防重送 |
 | `npm run test:bot` | 指令、HTTP、帳本與維運 |
@@ -26,6 +26,8 @@
 | `node --test tests/yakyuken*.test.js` | 野球拳規則、紀錄、測試錢包邊界、原請求恢復與去重 |
 | `node scripts/qa/yakyuken-cloud-test.js` | 隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
+| `node scripts/qa/discord-test-activity.js` | 已建置前端＋真正 Embedded App SDK 的隔離桌機／手機雙遊戲驗證，不連接真實 Discord 帳號 |
+| `node scripts/qa/test-firestore.js tests/discord-test.integration.js` | 官方 emulator＋真正 workerd：Discord 簽章／頻道、OAuth、每位玩家、共用錢包／簽到與重啟 |
 | `node --test tests/cloudflare-usage.test.js tests/monitor.test.js` | Free 門檻／Paid 觀測、方案切換、跨日、通知意圖、429／未知送出、可信附件恢復；不聯絡正式服務 |
 | `npm run build`、`cloud:build`、`monitor:build` | 前端與 Worker dry-run，不部署 |
 | `npm run verify:math`、`verify:sessions` | 完整枚舉與固定 seed 回合驗算 |
