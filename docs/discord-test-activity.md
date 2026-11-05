@@ -32,7 +32,7 @@ node scripts/game/discord-test.js check
 
 建置輸出為 `test-results/discord-test-dist`；部署設定為忽略版控的 `wrangler.discord-test.local.jsonc`。建立多入口的測試建置，不覆蓋正式 `dist`；新流程接管後，舊 `yakyuken-test-deploy.js` 會拒絕部署，以免移除 Discord 的前端與登入設定。前端、後端、加密會話與原測試玩家 DO 均在同一專用 Worker，保留既有測試資料。
 
-根路徑 `/` 顯示大廳，`/slot/` 顯示原有老虎機；HTML 自動轉址關閉，由 Worker 明確映射，避免 `/index.html` 被導回大廳。HTML 使用既有 Discord iframe CSP，手機音樂沿用原 Range 適配器。
+根路徑 `/` 載入保留 Discord SDK 的測試外框，內部 `/yakyuken-preview.html` 顯示大廳、`/slot/` 顯示原有老虎機；HTML 自動轉址關閉，由 Worker 明確映射，避免 `/index.html` 被導回大廳。HTML 使用既有 Discord iframe CSP，手機音樂沿用原 Range 適配器。
 
 Portal 的 Interactions Endpoint 已保存為該來源的 `/api/interactions`，通過 Discord PING；條款／隱私網址已保存為 `/terms.html` 與 `/privacy.html`。`configure-entry` 已將新 App 唯一的 Activity 入口設為 APP_HANDLER（handler 1）；使用者啟動時回應 `type:12`，不自動張貼邀請。測試 App 已以單一 `applications.commands` scope 安裝至小丑俱樂部，沒有新增機器人權限或發送邀請訊息。其他測試員尚未邀請，須取得實際帳號後再加入 Portal 測試員名單。
 
@@ -66,7 +66,7 @@ Portal 的 Interactions Endpoint 已保存為該來源的 `/api/interactions`，
 
 最終短期會話恢復版本另一次完整 `verify:ci` 為 15/15 步通過；結果與日誌為 `test-results/discord-test-verification-session.json`、`test-results/discord-test-verify-ci-session.log`。新增測試包含無效／跨來源／錯誤方法會話查詢、後端重啟恢復、無 Firestore 讀取、前端身分竄改／過期拒絕與只握手一次的雙遊戲往返。
 
-## 實際 Discord 網頁驗收與待辦
+## 前次實際 Discord 網頁驗收與待辦（修正前）
 
 在指定頻道的真正 Discord 網頁中，已確認 App 啟動器、簽章啟動、OAuth、測試身分、野球拳入場／勝敗／平手、遊玩紀錄及每日簽到。首場紀錄為 1 勝 2 敗、戲籌變化 -1,000；簽到後餘額 9,500。最終部署已成功切換老虎機，下注 100、獲得 200、餘額 9,600；返回大廳及野球拳後仍為 9,600，簽到仍為已領取。證據為 `test-results/discord-test-real-history.jpg`、`test-results/discord-test-real-slot.jpg`、`test-results/discord-test-real-shared-wallet.jpg`、`test-results/discord-test-ready.jpg`。沒有發送公開邀請或公告。
 
@@ -77,3 +77,22 @@ Portal 的 Interactions Endpoint 已保存為該來源的 `/api/interactions`，
 - 真正手機 Discord 的音效、方向、下載及重連仍待實機驗收。其他測試員尚未提供帳號，未發出任何測試員邀請；遠端 GitHub CI 也未執行。
 
 測試服可供擁有者開始遊玩；以上待辦不能標示為全數驗收完成。所有修改留在 `add-function`，未 commit、merge 或 push；正式環境與原 SQLite 帳本未變更。
+
+
+## 2026-11-05 連線、下載與素材容錯修正
+
+- 獨立測試外框持有唯一的 Discord SDK，切換遊戲僅替換同來源內頁。內頁取得連線前核對來源、允許路徑及 App 啟動範圍，並由 `/api/session` 再驗證身分；不新增 Firestore 輪詢。短期錢包過期時以同一 SDK 重新授權，拒絕身分改變。老虎機的 401 最多重送一次、保持相同操作內容與請求 ID。舊的無 SDK 快取恢復僅保留為舊入口相容路徑，新外框不依賴它。
+- CG icon 使用官方 `openExternalLink`，開啟固定測試來源的 `/cg-download.html?stage=0..2`。連結不攜帶 OAuth、錢包或啟動資訊；使用者可取消或再次開啟。獨立下載頁提供原始透明 PNG 下載及開啟原圖，手機實際儲存仍待實機驗收。原圖沿用既有公開靜態素材，不宣稱伺服器端解鎖保護。
+- 荷官素材恢復目前只在獨立 Discord 測試建置啟用：最多同時載入四張圖集；暫時性網路／408、429、500、502、503、504 失敗最多重試兩次，間隔 300ms、1000ms，網址保持不變。404／解碼等永久錯誤不自動重試。失敗動畫保留待機，初始待機失敗時嘗試靜態原畫；同一失敗動畫有 30 秒冷卻，資源仍按既有生命週期回收。
+- 素材診斷只保留本頁最多 64 筆檔名、嘗試次數、耗時與可辨識狀態；不傳送遙測、Discord 訊息或資料庫寫入。前次偶發網路失敗的實際上游原因仍不能僅憑後來 HTTP 200 推定。
+- 測試建置新增兩個入口後，原逐檔快取標頭超過 100 條上限。獨立測試建置改驗證所有 `assets/` 名稱均帶內容雜湊，再用一條快取規則；正式 Vite 設定不變。只有測試外框允許 `frame-src 'self'`，遊戲頁與下載頁沿用既有 CSP。
+- 回歸涵蓋真實 SDK 配合 Discord 相同 iframe sandbox 權限、跨遊戲後下載、取消後再開、子頁重載、桌機／手機觸控，以及故障注入的重試上限、永久錯誤、併發限制與資源回收。完整驗證、部署及真正 Discord 結果以下方本次紀錄為準。
+
+
+本次驗證與部署結果：
+
+- 本機 `verify:ci` **15/15 步通過**，一般回歸 555 通過／1 個既有條件略過；後端整合 79 通過／2 個既有條件略過。日誌與彙整為 `test-results/discord-test-recovery-verify-ci.log`、`test-results/discord-test-recovery-verification.json`。遠端 GitHub CI 未執行。
+- 專用測試 Worker 已部署版本 `1a28d473-a18e-463f-8904-0a64fce0f341`，日誌 `test-results/discord-test-recovery-deploy.log`。部署後根頁、老虎機、下載頁及原圖均 HTTP 200；只有根外框有 `frame-src 'self'`，未登入錢包仍拒絕。
+- 真正 Discord 網頁已重新啟動新版本，實測大廳 → 老虎機 → 大廳 → 野球拳 → 既有 CG 收藏 → 下載。跨頁後官方外部連結確認視窗正常出現，確認後開啟測試下載頁，實際 PNG 成功下載；與來源 PNG SHA-256 相同（1,469,836 bytes）。證據：`test-results/discord-test-recovery-external.png`、`test-results/discord-test-recovery-download.png`、`test-results/discord-test-recovery-download-check.json`。沒有新增下注、簽到、邀請或公開訊息。
+- 本次證明圖片故障注入可恢復／有上限及資源正確回收，不代表已證實前次偶發失敗的上游根因或所有網路情境永不失敗。真正手機 Discord 的外部開啟、儲存、音效、背景返回，以及其他測試員驗收仍待配合。
+- 正式 App、正式 Worker、正式 Firestore、停輪參數及產品版本未變更；本機舊錢包仍為 86,016 bytes、最後修改時間 2026-10-27 20:31:07。修改保留在 `add-function`，未 commit、merge 或 push，也沒有自行推播。

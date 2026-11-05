@@ -45,9 +45,12 @@ export default {
     if(url.pathname.startsWith('/api/')||url.pathname.startsWith('/__'))return json({error:'找不到此功能。'},404);
     if(!env.ASSETS)return json({error:'找不到此功能。'},404);
     if(!['GET','HEAD'].includes(request.method))return json({error:'請使用 GET。'},405);
-    if(url.pathname==='/')url.pathname='/yakyuken-preview.html';
+    if(url.pathname==='/')url.pathname='/discord-test-shell.html';
     else if(['/slot','/slot/'].includes(url.pathname))url.pathname='/index.html';
-    return secureResponse(await (url.pathname.startsWith('/assets/')&&url.pathname.endsWith('.mp3')?audioAsset(new Request(url,request),env.ASSETS):env.ASSETS.fetch(new Request(url,request))));
+    const response=secureResponse(await (url.pathname.startsWith('/assets/')&&url.pathname.endsWith('.mp3')?audioAsset(new Request(url,request),env.ASSETS):env.ASSETS.fetch(new Request(url,request))));
+    // Only the independent test shell may embed same-origin game documents.
+    if(url.pathname==='/discord-test-shell.html'&&response.headers.has('Content-Security-Policy'))response.headers.set('Content-Security-Policy',response.headers.get('Content-Security-Policy')+"; frame-src 'self'");
+    return response;
   },
 };
 export class YakyukenTestPlayer{

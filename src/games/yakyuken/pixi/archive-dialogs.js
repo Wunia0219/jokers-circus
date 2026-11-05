@@ -57,7 +57,13 @@ export function buildArchiveDialog(scene,type){
     text(`${characterRule(scene.selectedCharacter).name} · ${DEALER_ART[scene.cgIndex].name}`,width<450?16:20,0,-mh/2+78,body,PALETTE.gold);
     const image=new Sprite(scene.dealerTextures[scene.cgIndex]);image.label='unlocked-cg-art';image.anchor.set(.5);
     const availableH=mh-218;image.height=Math.min(availableH,(mw-44)*image.texture.height/image.texture.width);image.scale.x=image.scale.y;image.y=-mh/2+105+availableH/2;body.addChild(image);
-    place(new PixiButton({name:'下載高畫質去背 PNG',icon:downloadGlyph,iconSize:26,variant:'quiet',width:52,height:44,onPress:()=>downloadCG(scene.archive,scene.selectedCharacter,scene.cgIndex)}),0,mh/2-82,body);
+    const downloadStatus=text('',11,0,mh/2-55,body,PALETTE.muted);
+    const download=place(new PixiButton({name:'下載高畫質去背 PNG',icon:downloadGlyph,iconSize:26,variant:'quiet',width:52,height:44,onPress:async()=>{
+      download.setEnabled(false);downloadStatus.text='';
+      try{const opened=await downloadCG(scene.archive,scene.selectedCharacter,scene.cgIndex,scene.activity);if(!body.destroyed)downloadStatus.text=opened?'':'已取消開啟，可再次點選下載';}
+      catch{if(!body.destroyed)downloadStatus.text='暫時無法開啟下載，請稍後再試';}
+      finally{if(!body.destroyed)download.setEnabled(true);}
+    }}),0,mh/2-82,body);
     const unlocked=DEALER_ART.map((_,i)=>i).filter(i=>scene.archive.isUnlocked(scene.selectedCharacter,i)),at=unlocked.indexOf(scene.cgIndex);
     const prev=place(navigation('上一張','上一張已解鎖 CG',-1,()=>scene.openCG(unlocked[at-1])),-mw/2+64,mh/2-29,body);prev.setEnabled(at>0);
     const next=place(navigation('下一張','下一張已解鎖 CG',1,()=>scene.openCG(unlocked[at+1])),mw/2-64,mh/2-29,body);next.setEnabled(at<unlocked.length-1);

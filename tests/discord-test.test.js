@@ -23,7 +23,7 @@ test('Discord test config refuses the shared live App, different guilds and diff
 test('Discord navigation preserves launch context in both directions and excludes session/player impersonation parameters',()=>{
   const url=new URL('https://100000000000000003.discordsays.com/?frame_id=frame&instance_id=instance&platform=mobile&guild_id='+TEST_GUILD+'&channel_id='+TEST_CHANNEL+'&location_id=location&discord_shim=1&mobile_app_version=300.0&referrer_id=referrer&testPlayer=qa-a&token=secret&discord_proxy_ticket=private-ticket');
   const slot=slotEntryPath(url,true),lobby=slotLobbyPath(new URL(slot,url),true);
-  assert.ok(slot.startsWith('/slot/?'));assert.ok(lobby.startsWith('/?'));assert.equal(new URL(slot,url).searchParams.get('channel_id'),TEST_CHANNEL);
+  assert.ok(slot.startsWith('/slot/?'));assert.ok(lobby.startsWith('/yakyuken-preview.html?'));assert.equal(new URL(slot,url).searchParams.get('channel_id'),TEST_CHANNEL);
   for(const value of [slot,lobby,activityPath(url,'/')]){const params=new URL(value,url).searchParams;assert.equal(params.get('frame_id'),'frame');assert.equal(params.get('discord_shim'),'1');assert.equal(params.get('location_id'),'location');assert.equal(params.get('mobile_app_version'),'300.0');assert.equal(params.get('referrer_id'),'referrer');assert.ok(!value.includes('secret'));assert.ok(!value.includes('testPlayer'));assert.ok(!params.has('discord_proxy_ticket'));}
   assert.equal(slotEntryPath(url,false),'/?lobby=preview');
 });

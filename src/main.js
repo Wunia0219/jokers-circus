@@ -11,7 +11,7 @@ import { MUSIC_SOURCE } from './ui/audio/audio-cues.js';
 import {startDefaultMusic} from './ui/audio/default-music.js';
 import { presentRoundWin } from './ui/wins/round-win.js';
 import { connectActivity } from './platform/discord-activity.js';
-import {connectDiscordTestActivity,discordTestBuild} from './platform/discord-test-activity.js';
+import {connectDiscordTestActivity,discordTestBuild,testSessionFetch} from './platform/discord-test-activity.js';
 import { connectLocalWallet } from './platform/local-wallet.js';
 import { createLoadingScreen } from './ui/shared/loading.js';
 import { BigWinPresentation } from './ui/wins/big-win.js';
@@ -345,7 +345,7 @@ async function startGame() {
     const activity=await activityReady;
     activityMode=activity.mode;
     activityUser=activity.user || null;
-    if(activity.session){walletClient=createWalletClient(activity.session);state=(await walletClient.state()).state;renderState();}
+    if(activity.session){walletClient=createWalletClient(activity.session,discordTestBuild?testSessionFetch(activity):undefined);state=(await walletClient.state()).state;renderState();}
     if(activityMode==='discord'&&activity.session?.casinoNotifications)casinoSession=activity.session;
     if(activityMode==='discord'&&import.meta.env.VITE_DISCORD_WALLET_ENABLED==='true'&&!walletClient)throw new Error('帳號錢包尚未連接，請重新開啟活動。');
     renderPlayer();

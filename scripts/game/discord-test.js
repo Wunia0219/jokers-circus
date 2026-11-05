@@ -4,7 +4,7 @@ import {parseEnv} from 'node:util';
 import {randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {build} from 'vite';
-import base from '../../vite.config.js';
+import {discordTestBuildOptions} from './discord-test-build.js';
 import {PLAYTEST_IDENTITY,assertPlaytestIdentity} from '../../cloud/yakyuken-playtest-core.js';
 import {assertDiscordTestApp,TEST_CHANNEL,TEST_GUILD,LIVE_APP} from '../../cloud/discord-test-auth.js';
 import {configureQuietLaunch} from '../../server/discord/entry-point.js';
@@ -25,10 +25,7 @@ const run=(more,input)=>new Promise((done,reject)=>{
   const child=spawn(process.execPath,['node_modules/wrangler/bin/wrangler.js',...more,'--config',localConfig],{windowsHide:true,env:{...process.env,WRANGLER_SEND_METRICS:'false'},stdio:[input?'pipe':'ignore','pipe','pipe']});let output='';
   if(input)child.stdin.end(input);child.stdout.on('data',data=>{output+=data;process.stdout.write(data);});child.stderr.on('data',data=>process.stderr.write(data));child.on('error',reject);child.on('exit',code=>code===0?done(output):reject(new Error('Discord test operation failed')));
 });
-const buildTest=()=>build({...base,configFile:false,envDir:false,define:{
-  'import.meta.env.VITE_DISCORD_CLIENT_ID':JSON.stringify(app.clientId),'import.meta.env.VITE_DISCORD_AUTH_ENABLED':JSON.stringify('true'),'import.meta.env.VITE_DISCORD_WALLET_ENABLED':JSON.stringify('true'),
-  'import.meta.env.VITE_DISCORD_TEST_ACTIVITY':JSON.stringify('true'),'import.meta.env.VITE_YAKYUKEN_CLOUD_TEST':JSON.stringify('false'),
-},build:{...base.build,outDir:out,emptyOutDir:true,rollupOptions:{input:{slot:resolve('index.html'),lobby:resolve('yakyuken-preview.html')}}}});
+const buildTest=()=>build(discordTestBuildOptions(out,app.clientId));
 if(command==='build')await buildTest();
 if(command==='configure-entry'){
   if(!app.clientSecret)throw new Error('Test App secret is missing');
