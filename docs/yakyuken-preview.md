@@ -217,3 +217,11 @@
 - 6 項 archive 單元檢查、24 項遊戲瀏覽器檢查、隔離預覽建置與四尺寸補驗通過；補驗含原生觸控、捲動限制、無預載下載請求，以及三張實際下載檔與原 PNG 全檔位元組相同。主要證據為 `cg-download-ui-final.log`、`cg-polish-report.json`、`cg-polish.log`、`polish-*.png` 與 `cg-download-build.log`。原生下載不一定出現在 Playwright Page request 事件，因此按需請求以隔離 Vite 伺服器紀錄和實際下載事件交叉確認；早期觀察方式的測試失敗保留於 `cg-download-ui.log`。
 - 完整本機 `verify:ci` 首次結果 12/14 步通過，日誌與彙整保留於 `cg-download-verify-ci.log`、`cg-download-verification.json`。一般回歸的「全部禁止 PNG」舊規格與最新需求衝突，已改為精確列舉三張下載檔，並驗證原生尺寸、RGBA、完整透明像素及未授權新增／缺檔的反向案例；該資源檢查補驗通過（`cg-png-guard-final.log`）。REST 整合另在 `tests/cloud-rest.integration.js:24` 的併發簽到發生 HTTP 409／ABORTED，保留失敗、沒有重試到成功或修改錢包／重試次數。未執行遠端 CI，未部署、更新版本、commit 或 merge。
 - 最終一般回歸補驗 534 項通過、1 項既有條件略過、0 失敗，保留於 `cg-download-unit-passed.log`；完整回歸仍維持上述原始失敗結果，沒有將補驗冒充整套 CI 成功。
+
+### CG 輕量控制與遊玩紀錄樣式（2026-11-05）
+
+- CG 原畫下載改為無文字的細線下載圖示，保留 52×44px 點擊範圍及「下載高畫質去背 PNG」無障礙名稱；返回收藏、上一張／下一張與收藏項目改用輕量呈現，滑鼠停留與按下只顯示柔和底色，鍵盤焦點仍有清楚外框。
+- 野球拳選單、設定、收藏、原畫及紀錄視窗的關閉控制統一採老虎機的 44px 圓形樣式、21px 共用 X 圖案及相同的柔和互動回饋。
+- 紀錄沿用老虎機的時間／獎勵摘要、襯線金額及可展開卡片。展開後顯示荷官、勝敗平手數與自然語句狀態；野球拳特有欄位使用「通關獎勵」，並持續標示試玩未入帳。保留原紀錄與滾輪、拖曳、鍵盤捲動，展開收合不修改存檔。
+- 38 項野球拳單元檢查及 24 組隔離瀏覽器檢查通過，包含四尺寸的 CG 控制、手機／桌機紀錄排版、滑鼠與鍵盤展開收合、捲動，以及三張 PNG 的實際原檔下載。證據為 `test-results/yakyuken-refined-ui-browser.log`、`test-results/yakyuken-pixi/browser-report.json`、`cg-refined-*.png` 與 `history-refined-*.png`。第一輪因新紀錄無障礙覆層攔截滾輪而失敗，修正指標事件後重新驗證，原失敗保留於 `test-results/yakyuken-refined-ui-browser-before-scroll-fix.log`。
+- 隔離預覽建置及完整本機 `npm run verify:ci` 14/14 步通過；一般回歸 534 項通過、1 項既有條件略過。日誌為 `test-results/yakyuken-refined-ui-build.log`、`test-results/yakyuken-refined-ui-verify-ci.log`，彙整快照為 `test-results/yakyuken-refined-ui-verification.json`。SDK 測試以 `DISCORD_SDK_QA_PORT=4199` 避開目前預覽，4195 持續回應 HTTP 200。未執行遠端 CI、部署、版本更新、commit、merge 或 push。

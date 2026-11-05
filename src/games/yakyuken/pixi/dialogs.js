@@ -13,7 +13,7 @@ export function buildSlotDialog(scene,type){
   const mw=Math.min(660,width-32),mh=Math.min(height-32,400);
   const body=new Container({label:'slot-dialog'});body.position.set(width/2,height/2);body.eventMode='static';body.hitArea=new Rectangle(-mw/2,-mh/2,mw,mh);body.on('pointertap',event=>event.stopPropagation());body.addChild(panel(mw,mh));root.addChild(body);
   const title=label({menu:'遊戲選單',settings:'遊戲設定'}[type],width<=450?17:SLOT_UI.dialogTitleSize,PALETTE.gold,{fontWeight:'500'});title.anchor.set(0,.5);title.position.set(-mw/2+22,-mh/2+33);body.addChild(title);
-  const close=new PixiButton({name:'關閉視窗',icon:icon('close'),variant:'utility',width:44,height:44,onPress:()=>scene.closeModal()});close.position.set(mw/2-36,-mh/2+33);body.addChild(close);
+  const close=new PixiButton({name:'關閉視窗',icon:icon('close'),iconSize:21,variant:'close',width:44,height:44,onPress:()=>scene.closeModal()});close.position.set(mw/2-36,-mh/2+33);body.addChild(close);
   const addButton=(text,y,onPress,name=text)=>{
     const button=new PixiButton({text,name,width:Math.min(360,mw-44),height:44,fontSize:14,onPress});button.y=y;body.addChild(button);return button;
   };

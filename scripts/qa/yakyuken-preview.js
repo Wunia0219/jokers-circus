@@ -40,6 +40,16 @@ const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify(
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => {const d=document.querySelector('canvas')?.dataset;return d?.phase===expected && (!['confirmed','selecting'].includes(expected) || d.changing!=='true');},value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
+const assertArchiveControls=async(page,viewer=false)=>{
+  const {width,height}=page.viewportSize();
+  const controls=await page.evaluate(()=>{
+    const body=window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog');
+    return body.children.filter(n=>n.accessible).map(n=>{const b=n.getBounds();return {name:n.accessibleTitle,caption:n.caption?.text,variant:n.variant,iconSize:n.iconSize,x:b.x,y:b.y,width:b.width,height:b.height};});
+  });
+  const close=controls.find(n=>n.name==='關閉視窗');assert.equal(close.variant,'close');assert.equal(close.iconSize,21);assert.equal(close.width,44);assert.equal(close.height,44);
+  for(const control of controls){assert.ok(control.x>=0 && control.y>=0 && control.x+control.width<=width+1 && control.y+control.height<=height+1,`${control.name} fits ${width}×${height}`);assert.ok(control.height>=44);}
+  if(viewer){const download=controls.find(n=>n.name==='下載高畫質去背 PNG');assert.equal(download.caption,'','download has an icon and accessible name, without visible text');assert.equal(download.variant,'quiet');assert.ok(download.iconSize>=24);assert.equal(download.width,52);}
+};
 const assertTableWings=async page=>{
   const geometry=await page.evaluate(()=>{
     const scene=window.__yakyukenTest,left=scene.score.getGlobalPosition(),right=scene.dealerCards[0].getGlobalPosition();
@@ -318,6 +328,15 @@ try {
   await archiveA.screenshot({path:`${output}/archive-mobile-collection.png`});
   await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).click();
   assert.equal((await canvasState(archiveA)).pose,'1');assert.equal((await canvasState(archiveA)).modal,'cg');
+  for(const [width,height] of [[320,568],[390,844],[844,390],[1600,900]]){
+    await archiveA.setViewportSize({width,height});await frame(archiveA);await assertArchiveControls(archiveA,true);
+    await archiveA.screenshot({path:`${output}/cg-refined-${width}.png`});
+  }
+  await archiveA.setViewportSize({width:390,height:844});await frame(archiveA);
+  const downloadButton=archiveA.getByRole('button',{name:'下載高畫質去背 PNG',exact:true});await downloadButton.hover();
+  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children.find(n=>n.accessibleTitle==='下載高畫質去背 PNG').outline.visible),false,'subtle hover does not draw a heavy button border');
+  await archiveA.keyboard.press('Tab');await downloadButton.focus();
+  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children.find(n=>n.accessibleTitle==='下載高畫質去背 PNG').outline.visible),true,'icon-only download retains visible keyboard focus');
   await archiveA.screenshot({path:`${output}/archive-mobile-cg.png`});await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   assert.equal(pngRequests.length,0,'neither entry, gallery nor full CG loads download PNGs');assert.equal(downloadRequests.length,0,'server receives no download request until activation');
   assert.equal(await archiveA.evaluate(async()=>{const {downloadCG}=await import('/src/games/yakyuken/cg-download.js');return downloadCG(window.__yakyukenTest.archive,'dealer',2);}),false,'locked CG cannot initiate a download');
@@ -329,7 +348,21 @@ try {
   await archiveA.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(archiveA,'characters');
   const savedArchive=await archiveA.evaluate(()=>window.__yakyukenTest.archive.records());
   assert.equal(savedArchive.length,1);assert.deepEqual([savedArchive[0].characterId,savedArchive[0].wins,savedArchive[0].losses,savedArchive[0].draws,savedArchive[0].status],['dealer',1,1,1,'left']);
-  await archiveA.getByRole('button',{name:'遊玩紀錄',exact:true}).click();await archiveA.screenshot({path:`${output}/archive-mobile-history.png`});
+  await archiveA.getByRole('button',{name:'遊玩紀錄',exact:true}).click();await assertArchiveControls(archiveA);
+  const beforeHistory=await archiveA.evaluate(()=>JSON.stringify(window.__yakyukenTest.archive.records()));
+  await archiveA.screenshot({path:`${output}/archive-mobile-history.png`});
+  const summary=archiveA.getByRole('button',{name:/^展開 .* 對局結果$/}).first(),summaryBox=await summary.boundingBox();
+  await archiveA.mouse.click(summaryBox.x+summaryBox.width/2,summaryBox.y+summaryBox.height/2);
+  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.historyExpanded.size),1);
+  await archiveA.screenshot({path:`${output}/archive-mobile-history-expanded.png`});
+  const collapse=archiveA.getByRole('button',{name:/^收合 .* 對局結果$/}).first();await archiveA.keyboard.press('Tab');await collapse.focus();await archiveA.keyboard.press('Enter');
+  await archiveA.waitForFunction(()=>window.__yakyukenTest.historyExpanded.size===0);
+  assert.equal(await archiveA.evaluate(()=>JSON.stringify(window.__yakyukenTest.archive.records())),beforeHistory,'opening details never changes a match or its prize');
+  for(const [width,height] of [[320,568],[844,390],[1600,900]]){
+    await archiveA.setViewportSize({width,height});await frame(archiveA);await assertArchiveControls(archiveA);
+    await archiveA.screenshot({path:`${output}/history-refined-${width}.png`});
+  }
+  await archiveA.setViewportSize({width:390,height:844});await frame(archiveA);
   assert.equal(await archiveA.getByRole('button',{name:'遊戲選單',exact:true}).count(),0,'history has no unrelated navigation menu');
   await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   await archiveA.getByRole('button',{name:'CG 收藏',exact:true}).click();

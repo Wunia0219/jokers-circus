@@ -35,6 +35,8 @@
 
 實際 Node／瀏覽器／Playwright 版本與啟動 channel 寫入 `test-results/browser-runtime.json`；同版瀏覽器仍不能取代遠端 Linux CI 驗證。
 
+Discord SDK 隔離測試預設使用 4195；若正在開啟同埠的野球拳預覽，可設定 `DISCORD_SDK_QA_PORT=4199` 再跑驗證，保留既有預覽。替代連接埠仍須未被占用，並維持只監聽 `127.0.0.1`。
+
 數字測試以 `willReadFrequently: true` 固定 Canvas 軟體繪製，避免 GPU／CPU 切換造成像素雜湊差異；此設定僅限隔離測試頁，正式遊戲不受影響。固定基準位於 `tests/fixtures/number-rendering.json`，仍逐一核對像素、尺寸及無障礙文字。僅在有意更改字型／外觀，或已證實需要統一測試繪圖路徑時，用 `npm run test:numbers -- --baseline` 更新並審查差異；失敗時也會保存 `test-results/number-rendering/after.json`。
 
 停輪測試精確檢查 60ms 目標間隔、正常末軸 1640ms 及快停減速規劃，並確認音效在跨過目標的第一幀依序觸發。實際回呼可能因慢幀集中到同一幀，因此保留牆鐘量測供診斷，不以 CI 機器的即時幀率判定玩法。`npm run test:experience -- --slow-frames` 將隔離測試的 ticker 限為 5 FPS，驗證慢幀仍符合相同契約；正式遊戲不受影響。失敗時間線同時寫入日誌與 `test-results/reel-experience/failure.json`。
