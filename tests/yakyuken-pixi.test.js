@@ -54,6 +54,19 @@ test('tall phones keep the head and shoulder gestures clear of the raised side c
   assert.ok(Math.abs(a.progress.y-b.progress.y)<2,'nearby phone sizes do not jump between layouts');
 });
 
+test('wide tables scale the actor, wings and hand as a single composition across Discord window sizes',()=>{
+  const ratios=[];
+  for(const [width,height] of [[1255,700],[1255,550],[900,700],[999,700],[1000,700],[1001,700],[1200,600],[1600,900],[1920,1080],[2560,1440],[844,390]]){
+    const l=tableLayout(width,height),s=l.scale,actor=l.dealer.height*s,card=l.playerCards.scale*s;
+    assert.equal(l.mode,'wide');assert.equal(l.stackedControls,false);
+    ratios.push([actor/card,l.progress.width/card,(l.playerCards.y-(l.table.y-l.table.ry))*s/card]);
+    assert.ok(l.action.y+l.action.height/2<height);
+  }
+  for(const row of ratios)row.forEach((value,i)=>assert.ok(Math.abs(value-ratios[0][i])<1e-8,'relative artwork scale and table spacing remain constant'));
+  assert.equal(tableLayout(390,844).mode,'narrow');
+  assert.equal(tableLayout(768,1024).mode,'narrow');
+});
+
 test('Pixi Yakyuken chrome: slot-sized header preserves readable typography without a bottom deck',()=>{
   const desktop=slotChrome(1600,900),phone=slotChrome(390,844,true);
   assert.equal(desktop.headerHeight,80);assert.equal(desktop.deck,undefined);

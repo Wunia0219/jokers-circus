@@ -47,8 +47,8 @@ export function buildArchiveDialog(scene,type){
   const {width,height}=scene.layout.ui,scale=scene.layout.scale;
   scene.world.interactiveChildren=false;scene.world.accessibleChildren=false;
   const root=new Container({label:`modal:${type}`});root.scale.set(1/scale);scene.modalRoot=root;scene.root.addChild(root);
-  const shade=new Graphics().rect(0,0,width,height).fill({color:0x080d1c,alpha:type==='cg'?.96:.88});shade.eventMode='static';shade.hitArea=new Rectangle(0,0,width,height);shade.on('pointertap',()=>scene.closeModal());root.addChild(shade);
-  const mw=Math.min(type==='cg'?1000:800,width-(type==='history'?(width<=700?16:32):24)),mh=type==='cg'?height-24:Math.min(height-(type==='history'?(width<=700?16:32):24),type==='collection'?680:760);
+  const shade=new Graphics().rect(0,0,width,height).fill({color:0x080d1c,alpha:.88});shade.eventMode='static';shade.hitArea=new Rectangle(0,0,width,height);shade.on('pointertap',()=>scene.closeModal());root.addChild(shade);
+  const mw=Math.min(800,width-(type==='history'?(width<=700?16:32):24)),mh=Math.min(height-(type==='history'?(width<=700?16:32):24),type==='history'?760:680);
   const body=place(new Container({label:'archive-dialog'}),width/2,height/2,root);body.eventMode='static';body.hitArea=new Rectangle(-mw/2,-mh/2,mw,mh);body.on('pointertap',e=>e.stopPropagation());
   body.addChild(type==='history'?new Graphics().roundRect(-mw/2,-mh/2,mw,mh,18).fill(0x211727).stroke({color:0xc79d60,width:1}):panel(mw,mh));
   const close=place(new PixiButton({name:'關閉視窗',icon:icon('close'),iconSize:21,variant:'close',width:44,height:44,onPress:()=>scene.closeModal()}),mw/2-(width<=700?16:24)-22,-mh/2+(type==='history'?(width<=700?32:36):34),body);

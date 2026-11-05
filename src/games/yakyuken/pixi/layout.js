@@ -2,17 +2,38 @@ import {slotChrome} from './slot-theme.js';
 
 const smooth=(from,to,value)=>{const t=Math.max(0,Math.min(1,(value-from)/(to-from)));return t*t*(3-2*t);};
 
+// One wide composition, fitted as a unit below the shared header. Resizing a
+// Discord activity must not independently move the table, actor and cards.
+function wideTableLayout(width,height,ui){
+  const w=1600,scale=width/w,h=height/scale,room=height-ui.headerHeight;
+  const fit=Math.min(width/1600,room/820),left=(width-1600*fit)/2,top=ui.headerHeight+(room-820*fit)/2;
+  const x=value=>(left+value*fit)/scale,y=value=>(top+value*fit)/scale;
+  const unit=fit/scale,nearWidth=182,nearHalf=nearWidth*(113/156*.92+.035),nearY=820-nearHalf-32;
+  const farEdge=nearY-nearHalf-18,actorTop=8,actorHeight=(farEdge-actorTop)/.44;
+  const sideWidth=250,sideHeight=sideWidth*214/156,sideY=actorTop+(farEdge-actorTop)/2;
+  const actionHeight=Math.max(44,52*fit),actionY=top+(nearY+10)*fit+Math.max(0,72*(.65-fit));
+  return {w,h,portrait:false,mode:'wide',scale,top:y(actorTop),ui,stackedControls:false,compactFeedback:false,
+    logo:{x:w/2,y:0,width:0},dealer:{x:x(800),y:y(actorTop),height:actorHeight*unit},
+    table:{x:w/2,y:h*1.20,rx:w*.83,ry:h*1.20-y(farEdge)},
+    dealerCard:{x:x(1200),y:y(sideY),scale:sideWidth/156*unit,perspective:1},
+    progress:{x:left+400*fit,y:top+sideY*fit,width:sideWidth*fit,height:sideHeight*fit},
+    playerCards:{x:x(650),y:y(nearY),gap:nearWidth*1.27*unit,scale:nearWidth/156*unit,perspective:.92},
+    selectedLift:36*unit,confirmedLift:36*unit,hoverLift:8*unit,dealerLift:0,
+    playZone:{x:x(650),y:y(nearY)},
+    action:{x:left+1200*fit,y:actionY,width:Math.max(140,210*fit),height:actionHeight,fontSize:Math.max(14,17*fit)},
+    status:{x:left+1200*fit,y:actionY-actionHeight/2-Math.max(32,52*fit),width:Math.max(180,260*fit),fontSize:Math.max(14,18*fit),detailSize:Math.max(10,12*fit),detailGap:Math.max(18,23*fit)},
+    cardWidth:156,cardHeight:214};
+}
+
 // Only the shared top bar uses slot dimensions. The room belongs to this game.
 export function tableLayout(width,height,{touch=false}={}) {
   if(!(width>0 && height>0))throw new Error('Viewport must have a positive size');
-  const portrait=width/height<1.05,w=portrait?760:1600,scale=width/w,h=height/scale;
   const ui=slotChrome(width,height,touch),roomHeight=height-ui.headerHeight;
-  const compact=height<=500,stackedControls=ui.mobile || !compact && width<1000;
-  const compactFeedback=stackedControls && roomHeight<600;
-  // Gradually reclaim the bottom margin on desktop, instead of changing the
-  // stage and both wings in one jump at a desktop width breakpoint.
-  const desktopRoom=Math.max(0,Math.min(1,(width-1000)/400));
-  const footerSpace=stackedControls?(compactFeedback?106:130):compact?32:130-98*desktopRoom;
+  const portrait=width/height<1.05;
+  if(!portrait)return wideTableLayout(width,height,ui);
+  const w=760,scale=width/w,h=height/scale;
+  const stackedControls=true,compactFeedback=roomHeight<600;
+  const footerSpace=compactFeedback?106:130;
   const gap=Math.min(18,Math.max(12,roomHeight*.025)),cardHalfRatio=113/156*.92+.035;
   let nearWidth=Math.max(52,Math.min(156,width*.25,roomHeight*(height<=500 ? .225 : .21)));
   if(compactFeedback)nearWidth=Math.min(nearWidth,Math.max(52,(roomHeight*.55-8-footerSpace-gap-2)/(2*cardHalfRatio)));
@@ -40,13 +61,9 @@ export function tableLayout(width,height,{touch=false}={}) {
   const shoulderSafeTop=sideY+sideHeight/2+12-actorHeight*.10;
   const actorTop=Math.max(baseActorTop+portraitShift,baseActorTop+(shoulderSafeTop-baseActorTop)*portraitFit);
   const lift=Math.min(32,nearWidth*.20);
-  const actionWidth=stackedControls?200:210;
-  const actionX=stackedControls?width/2:compact?width-12-actionWidth/2:width-sideX;
-  const actionY=stackedControls?height-32:nearY+10;
-  const nearHalfWidth=nearWidth*(84+113*.92*.06)/156;
-  const nearX=stackedControls?width/2:Math.min(width/2,actionX-actionWidth/2-16-nearGap-nearHalfWidth);
-  const statusWidth=stackedControls?Math.min(width-24,400):Math.min(260,(width-12-actionX)*2);
-  return {w,h,portrait,scale,top:actorTop/scale,ui,stackedControls,compactFeedback,
+  const actionWidth=200,actionX=width/2,actionY=height-32,nearX=width/2;
+  const statusWidth=Math.min(width-24,400);
+  return {w,h,portrait,mode:'narrow',scale,top:actorTop/scale,ui,stackedControls,compactFeedback,
     logo:{x:w/2,y:0,width:0},
     dealer:{x:w/2,y:actorTop/scale,height:actorHeight/scale},
     table:{x:w/2,y:h*1.20,rx:w*(portrait?1.25:.83),ry:h*1.20-farEdge/scale},

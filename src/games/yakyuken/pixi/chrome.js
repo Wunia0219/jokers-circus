@@ -77,9 +77,9 @@ export function buildSlotHud(scene){
   scene.lobbyButton=at(new PixiButton({name:'返回遊戲大廳',variant:'utility',width:48,height:48,icon:icon('lobby'),onPress:()=>scene.visitScreen('games')}),centers[4],cy,hud);
   if(scene.screen!=='table')return;
   const {action,status}=scene.layout;
-  scene.confirmButton=at(new PixiButton({text:'確認出牌',name:'確認出牌',variant:'duel',width:action.width,height:action.height,fontSize:17,onPress:()=>scene.confirm()}),action.x,action.y,hud);
-  scene.status=at(label('',ui.mobile?16:18,PALETTE.cream,{fontWeight:'600',wordWrap:true,wordWrapWidth:status.width,lineHeight:23}),status.x,status.y,hud);
-  scene.statusDetail=at(label('',12,0xcbb8b5,{wordWrap:true,wordWrapWidth:status.width,lineHeight:17}),status.x,status.y+status.detailGap,hud);
+  scene.confirmButton=at(new PixiButton({text:'確認出牌',name:'確認出牌',variant:'duel',width:action.width,height:action.height,fontSize:action.fontSize??17,onPress:()=>scene.confirm()}),action.x,action.y,hud);
+  scene.status=at(label('',status.fontSize??(ui.mobile?16:18),PALETTE.cream,{fontWeight:'600',wordWrap:true,wordWrapWidth:status.width,lineHeight:Math.max(23,(status.fontSize??18)*1.3)}),status.x,status.y,hud);
+  scene.statusDetail=at(label('',status.detailSize??12,0xcbb8b5,{wordWrap:true,wordWrapWidth:status.width,lineHeight:Math.max(17,(status.detailSize??12)*1.4)}),status.x,status.y+status.detailGap,hud);
   buildProgress(scene,hud);
   scene.dialogueBubble=new Container({label:'dealer-dialogue',eventMode:'none'});hud.addChild(scene.dialogueBubble);
 }

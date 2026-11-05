@@ -285,7 +285,13 @@ try {
   assert.equal(localRequest('https://discord.com/api/blocked'),false);
   assert.equal(localRequest('blob:https://example.com/blocked'),false);
   assert.ok(requests.every(localRequest));
-  assert.ok(!requests.some(url => /\/(wallet-client|discord-activity|state|controller|demo-duel)\.js/.test(url)));
+  // Shared test-activity modules may be imported by the local entry. The
+  // isolation contract is no wallet/OAuth traffic, regardless of imports.
+  const privateRequest=url=>/^\/api\//.test(new URL(url).pathname);
+  assert.equal(privateRequest(origin+'/api/playtest/state'),true);
+  assert.equal(privateRequest(origin+'/api/token'),true);
+  assert.ok(!requests.some(privateRequest),'local preview must never contact a wallet or OAuth endpoint');
+  assert.ok(!requests.some(url => /\/(state|controller|demo-duel)\.js/.test(url)));
   assert.ok(requests.some(url=>url.includes('/yakyuken/challenge.js')));
   checks.push('resize preserves selection and pose; probability engine loads without wallet, legacy controller or Discord');
 

@@ -73,9 +73,9 @@ try{
     assert.equal(docs.get(who).balance,11500);await frame.getByRole('button',{name:'CG 收藏',exact:true}).click();await frame.getByRole('button',{name:'回顧終幕 CG',exact:true}).click();
     await frame.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).click();
     await page.waitForFunction(()=>__links.length===1);const link=await page.evaluate(()=>__links[0]);
-    assert.equal(link,'https://jokers-circus-yakyuken-test.nini900219.workers.dev/cg-download.html?stage=2');
+    assert.equal(link,'https://jokers-circus-gallery.pages.dev/cg/yakyuken/dealer/finale');
     const downloadPage=await context.newPage();await downloadPage.goto(origin+'/cg-download.html?stage=2');
-    const downloadEvent=downloadPage.waitForEvent('download');await downloadPage.getByRole('link',{name:'下載去背 PNG',exact:true}).click();assert.equal((await downloadEvent).suggestedFilename(),'Jokers-Circus-dealer-CG-3.png');await downloadPage.close();
+    const downloadEvent=downloadPage.waitForEvent('download');await downloadPage.getByRole('link',{name:'下載圖片',exact:true}).click();assert.equal((await downloadEvent).suggestedFilename(),'Jokers-Circus-Yakyuken-Dealer-finale.png');await downloadPage.close();
     await frame.getByRole('button',{name:'關閉視窗',exact:true}).click();await page.screenshot({path:output+'/'+who+'-yakyuken.png'});
     await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');
     await frame.getByRole('button',{name:'選擇老虎機',exact:true}).click();await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);

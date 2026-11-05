@@ -1,10 +1,17 @@
-const stage=new URLSearchParams(location.search).get('stage'),status=document.querySelector('#status');
-if(!/^[0-2]$/.test(stage||''))status.textContent='找不到這張 CG，請回遊戲重新開啟。';
+import {cgFromLocation} from '../games/yakyuken/cg-catalog.js';
+
+const art=cgFromLocation(location),status=document.querySelector('#status');
+if(!art)status.textContent='找不到這張圖片，請從遊戲中重新開啟。';
 else{
-  const src=`/downloads/yakyuken/dealer-stage-${stage}.png`,download=document.querySelector('#download'),view=document.querySelector('#view'),art=document.querySelector('#art');
-  download.href=view.href=src;download.download=`Jokers-Circus-dealer-CG-${Number(stage)+1}.png`;
+  const download=document.querySelector('#download'),view=document.querySelector('#view'),image=document.querySelector('#art');
+  // Legacy pages on the test Worker still serve the original asset location.
+  const src=location.pathname==='/cg-download.html'?`/downloads/yakyuken/dealer-stage-${art.index}.png`:art.image;
+  document.querySelector('h1').textContent=art.name;
+  document.title=`${art.name} · Joker’s Circus`;
+  image.alt=`命運荷官・${art.name}`;
+  download.href=view.href=src;download.download=art.filename;
   download.hidden=view.hidden=false;
-  art.onload=()=>{status.textContent='原始尺寸・透明背景 PNG';art.hidden=false;};
-  art.onerror=()=>{status.textContent='預覽暫時無法載入，仍可點選下載或開啟原圖。';};
-  art.src=src;
+  image.onload=()=>{status.hidden=true;image.hidden=false;};
+  image.onerror=()=>{status.textContent='圖片暫時無法顯示，請點選下載圖片。';};
+  image.src=src;
 }

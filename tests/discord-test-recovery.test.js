@@ -33,7 +33,7 @@ test('CG uses a fixed HTTPS download page without wallet or launch secrets and h
   const activity={mode:'discord',sdk:{commands:{openExternalLink:async args=>{calls.push(args.url);return {opened};}}}};
   assert.equal(await downloadCG(archive,'dealer',0,activity),false);assert.equal(calls.length,0);
   assert.equal(await downloadCG(archive,'dealer',1,activity),true);
-  assert.equal(calls[0],'https://jokers-circus-yakyuken-test.nini900219.workers.dev/cg-download.html?stage=1');
+  assert.equal(calls[0],'https://jokers-circus-gallery.pages.dev/cg/yakyuken/dealer/first-win');
   opened=false;assert.equal(await downloadCG(archive,'dealer',1,activity),false);
   await assert.rejects(()=>downloadCG(archive,'dealer',1,{mode:'discord'}),/下載連線/);
 });

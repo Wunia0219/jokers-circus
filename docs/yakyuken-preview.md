@@ -1,5 +1,16 @@
 # 野球拳：純 Pixi 牌桌框架
 
+## 品牌下載站與兩種牌桌配置（2026-11-05）
+
+- 下載站使用 `https://jokers-circus-gallery.pages.dev`，是獨立的 Cloudflare Pages 純靜態專案；沒有 Functions、Worker、錢包、憑證或 Netlify 服務。三張圖片分別使用 `/cg/yakyuken/dealer/invitation`、`/first-win`、`/finale`。可見文字只保留品牌、圖片名稱與下載／查看原圖，移除格式術語與手機操作教學；保留原生 1024×1536 透明 PNG。
+- `src/games/yakyuken/cg-catalog.js` 集中管理圖片名稱、公開路徑與下載檔名；Discord 仍走官方外部連結及取消回應。本機下載仍核對解鎖，不預載 PNG；舊測試 Worker 的查詢參數連結保持相容。
+- 收藏總覽與單張 CG 共用 800×680 上限及相同視窗留白、遮罩；縮放後使用相同可用尺寸，開啟圖片、返回收藏不改變外框。
+- 牌桌只有寬版與窄版兩種構圖（寬高比 1.05 為切點）。寬版以 1600×820 的牌桌空間同時受可用寬高限制，人物、側牌、手牌與桌緣位置共同比例縮放，移除 1000px 以下的第三套桌機排列及獨立底部留白切換；桌面持續覆蓋視窗。窄版維持手牌、狀態及確認鈕直向排列。矮橫向視窗保留按鈕最小尺寸，狀態字級與行距隨空間調整。
+- 重建下載站：`node scripts/game/build-cg-gallery.js`，輸出只在 `test-results/cg-gallery-dist`。更新既有 Pages 專案：`node node_modules/wrangler/bin/wrangler.js pages deploy test-results/cg-gallery-dist --project-name jokers-circus-gallery --branch main --commit-dirty=true`。不要以新的 `pages project create` 代替更新，也不要部署根目錄遊戲 `dist`。
+- 專項驗證：`node scripts/qa/cg-responsive.js` 的 13 尺寸與 6 次原檔下載、`node scripts/qa/cg-gallery-live.js` 的 3 次線上原檔下載均通過；證據在 `test-results/cg-responsive/report.json`、`live-report.json`、對應截圖及 `test-results/cg-responsive-layout-final.log`。既有 24 項遊戲 UI 回歸通過，日誌為 `test-results/cg-responsive-game.log`。完整本機 `verify:ci` 15/15 項通過，一般回歸 557 項通過、1 項既有條件略過；日誌與結果快照為 `test-results/cg-responsive-verify-ci.log`、`cg-responsive-verification.json`。未執行遠端 CI。
+- 已發布獨立 Pages 專案，並更新既有 Discord 測試 Worker（版本 ID `8ea1be33-f522-41f8-88b7-a1ff0c56cd3b`）。公開測試健康檢查與未登入錢包拒絕檢查通過；線上 HTML／遊戲入口／圖片目錄程式與本機建置的位元組比對見 `test-results/cg-responsive/test-deploy-report.json`。未部署正式服。
+- 停輪與玩法計時、機率、獎金、現行產品版本 1.0.2 均未調整；commit、merge 及 push 仍由使用者處理。
+
 大廳、選角與野球拳遊戲都使用同一個 Pixi Canvas，沒有 HTML 網頁版的主視覺、卡片、按鈕或 dialog。2026-11-03 已依使用者提供的通關勝率表接入五位角色的每拳機率、累積勝敗、整場結束與獎金顯示，詳見[機率規則](yakyuken-probability.md)。一般本機預覽仍不扣款、不發獎入帳、不連接 Discord，收藏與紀錄儲存在同裝置訪客的獨立儲存區。2026-11-05 新增使用者指定的獨立測試雲端模式，啟動方式及資料邊界見下節。
 
 先前指定的本機 SQLite 測試資料庫仍保留於 `data/validation/wallet.sqlite`（見 `scripts/qa/validation-server.js` 與 `docs/testing.md`），沒有開啟、重設、遷移或取代它。使用者於 2026-11-05 明確選擇既有獨立測試雲端；目前野球拳雲端測試錢包使用下述獨立資料區，與舊 SQLite／老虎機錢包分開。
