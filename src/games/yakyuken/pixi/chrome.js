@@ -84,8 +84,8 @@ export function buildSlotHud(scene){
   if(scene.screen!=='table')return;
   const {action,status}=scene.layout;
   scene.confirmButton=at(new PixiButton({text:'確認出牌',name:'確認出牌',variant:'duel',width:action.width,height:action.height,fontSize:action.fontSize??17,onPress:()=>scene.confirm()}),action.x,action.y,hud);
-  scene.status=at(label('',status.fontSize??(ui.mobile?16:18),PALETTE.cream,{fontWeight:'600',wordWrap:true,wordWrapWidth:status.width,lineHeight:Math.max(23,(status.fontSize??18)*1.3)}),status.x,status.y,hud);
-  scene.statusDetail=at(label('',status.detailSize??12,0xcbb8b5,{wordWrap:true,wordWrapWidth:status.width,lineHeight:Math.max(17,(status.detailSize??12)*1.4)}),status.x,status.y+status.detailGap,hud);
+  scene.status=at(label('',status.fontSize??(ui.mobile?16:18),PALETTE.cream,{fontWeight:'600',wordWrap:true,wordWrapWidth:status.width,lineHeight:status.lineHeight??Math.max(23,(status.fontSize??18)*1.3)}),status.x,status.y,hud);
+  scene.statusDetail=at(label('',status.detailSize??12,0xcbb8b5,{wordWrap:true,wordWrapWidth:status.width,lineHeight:status.detailLineHeight??Math.max(17,(status.detailSize??12)*1.4)}),status.x,status.y+status.detailGap,hud);
   buildProgress(scene,hud);
   scene.dialogueBubble=new Container({label:'dealer-dialogue',eventMode:'none'});hud.addChild(scene.dialogueBubble);
 }
@@ -107,6 +107,8 @@ export function updateSlotHud(scene){
   scene.scoreDescription=rule.name+'，'+wins+' 勝，目標 '+rule.winsRequired+' 勝；'+losses+' 敗，上限 '+rule.lossLimit+' 敗';
   const next=challenge?.status==='lost'?'返回選擇荷官…':finished?'再挑戰一次':'下一局';
   scene.confirmButton.setText(confirmed?next:phase==='requesting'?'正在確認出牌…':phase==='presenting'?'荷官出牌中…':scene.wallet?.pending?'重試上一拳':'確認出牌');
+  scene.confirmButton.caption.scale.set(1);
+  scene.confirmButton.caption.scale.set(Math.min(1,(scene.confirmButton.buttonWidth-24)/scene.confirmButton.caption.width));
   scene.confirmButton.setName(confirmed?next:'確認出牌');
   scene.confirmButton.setEnabled(!scene.settling&&!scene.changing && !scene.ending && challenge?.status!=='lost' && (confirmed || phase==='selecting' && !!selected));
   scene.status.text=confirmed?{win:'你贏了',loss:'荷官獲勝',draw:'平手，再來一拳'}[duel.outcome]:phase==='presenting'?'荷官即將揭牌':selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
@@ -114,6 +116,18 @@ export function updateSlotHud(scene){
   if(confirmed && finished){
     scene.status.text=challenge.status==='won'?'挑戰通關':'挑戰結束';
     scene.statusDetail.text=challenge.status==='won'?'獎金 '+challenge.reward.toLocaleString('en-US')+' 戲籌 · '+(scene.wallet?'已入帳':'試玩未入帳'):'已達敗場上限，本場無獎金';
+  }
+  if(scene.layout.status.autoStack){
+    const {action,status}=scene.layout;
+    if(status.sideBySide){
+      const total=scene.status.height+status.gap+scene.statusDetail.height;
+      const top=Math.min(scene.layout.ui.height-8-total,Math.max(status.feltTop+8,action.y-total/2));
+      scene.status.y=top+scene.status.height/2;
+      scene.statusDetail.y=top+scene.status.height+status.gap+scene.statusDetail.height/2;
+    }else{
+      scene.statusDetail.y=action.y-action.height/2-status.gap-scene.statusDetail.height/2;
+      scene.status.y=scene.statusDetail.y-scene.statusDetail.height/2-status.gap-scene.status.height/2;
+    }
   }
   updateDialogue(scene);
 }

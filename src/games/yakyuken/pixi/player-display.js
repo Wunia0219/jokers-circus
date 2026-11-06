@@ -34,13 +34,11 @@ export function attachPortrait(scene,avatar,size,fallback){
 export function buildBalance(scene,hud,width,headerHeight){
   const w=Math.min(244,width-32),group=new Container({label:'player-balance',eventMode:'none'});
   group.position.set(width/2,headerHeight+BALANCE_ROW_HEIGHT/2);hud.addChild(group);
-  group.addChild(new Graphics().roundRect(-w/2,-17,w,34,17).fill({color:0x291c29,alpha:.96}).stroke({color:0xd6af6b,width:1,alpha:.55}));
-  const chip=new Graphics().circle(-w/2+23,2,11).fill(0x271726).stroke({color:0xa87b47,width:1})
-    .circle(-w/2+23,-1,11).fill(0x6c293e).stroke({color:0xebca87,width:1.2});
-  for(let i=0;i<8;i++){const a=i*Math.PI/4,x=-w/2+23;chip.moveTo(x+Math.cos(a)*8,-1+Math.sin(a)*8).lineTo(x+Math.cos(a)*10,-1+Math.sin(a)*10).stroke({color:0xebca87,width:1.4});}
-  chip.poly([-w/2+23,-6,-w/2+27,-1,-w/2+23,4,-w/2+19,-1]).fill(0xf5d28c);group.addChild(chip);
-  const caption=label('持有戲籌',11,PALETTE.muted);caption.anchor.x=0;caption.x=-w/2+43;group.addChild(caption);
-  const number=label('',21,PALETTE.bright,{fontFamily:['Georgia','serif'],fontWeight:'bold'});number.anchor.x=1;number.x=w/2-14;group.addChild(number);
+  group.addChild(new Graphics().roundRect(-w/2,-17,w,34,5).fill({color:0x211a24,alpha:.72})
+    .moveTo(-w/2+14,16).lineTo(w/2-14,16).stroke({color:0xd6af6b,width:1,alpha:.45})
+    .moveTo(-w/2+91,-8).lineTo(-w/2+91,8).stroke({color:0xd6af6b,width:1,alpha:.25}));
+  const caption=label('COINS',13,PALETTE.gold,{fontFamily:['Georgia','serif'],fontWeight:'bold',letterSpacing:2});caption.label='balance-unit';caption.anchor.x=0;caption.x=-w/2+14;group.addChild(caption);
+  const number=label('',25,PALETTE.bright,{fontFamily:['Georgia','serif'],fontWeight:'bold'});number.anchor.x=1;number.x=w/2-14;group.addChild(number);
   scene.balanceNumber=number;scene.balanceGroup=group;
   updateBalance(scene);
 }

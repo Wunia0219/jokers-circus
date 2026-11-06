@@ -11,7 +11,13 @@ function wideTableLayout(width,height,ui){
   const unit=fit/scale,nearWidth=182,nearHalf=nearWidth*(113/156*.92+.035),nearY=820-nearHalf-32;
   const farEdge=nearY-nearHalf-18,actorTop=8,actorHeight=(farEdge-actorTop)/.44;
   const sideWidth=260,sideHeight=sideWidth*214/156,sideY=actorTop+(farEdge-actorTop)/2;
-  const actionHeight=Math.max(44,52*fit),actionY=top+(nearY+10)*fit+Math.max(0,72*(.65-fit));
+  const feltTop=top+farEdge*fit,sideBySide=height-feltTop<190;
+  const cardRight=left+(650+nearWidth*1.27+nearWidth*(84+113*.92*.06)/156)*fit;
+  const laneLeft=cardRight+12,laneRight=sideBySide?Math.min(width-16,laneLeft+360):width-16,laneWidth=laneRight-laneLeft;
+  const actionWidth=sideBySide?Math.max(112,Math.min(150,laneWidth*.47)):Math.max(150,Math.min(360,280*fit)),actionHeight=Math.max(52,Math.min(88,64*fit));
+  const statusWidth=sideBySide?laneWidth-actionWidth-12:Math.max(actionWidth,Math.min(360,300*fit));
+  const actionX=sideBySide?laneRight-actionWidth/2:Math.max(left+(1170+70*(1-smooth(.4,.8,fit)))*fit,cardRight+12+statusWidth/2);
+  const actionY=Math.min(height-actionHeight/2-12,feltTop+(height-feltTop)*.64);
   return {w,h,portrait:false,mode:'wide',scale,top:y(actorTop),ui,stackedControls:false,compactFeedback:false,
     logo:{x:w/2,y:0,width:0},dealer:{x:x(800),y:y(actorTop),height:actorHeight*unit},
     table:{x:w/2,y:h*1.20,rx:w*.83,ry:h*1.20-y(farEdge)},
@@ -20,8 +26,8 @@ function wideTableLayout(width,height,ui){
     playerCards:{x:x(650),y:y(nearY),gap:nearWidth*1.27*unit,scale:nearWidth/156*unit,perspective:.92},
     selectedLift:38*unit,confirmedLift:38*unit,hoverLift:8*unit,dealerLift:0,
     playZone:{x:x(650),y:y(nearY)},
-    action:{x:left+1220*fit,y:actionY,width:Math.max(140,210*fit),height:actionHeight,fontSize:Math.max(14,17*fit)},
-    status:{x:left+1220*fit,y:actionY-actionHeight/2-Math.max(32,52*fit),width:Math.max(180,260*fit),fontSize:Math.max(14,18*fit),detailSize:Math.max(10,12*fit),detailGap:Math.max(18,23*fit)},
+    action:{x:actionX,y:actionY,width:actionWidth,height:actionHeight,fontSize:Math.max(18,22*fit)},
+    status:{x:sideBySide?laneLeft+statusWidth/2:actionX,y:actionY-actionHeight/2-52,width:statusWidth,fontSize:Math.max(18,24*fit),detailSize:sideBySide?11:Math.max(12,15*fit),lineHeight:sideBySide?22:undefined,detailLineHeight:sideBySide?15:undefined,detailGap:26,autoStack:true,sideBySide,feltTop,gap:Math.max(6,10*fit)},
     cardWidth:156,cardHeight:214};
 }
 
@@ -61,7 +67,7 @@ export function tableLayout(width,height,{touch=false}={}) {
   const shoulderSafeTop=sideY+sideHeight/2+12-actorHeight*.10;
   const actorTop=Math.min(Math.max(baseActorTop+portraitShift,baseActorTop+(shoulderSafeTop-baseActorTop)*portraitFit),Math.max(baseActorTop,farEdge-roomHeight*.455));
   const lift=Math.min(32,nearWidth*.20);
-  const actionWidth=200,actionX=width/2,actionY=height-32,nearX=width/2;
+  const actionWidth=Math.min(width-40,compactFeedback?244:280),actionX=width/2,actionY=height-(compactFeedback?30:42),nearX=width/2;
   const statusWidth=Math.min(width-24,400);
   return {w,h,portrait,mode:'narrow',scale,top:actorTop/scale,ui,contentTop,stackedControls,compactFeedback,
     logo:{x:w/2,y:0,width:0},
@@ -73,8 +79,8 @@ export function tableLayout(width,height,{touch=false}={}) {
     selectedLift:lift/scale,confirmedLift:lift/scale,hoverLift:Math.min(8,lift*.3)/scale,
     dealerLift:0,
     playZone:{x:nearX/scale,y:nearY/scale},
-    action:{x:actionX,y:actionY,width:actionWidth,height:52},
-    status:{x:actionX,y:actionY-(compactFeedback?56:76),width:statusWidth,detailGap:compactFeedback?17:23},
+    action:{x:actionX,y:actionY,width:actionWidth,height:compactFeedback?52:60,fontSize:compactFeedback?19:22},
+    status:{x:actionX,y:height-(compactFeedback?89:112),width:statusWidth,fontSize:compactFeedback?18:22,detailSize:compactFeedback?12:14,lineHeight:compactFeedback?22:29,detailLineHeight:compactFeedback?16:20,detailGap:compactFeedback?22:26},
     cardWidth:156,cardHeight:214};
 }
 export const TABLE_MOVES=Object.freeze(['rock','scissors','paper']);

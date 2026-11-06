@@ -1,5 +1,14 @@
 # 野球拳：純 Pixi 牌桌框架
 
+## 牌桌操作區與 COINS 呈現
+
+- 餘額標記統一使用老虎機實際的 `COINS` 字樣，移除籌碼圖案與「持有戲籌」。野球拳改採金色襯線字、較大的淡金餘額、細分隔線與低亮度底色；保留獨立餘額區與伺服器確認後的更新方式，左上 Discord 身分不變。
+- 寬版的狀態文字、說明與按鈕一起放大，向手牌旁的桌面中央收攏，整組依可見桌面高度置中；說明換行時以實際文字高度安排間距，保持段落與按鈕分離。矮橫向視窗在同一寬版牌桌中將文字與按鈕並排，保留卡牌間距及完整操作範圍。
+- 直向手機維持手牌下方置中操作，按鈕加寬並放大文字；較小手機依可用高度保留緊湊排列。等待回應等較長按鈕文字只在必要時微縮，以免溢出金邊。
+- `node scripts/qa/cg-responsive.js` 新增 600×420，合計 14 種尺寸，逐一檢查選牌、請求中與通關狀態的標題／說明分離、按鈕文字尺寸、視窗邊界及 `COINS` 標記。另保留收藏相同外框與六次原圖下載；結果為 `test-results/table-action-coins-ui-final.log`、`test-results/cg-responsive/report.json` 與 `complete-*.png`。版面單元檢查 14 項通過。
+- 完整本機 CI 15/15 項通過，一般回歸為 557 項通過、1 項既有條件略過；日誌與結果快照為 `test-results/table-action-coins-verify-ci.log`、`table-action-coins-verification.json`。最後的矮寬視窗排列及區域寬度微調，另以 14 尺寸、三種狀態及 14 項版面單元檢查補驗通過；未重跑已通過的整套 CI。未執行遠端 CI。
+- 已更新獨立 Discord 測試 Worker，版本 ID `5f7ccb7a-6357-4bdb-b8aa-b4213206cb5a`；健康檢查、未登入錢包拒絕及線上 HTML／入口程式位元組比對均通過。證據為 `test-results/table-action-coins-deploy.log`、`table-action-coins-deploy-report.json`。這次只調整呈現，沒有變更人物／手牌構圖比例、入場費、獎金、機率、停輪參數或產品版本，也未部署正式服。
+
 ## 玩家身分、戲籌與離場確認（2026-11-05）
 
 - 左上比照老虎機：Discord 頭貼、`global_name`／`username` 與 `ID <Discord user id>`，不再以餘額取代 UID。兩款遊戲共用 `discordAvatarUrl`；野球拳以圓形遮罩繪製頭貼，保留相同尺寸、留白與連線標記。頭貼非同步載入，失敗保留人物圖示；縮放重用貼圖，場景結束才釋放，不重啟對局或額外讀取錢包。

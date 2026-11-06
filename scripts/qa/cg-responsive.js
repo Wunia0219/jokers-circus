@@ -31,17 +31,28 @@ try{
   await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();
   const frame=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   const bounds=()=>page.evaluate(()=>{const body=window.__responsiveScene.modalRoot.children.find(n=>n.label==='archive-dialog'),b=body.hitArea,p=body.getGlobalPosition();return {x:p.x+b.x,y:p.y+b.y,width:b.width,height:b.height};});
-  const sizes=[[1255,700],[1255,550],[900,700],[999,700],[1001,700],[1600,900],[1920,1080],[2560,1440],[844,390],[768,1024],[544,680],[390,844],[320,568]];
+  const sizes=[[1255,700],[1255,550],[900,700],[999,700],[1001,700],[1600,900],[1920,1080],[2560,1440],[844,390],[600,420],[768,1024],[544,680],[390,844],[320,568]];
   for(const [width,height] of sizes){
     await page.setViewportSize({width,height});await frame();
     await page.getByRole('button',{name:'選擇剪刀',exact:true}).click();await frame();
-    const controls=await page.evaluate(()=>{
-      const s=window.__responsiveScene,b=s.confirmButton.getBounds(),d=s.statusDetail.getBounds();
-      return {caption:s.confirmButton.caption.width,buttonWidth:s.confirmButton.buttonWidth,detailBottom:d.y+d.height,buttonTop:b.y};
-    });
-    assert.ok(controls.caption<=controls.buttonWidth-20,'button caption fits even in short landscape windows');
-    assert.ok(controls.detailBottom<controls.buttonTop,'status never overlaps the confirm button');
+    const checkFeedback=async()=>{
+      const controls=await page.evaluate(()=>{
+        const s=window.__responsiveScene,b=s.confirmButton.getBounds(),d=s.statusDetail.getBounds(),t=s.status.getBounds();
+        return {caption:s.confirmButton.caption.width,buttonWidth:s.confirmButton.buttonWidth,detailTop:d.y,detailBottom:d.y+d.height,detailRight:d.x+d.width,titleBottom:t.y+t.height,buttonTop:b.y,buttonBottom:b.y+b.height,x:b.x,right:b.x+b.width,unit:s.balanceGroup.getChildByLabel('balance-unit').text};
+      });
+      assert.equal(controls.unit,'COINS');
+      assert.ok(controls.caption<=controls.buttonWidth-20,'button caption fits even in short landscape windows');
+      assert.ok(controls.titleBottom<controls.detailTop,'heading and description remain separate');
+      assert.ok(controls.detailBottom<controls.buttonTop||controls.detailRight<controls.x,'status never overlaps the confirm button');
+      assert.ok(controls.x>=0&&controls.right<=width&&controls.buttonBottom<height,'enlarged button stays inside the viewport');
+    };
+    await checkFeedback();
     await page.screenshot({path:`${output}/table-${width}x${height}.png`});
+    const saved=await page.evaluate(()=>{const s=window.__responsiveScene;return {challenge:s.challenge,phase:s.phase,duel:s.duel};});
+    await page.evaluate(()=>{const s=window.__responsiveScene;s.phase='requesting';s.updateControls();s.app.render();});await checkFeedback();
+    await page.evaluate(()=>{const s=window.__responsiveScene;s.phase='confirmed';s.duel={dealer:'paper',outcome:'win'};s.challenge={...s.challenge,status:'won',wins:2,reward:2500};s.updateControls();s.app.render();});await checkFeedback();
+    await page.screenshot({path:`${output}/complete-${width}x${height}.png`});
+    await page.evaluate(saved=>{const s=window.__responsiveScene;Object.assign(s,saved);s.updateControls();s.app.render();},saved);
     await page.getByRole('button',{name:'CG 收藏',exact:true}).click();await frame();
     const collection=await bounds();
     await page.screenshot({path:`${output}/collection-${width}x${height}.png`});
