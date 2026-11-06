@@ -40,5 +40,6 @@ npm run dev
 | 維運與交付 | [正式服交付](docs/customer-handoff.md)、[備份恢復](docs/recovery.md)、[資料保護](docs/security.md) |
 | Discord | [指令與管理](docs/discord-commands.md)、[賭場公告](docs/casino-announcements.md) |
 | 遊戲與素材 | [玩家體驗](docs/player-experience.md)、[停輪基準](docs/reel-timing-baseline.md)、[數學](docs/game-math.md)、[素材](docs/assets.md) |
+| 野球拳 | [流程、資料與開發入口](docs/yakyuken-preview.md)、[角色機率](docs/yakyuken-probability.md)、[Discord 測試活動](docs/discord-test-activity.md) |
 
 Cloudflare 已升級 Workers Paid（2026-10-31 使用者確認）。正式服使用獨立 Worker／DO 與台灣 `asia-east1` Firestore v2 帳本，雲端為唯一 writer，本機 `FIRESTORE_LIVE_ENABLED=false`。發布版本、來源與驗收結果見[正式服交付](docs/customer-handoff.md)；Git 合併與部署分開處理。

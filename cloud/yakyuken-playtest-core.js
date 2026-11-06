@@ -1,5 +1,6 @@
-import {canEnterCharacter,characterRule,ENTRY_FEE} from '../src/games/yakyuken/characters.js';
-import {weightedDuel} from '../src/games/yakyuken/challenge.js';
+import {canEnterCharacter,ENTRY_FEE} from '../src/games/yakyuken/characters.js';
+import {challengeProgress,weightedDuel} from '../src/games/yakyuken/challenge.js';
+import {MOVES} from '../src/games/yakyuken/rules.js';
 import {checkinReceipt,weeklyCheckinState} from '../server/wallet/weekly-checkin.js';
 import {taipeiDay} from '../server/wallet/wallet-common.js';
 import {BETS,createRound,drawStops} from '../src/game/index.js';
@@ -10,6 +11,7 @@ export const discordTestPlayer=(guild,user)=>`d_${guild}_${user}`;
 export const validTestPlayer=player=>Object.hasOwn(PLAYTEST_PLAYERS,player)||/^d_\d{17,20}_\d{17,20}$/.test(player||'');
 const rewards=[500,500,1000,1000,1000,2000,4000];
 const fail=(status,message)=>Object.assign(new Error(message),{status});
+const validId=value=>typeof value==='string'&&/^[-a-zA-Z0-9]{16,80}$/.test(value);
 export function assertPlaytestIdentity(env){
   if(env.APP_ENV!=='test'||env.FIRESTORE_PROJECT_ID!==PLAYTEST_IDENTITY.projectId||env.FIRESTORE_NAMESPACE!==PLAYTEST_IDENTITY.namespace)throw new Error('Dedicated test identity required');
 }
@@ -37,13 +39,11 @@ function apply(state,intent){
   }else if(action==='hand'){
     const record=next.records.find(r=>r.id===body.matchId);
     if(!record||next.activeId!==record.id||record.status!=='playing')throw fail(409,'這場挑戰已結束，請重新確認紀錄。');
-    if(!['rock','paper','scissors'].includes(body.move)||!duel)throw fail(400,'不支援的出拳。');
+    if(!MOVES.includes(body.move)||!duel)throw fail(400,'不支援的出拳。');
     if(duel.outcome==='draw')return {next,changed:false};
-    const rule=characterRule(record.characterId);
-    record.wins+=Number(duel.outcome==='win');record.losses+=Number(duel.outcome==='loss');record.updatedAt=now;
+    Object.assign(record,challengeProgress(record,duel.outcome),{updatedAt:now});
     next.unlocks[record.characterId]=Math.max(next.unlocks[record.characterId]??0,Math.min(record.wins,2));
-    if(record.wins>=rule.winsRequired){record.status='won';record.reward=rule.reward;next.balance+=rule.reward;}
-    else if(record.losses>=rule.lossLimit)record.status='lost';
+    next.balance+=record.reward;
     record.net=record.reward-record.fee;
   }else if(action==='leave'){
     const record=next.records.find(r=>r.id===body.matchId);
@@ -84,9 +84,10 @@ export class PlaytestService{
   }
   async stateView(){await this.recover();return {wallet:publicPlaytestWallet(await this.load())};}
   async execute(action,body){
-    if(!body||typeof body!=='object'||Array.isArray(body)||!/^[-a-zA-Z0-9]{16,80}$/.test(body.requestId??''))throw fail(400,'無效的測試請求。');
+    if(!body||typeof body!=='object'||Array.isArray(body)||!validId(body.requestId))throw fail(400,'無效的測試請求。');
     const allowed={begin:['requestId','characterId'],hand:['requestId','matchId','move'],leave:['requestId','matchId'],checkin:['requestId'],spin:['requestId','bet']}[action];
-    if(!allowed||Object.keys(body).some(k=>!allowed.includes(k)))throw fail(400,'無效的測試操作欄位。');
+    if(!Array.isArray(allowed)||Object.keys(body).some(k=>!allowed.includes(k)))throw fail(400,'無效的測試操作欄位。');
+    if(['hand','leave'].includes(action)&&!validId(body.matchId))throw fail(400,'無效的測試場次。');
     const fingerprint=JSON.stringify([action,body.characterId??null,body.matchId??null,body.move??null,...(action==='spin'?[body.bet]:[])]);
     await this.recover();
     const old=await this.storage.get('receipt:'+body.requestId);
@@ -96,7 +97,7 @@ export class PlaytestService{
     if(action==='spin')intent.stops=drawStops(()=>{const v=new Uint32Array(1);this.entropy.getRandomValues(v);return v[0];});
     if(action==='hand'){
       if(!record||record.id!==state.activeId||record.status!=='playing')throw fail(409,'這場挑戰已結束，請重新確認紀錄。');
-      if(!['rock','paper','scissors'].includes(body.move))throw fail(400,'不支援的出拳。');
+      if(!MOVES.includes(body.move))throw fail(400,'不支援的出拳。');
       intent.duel=weightedDuel(record.characterId,body.move,this.entropy);
     }
     const {changed}=apply(state,intent);

@@ -5,7 +5,9 @@
 | 遊戲 | 無損 WebP 原稿 | 執行時 WebP |
 | --- | --- | --- |
 | 老虎機 | [slot-cover-v2.webp](slot-cover-v2.webp) | [slot-cover-v2.webp](../../images/lobby/slot-cover-v2.webp) |
-| 野球拳 | [yakyuken-cover-v2.webp](yakyuken-cover-v2.webp) | [yakyuken-cover-v2.webp](../../images/lobby/yakyuken-cover-v2.webp) |
+| 野球拳舊稿 | [yakyuken-cover-v2.webp](yakyuken-cover-v2.webp) | 已由 [v3 封面](../../images/lobby/yakyuken-cover-v3.webp) 取代，舊執行檔已移除 |
+
+以下尺寸、雜湊與選圖說明是 v2 原始來源紀錄。現行野球拳封面的來源與指紋見 [cards-v3 manifest](../yakyuken/cards-v3/manifest.json)；舊母圖保留供追溯。
 
 兩張皆為 1536×1024、3:2、不透明圖片，標題與外框已在圖內。WebP 僅轉換編碼，不裁切、不重畫、不改變尺寸；合計約 614 KiB。無損 WebP 原稿已逐像素核對與生成的 PNG 完全相同，方便日後修改；生成工具保存的原始 PNG 不受影響。
 

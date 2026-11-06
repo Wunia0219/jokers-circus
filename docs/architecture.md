@@ -8,6 +8,8 @@
 |---|---|
 | 啟動 | `src/main.js`：登入與舞台並行準備、操作狀態及失敗清理 |
 | 遊戲規則 | `src/game/`：輪帶、下注、算獎與歷史模型；前後端共用 |
+| 野球拳 | `src/games/yakyuken/`：角色規則、共用勝敗推進、Pixi 場景、本機紀錄及測試錢包 client；[流程與模組](yakyuken-preview.md) |
+| 野球拳測試後端 | `cloud/yakyuken-playtest-core.js`／`yakyuken-playtest-worker.js`：每玩家 DO 序列化、Firestore 測試錢包及請求恢復，獨立於正式帳本 |
 | 平台與同步 | `src/platform/`：Discord 登入、原請求恢復、錢包與歷史分頁 |
 | 轉輪與演出 | `src/ui/reels/`、`dealer/`、`audio/`、`wins/`：動畫、荷官、聲音、派彩 |
 | 玩家介面 | `src/ui/player/`、`dialogs/`、`shared/`：資訊、視窗、共用元件 |

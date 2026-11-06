@@ -86,6 +86,7 @@ export class YakyukenTestPlayer{
       if(!['begin','hand','leave','checkin','spin'].includes(action)||request.method!=='POST')return json({error:'不支援的測試請求。'},405);
       const text=await request.text();if(text.length>4096)return json({error:'測試請求過大。'},413);
       let body;try{body=JSON.parse(text);}catch{return json({error:'無效的測試請求。'},400);}
+      if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'無效的測試請求。'},400);
       if(path==='/api/checkin'&&!body.requestId)body.requestId='slot-daily-'+new Date(Date.now()+8*3600000).toISOString().slice(0,10);
       const data=decorate(await this.service.execute(action,body));
       return json(['/api/spin','/api/checkin'].includes(path)?{state:slotTestState(data.wallet),...(data.round?{round:data.round}:{})}:data);

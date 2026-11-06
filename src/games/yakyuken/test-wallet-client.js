@@ -1,10 +1,11 @@
 const profiles=new Set(['qa-a','qa-b','qa-low','qa-zero']);
+const sessionStorage=()=>{try{return globalThis.sessionStorage;}catch{return null;}};
 export class TestWalletClient{
-  constructor({player='qa-a',fetchImpl=globalThis.fetch.bind(globalThis),storage=globalThis.sessionStorage,session=null,reauthorize=null}={}){
+  constructor({player='qa-a',fetchImpl=globalThis.fetch.bind(globalThis),storage=sessionStorage(),session=null,reauthorize=null}={}){
     if(session){if(session.environment!=='test'||!session.discordTest||!/^\d{17,20}$/.test(session.userId)||!/^\d{17,20}$/.test(session.guildId))throw new Error('Discord 測試會話無效。');player=`d_${session.guildId}_${session.userId}`;}
     else if(!profiles.has(player))throw new Error('無效的測試玩家。');
     Object.assign(this,{player,fetchImpl,storage,session,reauthorize});this.key='jokers-circus:yakyuken:cloud-test:pending:'+player;
-    try{const pending=JSON.parse(storage?.getItem(this.key)||'null');if(pending&&['begin','hand','leave','checkin'].includes(pending.action)&&/^[-a-zA-Z0-9]{16,80}$/.test(pending.body?.requestId||''))this.pending=pending;}catch{}
+    try{const pending=JSON.parse(storage?.getItem(this.key)||'null');if(pending&&['begin','hand','leave','checkin'].includes(pending.action)&&typeof pending.body?.requestId==='string'&&/^[-a-zA-Z0-9]{16,80}$/.test(pending.body.requestId))this.pending=pending;}catch{}
     this.archive={cloud:true,persistent:true,owns:()=>false,records:()=>this.wallet?.records||[],
       isUnlocked:(character,pose)=>Number.isInteger(pose)&&pose>=0&&pose<=2&&(this.wallet?.unlocks[character]??-1)>=pose,
       begin:()=>this.wallet?.activeId,update:()=>{},leave:()=>{}};
@@ -24,16 +25,22 @@ export class TestWalletClient{
     return data;
   }
   async refresh(){if(this.pending)await this.sendPending();return this.request('state');}
-  async sendPending(){
+  sendPending(){
+    if(this.inFlight)return this.inFlight;
+    if(!this.pending)return Promise.resolve();
     const pending=this.pending;
-    try{const data=await this.request(pending.action,pending.body);this.pending=null;this.persist();return data;}
-    catch(error){if([400,403,404,409].includes(error.status)){this.pending=null;this.persist();}throw error;}
+    // Reload recovery, refresh and explicit retries must own the same lock.
+    this.inFlight=(async()=>{
+      try{const data=await this.request(pending.action,pending.body);this.pending=null;this.persist();return data;}
+      catch(error){if([400,403,404,409].includes(error.status)){this.pending=null;this.persist();}throw error;}
+      finally{this.inFlight=null;}
+    })();
+    return this.inFlight;
   }
   async act(action,body={}){
     if(this.pending&&(this.pending.action!==action||Object.entries(body).some(([k,v])=>this.pending.body[k]!==v)))throw new Error('請先重試上一個尚未確認的操作。');
-    if(this.inFlight)return this.inFlight;
     this.pending ||= {action,body:{...body,requestId:crypto.randomUUID()}};this.persist();
-    this.inFlight=this.sendPending().finally(()=>this.inFlight=null);return this.inFlight;
+    return this.sendPending();
   }
   begin(characterId){return this.act('begin',{characterId});}
   hand(matchId,move){return this.act('hand',{matchId,move});}

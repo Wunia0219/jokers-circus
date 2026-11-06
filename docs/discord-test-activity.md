@@ -6,7 +6,7 @@
 
 - 使用者確認的三張圖為 `review-v2/background-01-golden-salon.png`、`review-v6/background-02-last-spin.png`、`review-v8/background-03-curtain-rises.png`（均位於 `art/launch-screen/`）。`python scripts/assets/prepare-launch-art.py` 將它們轉成 `images/launch/` 的無損 WebP，逐張比對解碼後 RGBA 完全一致，來源／輸出雜湊見 `art/launch-screen/approved-assets.json`；原畫不覆寫、不裁切或重新繪製。
 - 每個新的 Discord 外框文件只隨機選一次，且只下載選中的一張。縮放、遊戲切換與內頁重新載入都不重新選圖；關閉活動後再開則重新選擇。桌機保留整張寬版構圖，較窄手機以各圖的人物位置居中裁切，底部字樣固定在深色留白內，支援 Discord／裝置安全區。
-- 字樣依審稿實作為即時金色襯線 `LOADING...`；文字固定，後方金色與淡紫色細光波循環，不使用讀條、百分比或隨機進度。背景準備完成後給予短暫閱讀時間；減少動態效果時光波與淡出均改靜態。切到背景時暫停光波。
+- 字樣依審稿實作為即時金色襯線 `LOADING...`；文字外框固定，字母與三個點依序輕彈成波紋，後方金色與淡紫色細光波持續循環，不使用讀條、百分比或隨機進度。背景準備完成後給予短暫閱讀時間；減少動態效果時文字、光波與淡出均改靜態。切到背景時暫停文字與光波。
 - 獨立讀取層先於 SDK 載入，涵蓋 Discord 登入、錢包讀取與 Pixi 大廳準備。內頁實際繪製大廳後才發送不含憑證的同來源就緒事件；外框核對來源及真正內頁 window 後淡出，再解除內頁的輸入／無障礙鎖定。正常切換遊戲不再出現此層，各遊戲原有載入與停輪體驗維持。
 - 背景圖失敗或逾時使用原深色底繼續，避免裝飾圖片阻擋已就緒的大廳；登入／大廳失敗則保留遮罩並提示關閉活動後重新開啟，不在原活動內建立第二次 SDK 握手。外框關閉時取消等待與事件，沒有新增結算、扣款、簽到或 Firestore 輪詢。
 - `discord-test-activity.js` 納入三圖×五尺寸、文字固定／光波移動、只載入一張、登入成功但大廳未就緒、錯誤 window 的就緒事件、減少動態、登入失敗、新活動恢復及圖片故障降級。專項結果在 `test-results/launch-screen-sdk-final.log`、`test-results/discord-test-activity/report.json` 與 `launch-*.png`；正式建置不含隔離測試入口。
@@ -14,6 +14,13 @@
 - 初次完整本機 CI 15/16 項通過，唯一失敗為舊素材盤點尚未區分上述離線審稿原圖；其餘含停輪、安全、Discord、Firestore SDK／REST／workerd／恢復及監控均通過。修正盤點契約並增加未登記稿件／缺失原圖／發布資產反向檢查後，最終 `npm run verify:ci -- --suite=browser` 12/12 項全數通過（一般回歸 567 項通過、1 項既有條件略過）。保存初次結果 `test-results/launch-screen-verify-ci.log`、`launch-screen-initial-verification.json` 與最終結果 `launch-screen-browser-ci.log`、`launch-screen-browser-verification.json`。啟動與雙遊戲報告快照為 `launch-screen-ui-report.json`；未執行遠端 CI。
 - 已更新專用測試 Worker，版本 ID `b3f8996d-ccc3-490e-9d16-95f49d43331f`。部署初期 Cloudflare 管理 API 回傳 504／503；保留失敗日誌，服務恢復後以同一專用設定直接發布程式／素材，沿用既有密鑰（Wrangler 保留 secret bindings），未修改部署工具或正式環境。最終健康檢查、公開頁面、安全標頭、未登入錢包拒絕，以及根頁／動畫 JS／CSS／三張 WebP／大廳入口的線上位元組比對均通過。證據為 `test-results/launch-screen-deploy-final.log`、`launch-screen-public-final.log`、`launch-screen-deploy-report.json`、`launch-screen-deployment.json`；產品版本維持 1.0.2，commit／merge／push 由使用者處理。
 - 本機純美術動畫預覽：`node scripts/game/launch-preview.js`，入口 `http://127.0.0.1:4205/`，可用 `?art=1`、`?art=2`、`?art=3` 固定看各張；不啟動 SDK、遊戲或錢包。已驗證三圖動畫與私密檔案拒絕，報告為 `test-results/launch-preview-report.json`。這個工具不進入發布建置。
+
+### LOADING 逐字波紋（2026-11-06）
+
+- 依使用者後續要求，將七個字母與三個點各自以合成器 transform 做小幅上浮、輕微回彈，逐字間隔 75ms，整輪 1.8 秒。幅度依字級縮放，字型金色漸層、整句排版外框、三張隨機背景與大廳交接方式不變；減少動態與背景暫停同時涵蓋文字和後方光波。
+- 瀏覽器直接取樣實際 CSS 動畫：依動畫階段定位並量測十個字元的波峰，確認峰值由 L 到第三點依序前進、每字都有可見小幅上浮、整句不位移。三圖×五尺寸另檢查移動後的字元邊界仍在畫面與深色區內，並保留 SDK、故障降級與雙遊戲回歸。專項日誌為 `test-results/launch-letter-ripple-ui.log`。
+- 本機 `npm run verify:ci -- --suite=browser` **12/12 步通過**（一般回歸 567 項通過、1 項既有條件略過），結果為 `test-results/launch-letter-ripple-browser-ci.log`、`launch-letter-ripple-browser-verification.json`、`launch-letter-ripple-ui-report.json`；純美術預覽三圖動畫另通過。此次只調整文字呈現，未重跑後端服務整合，遠端 CI 未執行。
+- 已發布至既有專用測試 Worker，版本 `3069f6ac-9260-4244-bc2f-13fc4641d3ee`，沿用既有密鑰。公開頁面／CSP／未登入 API 保護及線上根頁、動畫 CSS／JS、三張背景與大廳入口的逐檔位元組比對通過；證據為 `test-results/launch-letter-ripple-deploy.log`、`launch-letter-ripple-public.log`、`launch-letter-ripple-deploy-report.json`、`launch-letter-ripple-deployment.json`。產品版本維持 1.0.2，未 commit、merge 或 push。
 
 ## 固定環境邊界
 

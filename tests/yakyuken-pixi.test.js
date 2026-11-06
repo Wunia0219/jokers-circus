@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {tableLayout,TABLE_MOVES,resultActionLayout} from '../src/games/yakyuken/pixi/layout.js';
 import {Motion} from '../src/games/yakyuken/pixi/motion.js';
-import {demoDuel} from '../src/games/yakyuken/pixi/demo-duel.js';
 import {revealCard} from '../src/games/yakyuken/pixi/card-flip.js';
 import {slotChrome,SLOT_UI} from '../src/games/yakyuken/pixi/slot-theme.js';
 import {slotHeaderLayout,yakyukenHeaderLayout} from '../src/games/yakyuken/pixi/header-layout.js';
@@ -179,18 +178,6 @@ test('Pixi motion: background suspension also finishes the next step of an await
   motion.suspended=true;motion.finish();await sequence;
   assert.equal(object.x,20);assert.equal(motion.tasks.size,0);
 });
-
-test('Pixi demonstration: the dealer rotates independently of player choice and resolves all nine matchups',() => {
-  const expected=[['scissors',{rock:'win',scissors:'draw',paper:'loss'}],['rock',{rock:'draw',scissors:'loss',paper:'win'}],['paper',{rock:'loss',scissors:'win',paper:'draw'}]];
-  expected.forEach(([dealer,outcomes],index) => {
-    for(const [player,outcome] of Object.entries(outcomes)){
-      assert.deepEqual(demoDuel(index,player),{player,dealer,outcome});
-      assert.deepEqual(demoDuel(index+3,player),{player,dealer,outcome});
-    }
-  });
-  assert.throws(() => demoDuel(-1,'rock'));assert.throws(() => demoDuel(0,'invalid'));
-});
-
 
 test('shared header controls and UI-only checkin fit 320px through desktop without overlap',()=>{
   for(const [width,height] of [[320,568],[390,844],[544,680],[768,1024],[844,390],[1600,900]]){

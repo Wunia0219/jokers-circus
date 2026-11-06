@@ -1,4 +1,4 @@
-// Static download URLs are deliberately excluded from Assets/preloadArt imports.
+// Static download URLs are deliberately excluded from Pixi Assets imports.
 // Browsers request the original PNG only after the player activates Download.
 import {CG_ORIGIN,DEALER_CG} from './cg-catalog.js';
 

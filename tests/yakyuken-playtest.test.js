@@ -52,6 +52,17 @@ test('insufficient funds, client supplied payouts and disabled characters cannot
   await assert.rejects(()=>s.execute('begin',{characterId:'dealer',requestId:id(),reward:2500}),/欄位/);
   await assert.rejects(()=>s.execute('begin',{characterId:'guest-1',requestId:id()}),/尚未開放/);assert.equal(f.writes,0);
 });
+
+test('request and match identifiers require strings before any storage or randomness',async()=>{
+  const f=fixture(),s=f.service();
+  for(const requestId of [[id()],1234567890123456,{toString:()=>id()}]){
+    await assert.rejects(()=>s.execute('begin',{characterId:'dealer',requestId}),error=>error.status===400);
+  }
+  for(const action of ['hand','leave'])for(const matchId of [undefined,null,[],[id()],1234567890123456]){
+    await assert.rejects(()=>s.execute(action,{requestId:id(),matchId,...(action==='hand'?{move:'rock'}:{})}),error=>error.status===400);
+  }
+  assert.equal(f.reads,0);assert.equal(f.writes,0);
+});
 test('resuming an active match does not debit twice; leaving and losing retain the fee',async()=>{
   const f=fixture(),s=f.service(),entry=await begin(s);assert.equal((await begin(s)).matchId,entry.matchId);assert.equal(f.writes,1);
   await s.execute('leave',{matchId:entry.matchId,requestId:id()});const next=await begin(s);assert.equal(next.wallet.balance,8000);assert.notEqual(next.matchId,entry.matchId);

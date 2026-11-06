@@ -30,6 +30,13 @@ test('dedicated workerd test wallet persists Firestore fees/prizes, isolates pla
   };
   assert.equal((await call('state',null,'qa-a','bad-token')).status,401);
   assert.equal((await call('state',null,'real-discord-user')).status,400);
+  assert.equal((await call('begin',{requestId:['invalid-array-id-0001'],characterId:'dealer'})).status,400);
+  assert.equal((await call('leave',{requestId:'invalid-leave-id-0001'})).status,400);
+  for(const body of ['null','[]','"not an object"']){
+    const response=await mf.dispatchFetch('https://localhost/api/checkin?player=qa-a',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body});
+    assert.equal(response.status,400);
+  }
+  assert.equal(firestoreCalls,0,'malformed requests never touch the database');
   const entryBody={requestId:'runtime-entry-00000001',characterId:'dealer'},entry=await call('begin',entryBody);assert.equal(entry.status,200);assert.equal(entry.data.wallet.balance,9000);
   const matchId=entry.data.matchId,hand=(n,move='rock')=>call('hand',{requestId:'runtime-hand-0000000'+n,matchId,move});
   assert.equal((await hand(1)).data.wallet.records[0].wins,1);

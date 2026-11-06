@@ -4,6 +4,29 @@ const gate=()=>{let release;const promise=new Promise(resolve=>{release=resolve;
 const variants=['golden-salon','last-spin','curtain-rises'];
 const sizes=[[1440,900],[1255,700],[844,390],[390,844],[320,568]];
 
+async function verifyLetterRipple(shell){
+  const observed=await shell.evaluate(async()=>{
+    const letters=[...document.querySelectorAll('.launch-letter')],animations=letters.map(el=>el.getAnimations()[0]);
+    if(animations.some(a=>!a))return {count:letters.length,animated:false};
+    const saved=animations.map(a=>a.currentTime),timings=animations.map(a=>a.effect.getTiming());
+    animations.forEach(a=>a.pause());await Promise.all(animations.map(a=>a.ready));
+    const duration=Number(timings[0].duration),until=Math.max(...timings.map(t=>t.delay))+duration/2;
+    const peaks=letters.map(()=>({y:0,time:0}));
+    for(let time=0;time<=until;time+=duration/100){
+      animations.forEach(a=>{a.currentTime=time;});
+      letters.forEach((el,i)=>{const y=new DOMMatrix(getComputedStyle(el).transform).m42;if(y<peaks[i].y)peaks[i]={y,time};});
+    }
+    animations.forEach((a,i)=>{a.currentTime=saved[i];a.play();});
+    return {count:letters.length,animated:true,delays:timings.map(t=>t.delay),peaks};
+  });
+  assert.equal(observed.count,10);assert.equal(observed.animated,true);
+  observed.peaks.forEach((peak,i)=>{
+    assert.ok(peak.y<-1&&peak.y>-20,'each letter and dot visibly rises by a restrained amount');
+    if(i){assert.ok(observed.delays[i]>observed.delays[i-1]);assert.ok(peak.time>observed.peaks[i-1].time,'the wave crest travels from L through all three dots in order');}
+  });
+  return observed;
+}
+
 export async function verifyLaunchScreen({browser,origin,output}){
   const checks=[];
   for(const [index,id] of variants.entries()){
@@ -24,13 +47,15 @@ export async function verifyLaunchScreen({browser,origin,output}){
       assert.equal(await shell.locator('#launch-screen').getAttribute('data-stage'),'connecting','parent/self messages cannot release the launch screen');
       const before=await shell.locator('.launch-word').boundingBox();
       await shell.waitForFunction(()=>document.querySelector('.launch-wave').getAnimations().some(a=>a.currentTime>100));
-      assert.deepEqual(await shell.locator('.launch-word').boundingBox(),before,'only the background wave moves, never the lettering');
+      const ripple=index===0?await verifyLetterRipple(shell):null;
+      assert.deepEqual(await shell.locator('.launch-word').boundingBox(),before,'individual letters move without shifting the word layout');
       for(const [width,height] of sizes){
         await page.setViewportSize({width,height});
         await shell.waitForFunction(w=>innerWidth===w,width);
         const geometry=await shell.evaluate(()=>{
           const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
-          return {art:document.querySelector('#launch-screen').dataset.art,frame:box('.launch-art-frame'),text:box('.launch-word'),scroll:document.documentElement.scrollWidth,viewport:innerWidth};
+          const glyphs=[...document.querySelectorAll('.launch-letter')].map(el=>el.getBoundingClientRect());
+          return {art:document.querySelector('#launch-screen').dataset.art,frame:box('.launch-art-frame'),text:{x:Math.min(...glyphs.map(r=>r.x)),y:Math.min(...glyphs.map(r=>r.y)),right:Math.max(...glyphs.map(r=>r.right)),bottom:Math.max(...glyphs.map(r=>r.bottom))},scroll:document.documentElement.scrollWidth,viewport:innerWidth};
         });
         assert.equal(geometry.art,id);assert.equal(geometry.scroll,geometry.viewport);
         const {text,frame}=geometry;assert.ok(text.x>=0&&text.right<=width&&text.y>=0&&text.bottom<=height,'loading text remains inside each viewport');
@@ -50,7 +75,7 @@ export async function verifyLaunchScreen({browser,origin,output}){
       await shell.waitForSelector('#launch-screen',{state:'detached'});
       assert.equal(await shell.locator('#game').getAttribute('inert'),null);assert.equal(await shell.locator('#game').getAttribute('aria-hidden'),null);
       assert.equal((await page.evaluate(()=>__commands)).filter(x=>x==='HANDSHAKE').length,1);
-      checks.push({art:id,viewports:sizes.length,selectedArtRequests:requests.length,renderedLobbyBeforeDismissal:true});
+      checks.push({art:id,viewports:sizes.length,selectedArtRequests:requests.length,renderedLobbyBeforeDismissal:true,...(ripple?{letterRipple:ripple}:{})});
     }finally{token.release();wallet.release();await context.close();}
   }
   const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'}),page=await context.newPage(),token=gate();
@@ -59,6 +84,7 @@ export async function verifyLaunchScreen({browser,origin,output}){
     await page.goto(origin+'/__host?who=A&platform=mobile',{waitUntil:'domcontentloaded'});
     const shell=await (await page.waitForSelector('iframe')).contentFrame();await shell.waitForSelector('#launch-screen[data-art-state="ready"]');
     assert.ok(await shell.locator('.launch-wave').evaluateAll(elements=>elements.every(el=>getComputedStyle(el).animationName==='none')));
+    assert.ok(await shell.locator('.launch-letter').evaluateAll(elements=>elements.length===10&&elements.every(el=>getComputedStyle(el).animationName==='none'&&getComputedStyle(el).transform==='none')));
     token.release();await shell.waitForSelector('#launch-screen[data-stage="error"]');
     assert.equal(await shell.locator('#launch-screen').getAttribute('data-stage'),'error');assert.equal(await shell.locator('#game').getAttribute('hidden'),'');
     assert.equal(await shell.locator('#launch-screen').getAttribute('aria-busy'),'false');

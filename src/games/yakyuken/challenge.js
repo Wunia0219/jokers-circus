@@ -23,11 +23,20 @@ export function weightedDuel(characterId,player,cryptoSource=globalThis.crypto){
 // Only the active challenge and latest hand are retained. No game history.
 export function playChallengeRound(state,player,cryptoSource=globalThis.crypto){
   if(state.status!=='playing')throw new Error('本場挑戰已結束');
-  const rule=characterRule(state.characterId),last=weightedDuel(state.characterId,player,cryptoSource);
-  const wins=state.wins+Number(last.outcome==='win'),losses=state.losses+Number(last.outcome==='loss');
+  const last=weightedDuel(state.characterId,player,cryptoSource);
+  return Object.freeze({...state,...challengeProgress(state,last.outcome),
+    draws:state.draws+Number(last.outcome==='draw'),rounds:state.rounds+1,last});
+}
+
+// Shared by local presentation and authoritative settlement. Wallet effects
+// and transient throw counters remain with their respective callers.
+export function challengeProgress(state,outcome){
+  if(state.status!=='playing')throw new Error('本場挑戰已結束');
+  if(!['win','loss','draw'].includes(outcome))throw new Error('不支援的出拳結果');
+  const rule=characterRule(state.characterId);
+  const wins=state.wins+Number(outcome==='win'),losses=state.losses+Number(outcome==='loss');
   const status=wins>=rule.winsRequired?'won':losses>=rule.lossLimit?'lost':'playing';
-  return Object.freeze({...state,wins,losses,draws:state.draws+Number(last.outcome==='draw'),rounds:state.rounds+1,
-    status,reward:status==='won'?rule.reward:0,last});
+  return {wins,losses,status,reward:status==='won'?rule.reward:0};
 }
 
 // Independent dynamic program, including free repeat throws on a draw.
