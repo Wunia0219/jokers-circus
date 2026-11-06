@@ -1,6 +1,6 @@
 # Joker’s Circus
 
-Discord Activity：5×3 轉輪、243 路，後端負責算獎、戲籌、週簽到及請求去重，各群錢包獨立。產品版本 **1.0.2**，唯一版本來源為 `package.json`；玩法識別碼 `circus-243-v2` 另行維護。
+Discord Activity：5×3 轉輪、243 路，後端負責算獎、戲籌、週簽到及請求去重，各群錢包獨立。產品版本 **1.0.3**，唯一版本來源為 `package.json`；玩法識別碼 `circus-243-v2` 另行維護。
 
 儲存庫為 [Wunia0219/jokers-circus](https://github.com/Wunia0219/jokers-circus)，本機資料夾使用 `jokers-circus`。儲存庫與資料夾改名不變更正式服務網址、Discord 應用程式或資料庫；本機環境設定的備份基準路徑以儲存庫根目錄為相對起點。
 

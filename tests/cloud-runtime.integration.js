@@ -47,7 +47,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    if(u.pathname.endsWith('/messages/@original')&&request.method==='PATCH'){replies.push(await request.json());return MFResponse.json({});}
    throw new Error('Unapproved external request in test');
  }};
- if(casino)Object.assign(config.bindings,{CLOUD_PLAN:'paid',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'',DISCORD_CASINO_ENABLED:'true',DISCORD_CASINO_CHANNEL_ID:'100000000000000006',DISCORD_BOT_TOKEN:'isolated-bot-token-not-real-0000000000'});
+ if(casino)Object.assign(config.bindings,{CLOUD_PLAN:'paid',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'',DISCORD_CASINO_ENABLED:'true',DISCORD_CASINO_CHANNEL_ID:'100000000000000006',DISCORD_COMMAND_CHANNEL_IDS:'100000000000000006',DISCORD_BOT_TOKEN:'isolated-bot-token-not-real-0000000000'});
  const adminRole='100000000000000009';
  config.bindings[casino?'CHIP_ADMIN_ROLE_IDS':'ADMIN_ROLE_IDS']=` ${adminRole} `;
  config.bindings.FIRESTORE_ENDPOINT='https://firestore.asia-east1.rep.googleapis.com';
@@ -107,12 +107,27 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  await mf.dispose();mf=new Miniflare(convertV4MiniflareOptions(config));const after=await call('/api/wallet',{token});assert.equal(after.status,200,JSON.stringify(after));assert.equal(after.data.state.balance,forced.state.balance);assert.equal((await call('/api/spin',{token,body:{bet:20,requestId:'runtime-new-spin-request-0002'}})).data.duplicate,true);
  assert.equal((await call('/__ops/status',{headers:monitorHeaders})).data.quota.limits.writes,20000,'explicit limits persist across workerd restart');
  assert.equal((await call('/api/interactions',{body:{type:1}})).status,401);
- const interaction={type:2,id:'100000000000000004',application_id:client,guild_id:guild,token:'fixture-interaction-token',member:{user:{id:user,bot:false},permissions:'0'},data:{name:'戲籌'}},raw=JSON.stringify(interaction),timestamp=String(Math.floor(Date.now()/1000)),signature=sign(null,Buffer.from(timestamp+raw),ed.privateKey).toString('hex');
+ const interaction={type:2,id:'100000000000000004',application_id:client,guild_id:guild,channel_id:'100000000000000006',token:'fixture-interaction-token',member:{user:{id:user,bot:false},permissions:'0'},data:{name:'戲籌'}},raw=JSON.stringify(interaction),timestamp=String(Math.floor(Date.now()/1000)),signature=sign(null,Buffer.from(timestamp+raw),ed.privateKey).toString('hex');
  const r=await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',headers:{'x-signature-timestamp':timestamp,'x-signature-ed25519':signature,'Content-Type':'application/json'},body:raw});assert.deepEqual(await r.json(),{type:5,data:{flags:64}});
+ if(casino){
+  const formId=String((BigInt(Date.now())-1420070400000n)<<22n),grant={...interaction,type:5,id:formId,member:{...interaction.member,roles:[adminRole]},data:{custom_id:`jc|gs|${guild}|${user}|${formId}`,components:[
+   {type:18,component:{type:5,custom_id:'member',values:[user],resolved:{members:{[user]:{}},users:{[user]:{id:user,bot:false}}}}},
+   {type:18,component:{type:4,custom_id:'amount',value:'500'}},{type:18,component:{type:4,custom_id:'reason',value:'活動獎勵'}},{type:18,component:{type:3,custom_id:'notify',values:['yes']}},
+  ]}};
+  const sendGrant=async()=>{const body=JSON.stringify(grant),ts=String(Math.floor(Date.now()/1000));return (await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',headers:{'x-signature-timestamp':ts,'x-signature-ed25519':sign(null,Buffer.from(ts+body),ed.privateKey).toString('hex'),'Content-Type':'application/json'},body})).json();};
+  assert.deepEqual(await sendGrant(),{type:5,data:{flags:64}});
+  for(let i=0;i<150&&!replies.some(p=>p.embeds?.[0]?.title==='戲籌已發放');i++)await delay(100);
+  const delivered=replies.find(p=>p.embeds?.[0]?.title==='戲籌已發放');assert.ok(delivered);assert.match(delivered.embeds[0].description,/已在遊玩文字頻道發送通知/);assert.deepEqual(delivered.allowed_mentions,{parse:[]});
+  const notices=()=>announcements.filter(p=>p.embeds?.[0]?.title==='戲籌已發放');assert.equal(notices().length,1);assert.match(notices()[0].content,/500 戲籌/);assert.deepEqual(notices()[0].allowed_mentions,{parse:[],users:[user]});
+  await mf.dispose();mf=new Miniflare(convertV4MiniflareOptions(config));
+  assert.deepEqual(await sendGrant(),{type:5,data:{flags:64}});
+  for(let i=0;i<150&&!replies.some(p=>p.embeds?.[0]?.title==='這筆已經發放過');i++)await delay(100);
+  assert.ok(replies.some(p=>p.embeds?.[0]?.title==='這筆已經發放過'));assert.equal(notices().length,1);
+ }
  const resetId='100000000000000008',resetInteraction={...interaction,id:resetId,member:{...interaction.member,permissions:'0',roles:[adminRole]},data:{name:'戲籌管理',options:[{name:'重設戲籌',options:[{name:'確認',value:true}]}]}};
  const resetRaw=JSON.stringify(resetInteraction),resetSignature=sign(null,Buffer.from(timestamp+resetRaw),ed.privateKey).toString('hex');
  const resetReply=await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',headers:{'x-signature-timestamp':timestamp,'x-signature-ed25519':resetSignature,'Content-Type':'application/json'},body:resetRaw});assert.deepEqual(await resetReply.json(),{type:5,data:{flags:64}});
- assert.equal((await call('/__ops/pause',{adminAuth:true,body:{}})).status,200);assert.equal(replies.length,2);assert.equal(replies[1].embeds[0].title,'戲籌已重設');assert.match(replies[1].embeds[0].fields[0].value,new RegExp(forced.state.balance.toLocaleString('en-US')+' → 10,000'));assert.equal((await call('/api/checkin',{token,body:{}})).status,503);
+ assert.equal((await call('/__ops/pause',{adminAuth:true,body:{}})).status,200);assert.equal(replies.length,casino?4:2);assert.equal(replies.at(-1).embeds[0].title,'戲籌已重設');assert.match(replies.at(-1).embeds[0].fields[0].value,new RegExp((forced.state.balance+(casino?500:0)).toLocaleString('en-US')+' → 10,000'));assert.equal((await call('/api/checkin',{token,body:{}})).status,503);
  for(let i=0;i<20;i++){const b=await call('/__ops/backup',{adminAuth:true,body:{}});assert.equal(b.status,200,JSON.stringify(b));if(i===0)await sdk.grant(guild,user,user,7,'concurrent readTime fixture',randomUUID());if(b.data.complete)break;if(i===19)assert.fail('Backup did not finish');}
  assert.equal((await call('/__ops/export',{adminAuth:true,body:{}})).status,409,'backup readTime excludes later progress, so export is refused');
  for(let i=0;i<20;i++){const b=await call('/__ops/backup',{adminAuth:true,body:{}});assert.equal(b.status,200);if(b.data.complete)break;if(i===19)assert.fail('Latest backup did not finish');}
@@ -145,7 +160,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  assert.deepEqual(decodeCloudArchive({manifest:m,chunks:download},key,'test'),decodeCloudArchive(archive.data.archive,key,'test'));
  assert.equal((await call('/__ops/archive-page',{adminAuth:true,body:{generation:m.generation,start:-1,limit:2}})).status,409);
  const released=await call('/__ops/export' ,{adminAuth:true,body:{}});assert.equal(released.status,200,JSON.stringify(released));assert.equal(released.data.released,true);assert.deepEqual((await call('/__ops/export',{adminAuth:true,body:{}})).data,released.data);assert.equal((await call('/__ops/activate',{adminAuth:true,body:{writersStopped:true,freePlanVerified:true}})).status,409);
- const restored=decodeCloudArchive(released.data.archive,key,'test');assert.equal(restored.tables.rounds.length,3);assert.equal(restored.tables.ledger.length,snapshot.tables.ledger.length+5);assert.equal(restored.tables.highlight_events.find(e=>e.round_id===forced.round.id).status,'sent');assert.equal(restored.tables.highlight_boards[0].message_id,'100000000000000007');assert.equal(restoreCloudSnapshot(restored,join(dir,'cloud-restored.sqlite'),'test').ok,true);
+ const restored=decodeCloudArchive(released.data.archive,key,'test');assert.equal(restored.tables.rounds.length,3);assert.equal(restored.tables.ledger.length,snapshot.tables.ledger.length+(casino?6:5));assert.equal(restored.tables.highlight_events.find(e=>e.round_id===forced.round.id).status,'sent');assert.equal(restored.tables.highlight_boards[0].message_id,'100000000000000007');assert.equal(restoreCloudSnapshot(restored,join(dir,'cloud-restored.sqlite'),'test').ok,true);
  const rollbackSettings={...settings,namespace:'rollback-'+randomUUID()+'-test'},rollback=new FirestoreWalletStore(rollbackSettings,{guildIds:[guild]});t.after(()=>rollback.close());await importFirestore(rollback,firestoreImportPlan(join(dir,'cloud-restored.sqlite'),'test',{version:2}));assert.equal((await rollback.state(guild,user)).balance,10007);assert.equal((await rollback.spin(guild,user,20,'runtime-new-spin-request-0002')).duplicate,true);
  assert.equal((await rollback.resetWallets(guild,user,resetId)).duplicate,true);assert.equal((await rollback.state(guild,user)).balance,10007);
  assert.ok(released.data.quota.scopes.global.usage.reduce((n,x)=>n+x.reads,0)>37);writeFileSync('test-results/cloud-runtime-report.json',JSON.stringify({emulatorOnly:true,realWorkerd:true,persistentSessions:true,originalQuotaCarried:true,cloudBackupRestored:true,newProgressSurvivesRollback:true,privateCommandReply:true,alarmRecoversOutbox:true,backupResumesAfterRestart:true,consistentReadTime:true,staleExportRefused:true,actualCloudDeployment:false},null,2));

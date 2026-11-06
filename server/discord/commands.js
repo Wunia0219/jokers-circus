@@ -17,7 +17,7 @@ export function validSignature(publicKey, headers, raw, now=Date.now()) {
     return verify(null,Buffer.concat([Buffer.from(timestamp),raw]),key,Buffer.from(signature,'hex'));
   }catch{return false;}
 }
-export async function handleCommand(interaction, store, adminRoles=[],commandChannelIds=[]) {
+export async function handleCommand(interaction, store, adminRoles=[],commandChannelIds=[],{notifyGrant}={}) {
   const reply=(...args)=>privateReply(store.environment,...args);
   try {
     if(interaction.type===1)return {type:1};
@@ -41,7 +41,7 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
     if(!panel&&!['戲籌管理','\u7c4c\u78bc管理'].includes(interaction.data.name))throw problem(400,'不支援此指令。','COMMAND_UNKNOWN');
     const permissions=BigInt(interaction.member.permissions || '0');
     if(!(permissions&8n)&&!interaction.member.roles?.some(id=>adminRoles.includes(id)))throw problem(403,'只有伺服器管理員或指定的戲籌管理身分組可以操作。','COMMAND_ADMIN');
-    if(panel)return await handlePanel(interaction,store,recordField,panel);
+    if(panel)return await handlePanel(interaction,store,recordField,panel,{notifyGrant});
     const sub=interaction.data.options?.[0];
     if(!sub)return adminPanel(interaction,store.environment);
     const args=Object.fromEntries((sub?.options||[]).map(option=>[option.name,option.value]));

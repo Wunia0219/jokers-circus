@@ -15,6 +15,7 @@ import {CasinoVisits} from '../server/discord/casino-visits.js';
 import {walletSettings} from '../server/wallet/settings.js';
 import {cloudIdentity} from './config.js';
 import {cloudFetch} from './fetch.js';
+import {createGrantNotifier} from '../server/discord/grant-notification.js';
 
 export async function createCloudRuntime(project){
   const settings=cloudIdentity(project.env),saved=project.state.get('source');if(!saved||saved.projectId!==settings.projectId||saved.namespace!==settings.namespace||project.quota.identity().projectId!==settings.projectId)throw new Error('Handoff is required');
@@ -31,7 +32,8 @@ export async function createCloudRuntime(project){
   const highlights=hs?new FirestoreHighlights(new FirestoreWalletCore(settings,{...options,db:transport(),quota:new CloudQuota(project.ctx.storage,project.state,{scope:'highlights'})}),{...hs,bot,fetchImpl:cloudFetch}):null;
   if(hs)store.highlightsGuild=hs.guild;
   const backup=new CloudBackup(new FirestoreWalletCore(settings,{...options,db:transport(),quota:new CloudQuota(project.ctx.storage,project.state,{scope:'maintenance'})}),project.state,vault);
-  const wallet={store,service,visits,commandChannelIds:commandChannels(project.env),adminRoles,highlights:highlights?{enqueue:(session,id,round)=>{if(highlights.enqueue(session,id,round)){project.state.set('highlights-dirty',true);project.ctx.waitUntil(project.schedule(bot?1000:10000));}}}:null};
+  const commandChannelIds=commandChannels(project.env);
+  const wallet={store,service,visits,commandChannelIds,notifyGrant:createGrantNotifier(bot,commandChannelIds),adminRoles,highlights:highlights?{enqueue:(session,id,round)=>{if(highlights.enqueue(session,id,round)){project.state.set('highlights-dirty',true);project.ctx.waitUntil(project.schedule(bot?1000:10000));}}}:null};
   const handler=createActivityHandler({fetchImpl:cloudFetch,clientId:project.env.DISCORD_CLIENT_ID,clientSecret:project.env.DISCORD_CLIENT_SECRET,publicKey:project.env.DISCORD_PUBLIC_KEY,wallet,loginLimiter:new CloudLoginLimit(project.state),defer:p=>project.ctx.waitUntil(project.track(p)),operations:{isReady:()=>project.ready(),recordRequest:()=>{}}});
   return {settings,store,service,highlights,visits,backup,vault,handler};
 }
