@@ -2,6 +2,13 @@
 
 本入口專供兩款遊戲的 Discord 測試，不更新正式 App、正式 Worker、正式 Firestore 或既有 SQLite 測試帳本。產品版本 1.0.3，老虎機停輪與兩秒開轉冷卻沿用已驗收基準。
 
+## 手機安全區對齊（2026-11-06）
+
+- 野球拳畫布改用與老虎機相同的 Discord／裝置安全區，依可用尺寸重新排版；測試外框同步安全區變動，涵蓋沒有 resize 事件的更新與跨遊戲返回。選角、牌桌及視窗均位於畫布的可用範圍。
+- 隔離瀏覽器檢查手機直橫向、四邊非零安全區、移除安全區與晚到更新，並直接比對兩款遊戲的簽到及工具列座標。本機 browser CI **12/12 步通過**（一般回歸 596 通過、1 項既有條件略過），報告為 `test-results/mobile-safe-area-browser-verification.json`、`mobile-safe-area-ui-report.json`。完整 CI 前次執行的後端整合 80 通過、2 項條件略過，監控 2 通過；當時瀏覽器缺失的失敗記錄保留於 `mobile-safe-area-ci-before-browser.json`，補齊鎖定的 Chromium 後才重跑 browser 組。遠端 CI 未執行。
+- 依使用者要求發布至既有測試 App `1567875182792544256`，專用 Worker 版本 `1c020da6-3335-45dc-8560-054bda9118d0`；保留原變數、Secrets 與資料。公開健康檢查、未登入 API 拒絕及 32 份線上 HTML／JS／CSS 位元組比對通過，證據為 `test-results/mobile-safe-area-test-deploy.log`、`mobile-safe-area-public-check.json`。真正手機 Discord 的效果仍待使用者驗收。
+- 此次只修改排版，入場預決定勝負與縮短出牌等待仍為討論方案；既有抽拳、派彩、老虎機計時與產品版本不變。未 commit、merge 或 push。
+
 ## 1.0.3 與 main 合併（2026-11-06）
 
 使用者要求保留 `add-function` 的全部改動並合併到 `main`；野球拳、CG、獨立開場與雙遊戲測試功能完整保留。正式建置另以模組圖與產物檢查排除這些測試內容，正式服不提供野球拳入口、程式或 CG。專用測試 Worker 更新為 `c1540525-e449-4bb8-909f-695bfb22d703`，沿用下表測試 App、DO、Firestore 與原 Secrets，沒有更換資料來源或重新 seed。根頁、老虎機、大廳、CG 下載頁及原圖與本機測試產物逐檔雜湊一致，正式／測試 DO 不共用；完整本機 CI 16/16 通過。證據位於 `test-results/release-1.0.3/`，遠端 CI 另依最終提交核對。

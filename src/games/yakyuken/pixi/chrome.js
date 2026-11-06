@@ -68,7 +68,7 @@ export function buildSlotHud(scene){
   leftLabel('週簽到',narrow?12:14,0xffe9bc,copyX,-10,checkin,{fontWeight:'500'});
   scene.checkinCopy=leftLabel('查看七日獎勵',narrow?11:12,0xffdfab,copyX,11,checkin);
   const {toolsX,toolsY,toolsWidth,toolsHeight,centers}=h,cy=toolsY+toolsHeight/2;
-  hud.addChild(new Graphics().roundRect(toolsX,toolsY,toolsWidth,toolsHeight,narrow?11:12).fill({color:0x2b1d2d,alpha:.85}).stroke({color:0xc99b5b,alpha:.21,width:1}));
+  hud.addChild(new Graphics({label:'player-tools-frame'}).roundRect(toolsX,toolsY,toolsWidth,toolsHeight,narrow?11:12).fill({color:0x2b1d2d,alpha:.85}).stroke({color:0xc99b5b,alpha:.21,width:1}));
   const sound=at(new PixiButton({name:scene.audio.effectsMuted?'開啟音效':'關閉音效',variant:'utility',width:48,height:48,icon:icon(scene.audio.effectsMuted?'muted':'sound'),onPress:async()=>{
     await scene.audio.toggleEffects();scene.refreshAudioIcons?.();
   }}),centers[0],cy,hud);

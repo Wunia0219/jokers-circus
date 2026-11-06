@@ -25,5 +25,10 @@ try{
   awaitingLobby=true;frame.src=activityPath(location,'/yakyuken-preview.html');
   const safeAreas=()=>{try{for(const edge of ['top','bottom','left','right']){const key='--discord-safe-area-inset-'+edge,value=getComputedStyle(document.documentElement).getPropertyValue(key).trim(),style=frame.contentDocument.documentElement.style;if(value)style.setProperty(key,value);else style.removeProperty(key);}}catch{}};
   frame.addEventListener('load',safeAreas,{signal:abort.signal});addEventListener('resize',safeAreas,{signal:abort.signal});
+  // Discord may update its insets without resizing the Activity window.
+  const safeAreaObserver=new MutationObserver(safeAreas);
+  safeAreaObserver.observe(document.documentElement,{attributes:true,attributeFilter:['style','class']});
+  addEventListener('pagehide',event=>{if(!event.persisted)safeAreaObserver.disconnect();},{signal:abort.signal});
+  safeAreas();
   frame.hidden=false;
 }catch{awaitingLobby=false;clearTimeout(timeout);launch.fail();}

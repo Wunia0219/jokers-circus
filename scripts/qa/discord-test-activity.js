@@ -11,6 +11,7 @@ import {TEST_GUILD,TEST_CHANNEL} from '../../cloud/discord-test-auth.js';
 import {launchBrowser} from './helpers/browser.js';
 import {verifyLaunchScreen} from './helpers/launch-screen.js';
 import {verifySlotAtlasRecovery} from './helpers/slot-atlas-recovery.js';
+import {setGameSafeArea,yakyukenHeaderBounds,assertSameGameHeader} from './helpers/game-safe-area.js';
 
 const output='test-results/discord-test-activity',clientId='100000000000000003',port=4203,origin='http://127.0.0.1:'+port;
 mkdirSync(output,{recursive:true});const dist=resolve(output,'dist');
@@ -76,6 +77,21 @@ try{
     await phase('games');assert.ok((await page.evaluate(()=>__commands)).includes('AUTHENTICATE'));
     await frame.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase('characters');
     assert.equal(await frame.evaluate(()=>window.__playerScene.layout.ui.width),mobile?390:1440,'mobile fixture uses a real phone viewport');
+    if(mobile){
+      for(const [width,height,insets] of [
+        [390,844,{top:48,right:0,bottom:16,left:0}],
+        [375,812,{top:64,right:12,bottom:24,left:8}],
+        [844,390,{top:20,right:40,bottom:12,left:36}],
+        [390,844,{top:null,right:null,bottom:null,left:null}],
+      ]){
+        await page.setViewportSize({width,height});await setGameSafeArea(shell,frame,insets);
+        const bounds=await yakyukenHeaderBounds(frame);
+        for(const box of Object.values(bounds))assert.ok(box.x>=(insets.left??0)-1&&box.y>=(insets.top??0)-1&&box.x+box.width<=width-(insets.right??0)+1&&box.y+box.height<=height-(insets.bottom??0)+1,'header stays clear of every safe-area edge');
+      }
+      // Late inset changes have no viewport resize event to trigger propagation.
+      await setGameSafeArea(shell,frame,{top:48,right:0,bottom:16,left:0});
+    }
+    const yakyukenHeader=await yakyukenHeaderBounds(frame);
     const playerView=(target=frame)=>target.evaluate(()=>{const s=window.__playerScene,b=s.balanceGroup.getBounds();return {name:s.playerNameCaption.text,uid:s.playerIdCaption.text,balance:s.balanceNumber.text,portrait:!!s.hud.getChildByLabel('discord-avatar-image',true),balanceTop:b.y,balanceBottom:b.y+b.height,header:s.layout.ui.headerHeight,contentTop:s.layout.contentTop};});
     await frame.waitForFunction(()=>!!window.__playerScene?.avatarTexture);
     const identity=await playerView();assert.equal(identity.name,'測試者 '+who);assert.equal(identity.uid,'ID '+users[who]);assert.equal(identity.portrait,true);assert.equal(identity.balance,'10,000');assert.ok(identity.balanceTop>=identity.header&&identity.balanceBottom<=identity.contentTop);
@@ -100,6 +116,11 @@ try{
     })});
     assert.equal(new URL(frame.url()).pathname,'/slot/');assert.equal((await page.evaluate(()=>__commands)).filter(x=>x==='HANDSHAKE').length,1,'persistent shell retains one live SDK connection across games');for(const [key,value] of Object.entries({discord_shim:'1',location_id:'fixture-location',mobile_app_version:'300.0'}))assert.equal(new URL(frame.url()).searchParams.get(key),value);assert.equal(new URL(frame.url()).searchParams.get('channel_id'),TEST_CHANNEL);assert.equal((await frame.locator('#balance').textContent()).replaceAll(',',''),'11500');
     assert.equal(await frame.locator('#player-name').textContent(),identity.name);assert.equal(await frame.locator('#player-id').textContent(),identity.uid);await frame.locator('.player-avatar-image:not([hidden])').waitFor();
+    const slotHeader=await frame.evaluate(()=>{
+      const bounds=selector=>{const b=document.querySelector(selector).getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height};};
+      return {checkin:bounds('.daily-checkin'),tools:bounds('.player-tools')};
+    });
+    assertSameGameHeader(yakyukenHeader,slotHeader);
     await frame.locator('#daily-checkin').click();await frame.getByRole('button',{name:/領取.*戲籌/}).click();await frame.waitForFunction(()=>document.querySelector('#balance')?.textContent.replaceAll(',','')==='12000');await frame.locator('#close-dialog').click();
     const settlement=page.waitForResponse(r=>r.url().includes('/api/spin'));await frame.locator('#spin').click();const spin=await (await settlement).json();
     await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false&&document.querySelector('#spin').getAttribute('aria-label')!=='快速停止');
