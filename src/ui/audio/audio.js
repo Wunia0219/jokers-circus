@@ -8,6 +8,7 @@ const defaultContext=()=>{
 export class Sound {
   enabled=false;
   musicEnabled=false;
+  musicPending=false;
   context=null;
   effectsGain=null;
   voices=new Set();
@@ -46,15 +47,19 @@ export class Sound {
     this.changed();return this.enabled;
   }
   enable(){return this.setEffectsEnabled(true);}
-  async setMusicEnabled(enabled){
+  async setMusicEnabled(enabled,{retryBlockedPlayback=false}={}){
     const request=++this.musicRequest;
+    this.musicPending=false;
     if(!enabled||!this.music){this.musicEnabled=false;this.music?.pause();this.changed();return false;}
     this.musicEnabled=true;
     if(this.suspended||this.isHidden()){this.changed();return true;}
     try{
       await this.music.play();
       if(!this.musicEnabled||this.suspended||this.isHidden())this.music.pause();
-    }catch{if(request===this.musicRequest)this.musicEnabled=false;}
+    }catch(error){if(request===this.musicRequest){
+      this.musicPending=retryBlockedPlayback && error?.name==='NotAllowedError';
+      this.musicEnabled=this.musicPending;
+    }}
     this.changed();return this.musicEnabled;
   }
   stopEffects(){
@@ -64,9 +69,12 @@ export class Sound {
   }
   cancelCues(){for(const voice of [...this.voices])voice.stop();}
   play(kind,index=0){
+    this.playVoices(cueVoices(kind,index));
+  }
+  playVoices(voices){
     if(!this.enabled||!this.context||this.context.state!=='running'||this.suspended||this.isHidden())return;
     const context=this.context;
-    for(const voice of cueVoices(kind,index)){
+    for(const voice of voices){
       while(this.voices.size>=96)this.voices.values().next().value.stop();
       const oscillator=context.createOscillator(),gain=context.createGain(),start=context.currentTime+voice.at;
       oscillator.type='sine';oscillator.frequency.setValueAtTime(voice.frequency,start);
@@ -102,7 +110,7 @@ export class Sound {
       return;
     }
     if(this.enabled)await this.setEffectsEnabled(true);
-    if(this.musicEnabled)await this.setMusicEnabled(true);
+    if(this.musicEnabled)await this.setMusicEnabled(true,{retryBlockedPlayback:true});
   }
   dispose(){
     ++this.effectsRequest;++this.musicRequest;

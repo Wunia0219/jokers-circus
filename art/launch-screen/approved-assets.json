@@ -1,0 +1,45 @@
+{
+  "approved": true,
+  "encoding": "lossless WebP; exact RGBA verified",
+  "images": [
+    {
+      "id": "golden-salon",
+      "source": "art/launch-screen/review-v2/background-01-golden-salon.png",
+      "output": "images/launch/golden-salon.webp",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "bytes": 1826202,
+      "sourceSha256": "b75f0a1cefe10093beca770b1b89194e89deb06c0eaae3437dc98399c28ca678",
+      "rgbaSha256": "a426997ae4325c4cf7f3c8871c88ab4dda3ff0c11796022d8078fcd9162dd3dc",
+      "outputSha256": "8ff2e667c892f4a082d53c13cef3bb051bb9139101e9fdedc3e4749ce059b4e2"
+    },
+    {
+      "id": "last-spin",
+      "source": "art/launch-screen/review-v6/background-02-last-spin.png",
+      "output": "images/launch/last-spin.webp",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "bytes": 1698394,
+      "sourceSha256": "0b7354ee12a616041a53f6f944e9ac6d2237404ccd3bceaaa9eda8374853775e",
+      "rgbaSha256": "08fc0f4db6d0ae23d1aeb1315cf5a75abefaad2057f94a193aa46beaf7cbda7a",
+      "outputSha256": "acb85127a19561252c2fa980458a17f18805079d0764b40a6194aca31a3fbee6"
+    },
+    {
+      "id": "curtain-rises",
+      "source": "art/launch-screen/review-v8/background-03-curtain-rises.png",
+      "output": "images/launch/curtain-rises.webp",
+      "dimensions": [
+        1670,
+        942
+      ],
+      "bytes": 1681384,
+      "sourceSha256": "6a462407126415d35a9bc1e15410fc4a55e9bf017d25695f34ded06d3b354846",
+      "rgbaSha256": "f43ab009e32e1642be43e6b16c2a7a5e6a0ca9324872ab7cc46804cb7e85578b",
+      "outputSha256": "6313cee10bf038fc233366c94a4025092d0f31b1e428586e6ad1fd8fb903f84f"
+    }
+  ]
+}

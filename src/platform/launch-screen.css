@@ -1,0 +1,19 @@
+.app-launch{position:fixed;inset:0;z-index:20;overflow:hidden;background:#120a15;color:#eed6a5;transition:opacity .32s ease;isolation:isolate}
+.launch-art-frame{position:absolute;left:50%;top:50%;width:min(100%,177.777778vh);aspect-ratio:16/9;transform:translate(-50%,-50%);overflow:hidden}
+.launch-art{display:block;width:100%;height:100%;object-fit:cover;object-position:var(--launch-art-focus,50% 50%)}
+.launch-art[hidden]{display:none}
+.launch-wordmark{position:absolute;left:50%;bottom:max(3.8%,calc(var(--discord-safe-area-inset-bottom,env(safe-area-inset-bottom,0px)) + 12px));width:min(72%,660px);height:100px;display:grid;place-items:center;transform:translateX(-50%);isolation:isolate}
+.launch-word{position:relative;z-index:1;margin:0;padding-left:.14em;font-family:Georgia,'Times New Roman',serif;font-size:clamp(26px,4.4vw,52px);font-weight:400;line-height:1.2;letter-spacing:.14em;white-space:nowrap;color:#edc98e;filter:drop-shadow(0 2px 1px #09050b)}
+.launch-letter{display:inline-block;background:linear-gradient(180deg,#fff4d2 5%,#e0b77c 42%,#fae8bd 55%,#b98b57 100%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:launch-letter-ripple 1.8s ease-in-out infinite;animation-delay:calc(var(--letter-order)*75ms)}
+.launch-dots{font-size:.8em;letter-spacing:.12em}
+.launch-waves{position:absolute;left:50%;top:50%;width:100%;height:auto;transform:translate(-50%,-50%);overflow:hidden;z-index:0;pointer-events:none}
+.launch-wave{animation:launch-wave-drift 4.2s ease-in-out infinite;transform-origin:center;opacity:0;will-change:transform,opacity}
+.launch-wave:nth-of-type(2){animation-delay:-1.4s}.launch-wave:nth-of-type(3){animation-delay:-2.8s}
+.launch-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.app-launch.is-leaving{opacity:0}.app-launch.is-paused .launch-wave,.app-launch.has-error .launch-wave,.app-launch.is-paused .launch-letter,.app-launch.has-error .launch-letter{animation-play-state:paused}
+.app-launch.has-error .launch-wordmark{display:none}.app-launch.has-error .launch-status{left:20px;right:20px;bottom:max(6%,calc(var(--discord-safe-area-inset-bottom,env(safe-area-inset-bottom,0px)) + 20px));width:auto;height:auto;margin:0;text-align:center;clip-path:none;white-space:normal;line-height:1.6;font-size:15px}
+@keyframes launch-wave-drift{0%{transform:translate(-65px,6px) scaleY(.88);opacity:0}18%{opacity:.65}50%{transform:translate(0,-6px) scaleY(1.08);opacity:.9}82%{opacity:.65}100%{transform:translate(65px,6px) scaleY(.88);opacity:0}}
+@keyframes launch-letter-ripple{0%,24%,100%{transform:translateY(0) rotate(0)}9%{transform:translateY(-.17em) rotate(-1.2deg)}16%{transform:translateY(.035em) rotate(.4deg)}}
+@media(max-aspect-ratio:1.05){.launch-art-frame{width:100%;height:100%;aspect-ratio:auto}.launch-wordmark{width:86%;bottom:max(4.5%,calc(var(--discord-safe-area-inset-bottom,env(safe-area-inset-bottom,0px)) + 16px))}.launch-word{font-size:clamp(26px,7.2vw,40px)}}
+@media(max-height:480px) and (min-aspect-ratio:1.05){.launch-wordmark{height:64px;bottom:1.5%}.launch-word{font-size:clamp(22px,4vw,32px)}}
+@media(prefers-reduced-motion:reduce){.app-launch{transition:none}.launch-letter{animation:none;transform:none}.launch-wave{animation:none;opacity:.45;transform:none;will-change:auto}.launch-wave:nth-of-type(2){opacity:.2;transform:translateY(4px)}.launch-wave:nth-of-type(3){opacity:.15;transform:translateY(-4px)}}

@@ -1,0 +1,13 @@
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#211727;color:#ecdfcb}
+body{margin:0}
+main{max-width:700px;margin:0 auto;padding:28px 20px;text-align:center}
+.brand{margin:0 0 12px;font:12px Georgia,serif;letter-spacing:2px;color:#bda8b4}
+h1{margin:0 0 20px;font-size:24px;font-weight:500;color:#dbc389}
+p{line-height:1.7}
+nav{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border:1px solid #b89462;border-radius:8px;color:#eed08f;text-decoration:none}
+#download{background:#ead19a;color:#281c29}
+a:hover{filter:brightness(1.12)}
+a:focus-visible{outline:2px solid #fff0d5;outline-offset:4px}
+img{display:block;width:auto;height:auto;max-width:100%;max-height:72svh;margin:20px auto 0;object-fit:contain}
+[hidden]{display:none}

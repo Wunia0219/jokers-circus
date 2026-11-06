@@ -1,0 +1,121 @@
+{
+  "format": "lossless WebP, exact RGBA",
+  "runtimeCanvas": [
+    1047,
+    1503
+  ],
+  "logicalCard": [
+    156,
+    214
+  ],
+  "anchor": [
+    0.5,
+    0.5
+  ],
+  "normalization": "native pixels preserved; runtime Texture.orig/trim pads the one-pixel height difference symmetrically",
+  "background": "transparent cards; opaque cover",
+  "frames": [
+    {
+      "name": "rock",
+      "file": "images/yakyuken/cards-v3/rock.webp",
+      "source": "exec-0748e236-d7c9-4288-85d6-55156b28213e.png",
+      "size": [
+        1047,
+        1503
+      ],
+      "alphaBounds": [
+        51,
+        54,
+        997,
+        1443
+      ],
+      "bytes": 1271806,
+      "rgbaSha256": "f2d7d869d754cd68871f770fe7bc71bea8f3bdac4289233214706adf9497cb43"
+    },
+    {
+      "name": "scissors",
+      "file": "images/yakyuken/cards-v3/scissors.webp",
+      "source": "exec-36c6bc06-be39-4f6f-acc0-03abdfc90b26.png",
+      "size": [
+        1047,
+        1502
+      ],
+      "alphaBounds": [
+        51,
+        53,
+        997,
+        1442
+      ],
+      "bytes": 1155502,
+      "rgbaSha256": "2f0dad4f02525fbf8723fb4f4ee4ccf36223be2b59138f9c976c6a454ff1c508"
+    },
+    {
+      "name": "paper",
+      "file": "images/yakyuken/cards-v3/paper.webp",
+      "source": "exec-1901ba90-1d98-4c87-a0df-3bcd0f9654a3.png",
+      "size": [
+        1047,
+        1502
+      ],
+      "alphaBounds": [
+        51,
+        53,
+        997,
+        1442
+      ],
+      "bytes": 1162970,
+      "rgbaSha256": "399224a3ef8fdf69aaa1206832604d9a27590586082e01402ec314121e9be897"
+    },
+    {
+      "name": "back",
+      "file": "images/yakyuken/cards-v3/back.webp",
+      "source": "exec-0feb1997-45a5-46c6-ba7c-4e1890681701.png",
+      "size": [
+        1047,
+        1502
+      ],
+      "alphaBounds": [
+        51,
+        53,
+        997,
+        1442
+      ],
+      "bytes": 1006500,
+      "rgbaSha256": "18d48096aa65aeb9f92b8fe6b65f1cf71cce725dae1c7d3e34a2d532c0b5678b"
+    },
+    {
+      "name": "progress",
+      "file": "images/yakyuken/cards-v3/progress.webp",
+      "source": "exec-274b925e-9b2d-477f-9c8b-4b56ca954bfe.png",
+      "size": [
+        1047,
+        1502
+      ],
+      "alphaBounds": [
+        51,
+        53,
+        997,
+        1441
+      ],
+      "bytes": 1001418,
+      "rgbaSha256": "2ecbae1663dad10f6499ffaab6ebed7f3fac983543f0aab0178da2ac7fd5438b"
+    },
+    {
+      "name": "cover",
+      "file": "images/lobby/yakyuken-cover-v3.webp",
+      "source": "exec-03192622-140d-49e6-91d0-b065192427ad.png",
+      "size": [
+        1536,
+        1024
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        1536,
+        1024
+      ],
+      "bytes": 1564124,
+      "rgbaSha256": "12f73345f1dc8e49449b57e5f1b7d8429ba0d4b113ce6f6111910105f6359690"
+    }
+  ]
+}

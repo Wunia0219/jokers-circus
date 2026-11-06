@@ -59,6 +59,7 @@ export class SlotScene {
     let completed = 0;
     const loaded = value => { onProgress(28 + (++completed * 14), '正在準備馬戲團道具'); return value; };
     this.dealer=new Dealer({
+      resilient:import.meta.env.VITE_DISCORD_TEST_ACTIVITY==='true',
       motionManifest:dealerManifest,
       resolvePage:page=>dealerPages['../../../images/dealer/v4/'+page.file],
       uploadTextures:textures=>this.app.renderer.prepare.upload(textures),

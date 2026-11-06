@@ -1,0 +1,28 @@
+{
+  "status": "polished background 02 for user review only; not integrated or deployed",
+  "date": "2026-11-06",
+  "tool": "built-in image_gen.imagegen",
+  "source": "art/launch-screen/review-v4/background-02-last-spin.png",
+  "deliverable": "background-02-last-spin.png",
+  "prompt": "Create a visibly more refined, premium finished-art revision of this EXACT roulette loading illustration. This is a precision QUALITY / MATERIAL / LIGHTING pass, not a new scene. Preserve the character's identity, red eyes, black-and-silver hair, challenging expression, exact face angle, leaning body silhouette, both hand poses, ivory ball, costume design, object placement, overhead camera and overall composition.\n\nNON-NEGOTIABLE PREVIOUS CORRECTIONS:\n- Keep the roulette a rigid circular wheel lying FLAT on the tabletop, its major axis almost horizontal, with coherent concentric elliptical rims, correctly spaced radial pockets and naturally upright spindle. No tilted bowl, warped disk, bent rim or exaggerated fisheye.\n- Keep the same full-width dark near-black burgundy/plum loading space at the bottom. It must match the source's clear lower 16–18%, with the soft transition above it. Do not move the wheel, rail, cape or any bright detail into that reserved dark band. No text or ornament there.\n- Keep the complete crown of hair, hands and ivory ball inside the canvas; no reframing, zoom or crop.\n\nREFINEMENT ART DIRECTION:\n1. FACE AND HAIR: more delicately modeled cheekbones, eyelids, lips and nose; subtle warm skin translucency and controlled cool reflected shadow, maintaining the same handsome adult face and red-eyed gaze. Avoid plastic skin, airbrushed flatness or excessive linework. Give the black/silver hair a coherent mass with selective fine flyaway strands, clean overlap and soft individual highlights, avoiding wiry noise.\n2. HANDS: elegant convincing joints, tendon structure and fingertips. A gentle believable pinch on the ivory ball, natural contact and soft contact shadows where the other hand rests on the rail. Precisely formed rings with restrained gemstone highlights.\n3. FABRIC: replace crumpled, faceted-looking shirt wrinkles with graceful natural folds following the shoulder, bent elbow and wrist, showing crisp ivory cotton and subtle weave. The fitted waistcoat has rich, fine wine-red jacquard and matte black silk; the cape has deep plush black velvet outside and softly luminous red satin/brocade inside. Make these material differences distinctly readable. Refine the existing gold embroidery into fine stitched filigree with consistent thread thickness. Keep the existing ornament count and costume silhouette; don't add more jewelry or fill every surface with patterns.\n4. ROULETTE: exquisite dark polished walnut with coherent subtle radial grain, precisely inlaid brass rings, clean pocket separators, refined ruby-red and near-black enamel, tiny plausible surface wear only at useful edges. The spindle has carefully shaped lathed metal and narrow controlled highlights rather than blown-out orange glare. Every ring shares a common center and plane. No numbers or lettering.\n5. LIGHT: a sophisticated balance of the existing warm amber lamp and cool midnight moonbeam. The face remains the focal point. Recover fine detail in the bright lamp/brass highlights, enrich shadow depth without muddy black patches, add restrained reflected light and contact shadows so the host, cape, table and wheel belong to one space. The back chair and carpet become quieter and softer in focus than the foreground hero; avoid sharpening every surface equally. No new lights, sparks, smoke, props or decorative overlays.\n\nFinish as beautifully painted high-end anime casino key art with confident brush control, natural edges and rich but restrained color. Request high-resolution 16:9 output, ideally 3840x2160 if available; preserve the source framing and lower dark-space proportion. No artificial grain, oversharpening, edge halos, watermark, logos, borders, UI or loading text. One complete polished illustration.",
+  "requestedInvariants": [
+    "natural flat roulette perspective with coherent concentric rings",
+    "same lower dark loading-space proportion as approved background 01",
+    "same dealer identity, pose, expression, costume and overall framing"
+  ],
+  "polish": [
+    "more modeled face and coherent hair highlights",
+    "refined hand contact and jewelry",
+    "fabric folds, velvet/brocade material separation and gold embroidery",
+    "wood grain, pocket dividers, brass highlights and spindle finish",
+    "softer background focus and balanced warm/cool lighting"
+  ],
+  "inspection": "actual generated image inspected; roulette plane and lower dark band retained, full crown and hands visible, no text or added decorative objects",
+  "dimensions": [
+    1672,
+    941
+  ],
+  "mode": "RGB",
+  "resolutionNote": "native generated resolution retained; no claim of 4K output or artificial upscaling",
+  "existingGameFilesChanged": false
+}

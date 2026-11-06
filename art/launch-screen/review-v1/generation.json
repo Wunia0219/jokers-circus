@@ -1,0 +1,43 @@
+{
+  "status": "design-review-only; awaiting user review; not integrated or deployed",
+  "tool": "built-in image_gen.imagegen",
+  "date": "2026-11-06",
+  "deliverables": [
+    {
+      "file": "background.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "role": "wide casino and existing dealer loading background",
+      "prompt": "Create ONE premium painted game loading-screen background illustration, wide 16:9 landscape, ideally 1920x1080. This is a new composition derived from the two reference images: image 1 supplies the Joker's Circus casino atmosphere and palette, image 2 supplies the EXACT existing adult male dealer identity. Preserve his recognizable black-and-silver long hair, side-part fringe, red eyes, red satin shirt, black fitted waistcoat, and confident inviting expression. Keep the polished painterly anime aesthetic of the character; do not invent a different face.\n\nScene: an intimate, theatrical casino salon inside a luxurious circus, deep midnight-blue canopy, burgundy velvet curtains, a few warm brass chandeliers and amber lamps, elegant gaming tables receding into depth. A foreground green felt casino table with tasteful stacks of chips and a small neat fan of playing cards makes the casino theme clear. Place the waist-up dealer on the right-of-center third, holding a few playing cards casually in one hand and welcoming the guest with the other; correct human hands and anatomy, all hands and hair safely inside frame. The environment remains the majority of the composition. Use depth, directional warm light, restrained gold detailing, and slightly textured brushwork, not an indiscriminate shower of coins or sparkle.\n\nComposition for a standalone application launch screen: keep the bottom 22% calm, dark navy fading into near-black burgundy with very little detail, so a SEPARATE loading wordmark can later sit clearly at bottom center. Do NOT draw that wordmark here. Keep dealer face and key casino props within 8% safe margins. All readable content should be absent. No logo, NO text, no title, no loading letters, no interface, no panels, no progress bar, no border or watermark. This image is the background asset ONLY, not a UI mockup or comparison sheet.",
+      "references": [
+        "images/jokers-circus/circus-background.webp",
+        "images/yakyuken/dealer/stage-0.webp"
+      ]
+    },
+    {
+      "file": "loading-wordmark.png",
+      "width": 2172,
+      "height": 724,
+      "mode": "RGB",
+      "role": "static dark-background lettering and wave concept, not a production transparent layer",
+      "text": "LOADING...",
+      "prompt": "Create a polished static design approval image of a casino loading wordmark, wide 3:1 landscape canvas. Solid smooth near-black midnight plum background, exact dark color approximately #130d1a, fully OPAQUE image. Do NOT use transparency or cutout treatment.\n\nOne centered line of text exactly \"LOADING...\" (L O A D I N G followed by exactly THREE small periods). Tall elegant Roman uppercase serif lettering with slightly spaced letters, satin champagne-gold faces, extremely restrained bevel, warm ivory edge highlights and delicate antique-gold depth. Crisp refined typography, thinner and lighter than a bulky fantasy logo, very readable at small on-screen size. Make the text take about 62% of the canvas width and about 22% of its height, with generous clean negative space.\n\nBehind the stationary letters place a quiet, beautifully designed luminous wave: three delicate, semi-transparent flowing ribbons of warm champagne light and smoky mauve, traveling gently left-to-right, one rising as another falls. Low amplitude elegant rolling light, feathered seamlessly into the exact dark background. The lettering is unobstructed, sharp and brighter than the waves. Waves extend only slightly past the text and stay fully within the central 80% of the canvas. This is a single static key visual for a future endless looping wave behind the word, not an animation sheet.\nPremium illustrated game UI, refined and atmospheric, coherent with a midnight-blue/burgundy theatrical casino. Absolutely NO progress bar, rectangle plaque, frame, spinner, percentage, playing cards, icons, logo emblem, other text, checkerboard or watermark. No red/green outlines, no cutout edges, no white matte contamination. Soft smooth integrated lighting on a clean dark backdrop."
+    }
+  ],
+  "motionDirection": {
+    "status": "concept only, animation not yet produced",
+    "stationary": "lettering",
+    "animated": "low-amplitude warm gold and mauve light ribbons flow left to right behind the lettering in a seamless loop",
+    "progressBar": false
+  },
+  "rejectedTrials": {
+    "reason": "transparent wordmark trials showed visible matte/edge contamination; not selected for review",
+    "productionReady": false
+  },
+  "bounds": {
+    "background": "character and casino props are complete; lower dark area reserved for lettering",
+    "wordmark": "complete single line and three dots, with padded waves"
+  },
+  "existingGameFilesChanged": false
+}

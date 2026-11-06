@@ -1,6 +1,7 @@
 import {defineConfig} from 'vite';
 import {securityHeaders,contentSecurityPolicy} from './server/http/security-headers.js';
 import {checkDiscordSdk} from './scripts/security/patch-discord-sdk.js';
+import {productionBoundary} from './scripts/build/production-boundary.js';
 
 checkDiscordSdk();
 
@@ -8,7 +9,7 @@ checkDiscordSdk();
 export default defineConfig({
  // Preserve the Vite 7 browser baseline when changing bundlers.
  build:{target:['chrome107','edge107','firefox104','safari16']},
- plugins:[{
+ plugins:[productionBoundary(),{
  name:'static-security-headers',
  generateBundle(_,bundle){
   const headers={...securityHeaders,'Content-Security-Policy':contentSecurityPolicy};

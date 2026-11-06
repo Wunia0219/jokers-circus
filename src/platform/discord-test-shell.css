@@ -1,0 +1,2 @@
+@import './launch-screen.css';
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#120a15;color:#e9d8b3;font-family:system-ui,sans-serif}#game{border:0;width:100%;height:100%;display:block}#game[hidden]{display:none}

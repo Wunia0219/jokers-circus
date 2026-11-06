@@ -5,6 +5,8 @@ import {WalletStore} from '../server/wallet/wallet.js';
 import {handleCommand,commandDefinitions} from '../server/discord/commands.js';
 import {panelId,deferWalletInteraction} from '../server/discord/discord-panel.js';
 import {createActivityServer} from '../server/http/app.js';
+import {createGrantNotifier} from '../server/discord/grant-notification.js';
+import {CasinoBot} from '../server/discord/casino-bot.js';
 const guild='100000000000000001',actor='100000000000000002',target='100000000000000003',channel='100000000000000004';
 let serial=0n;
 const snowflake=(offset=0)=>String((BigInt(Date.now()+offset)-1420070400000n)<<22n|(++serial%4194304n));
@@ -13,10 +15,10 @@ const component=(custom_id,values)=>({...base(),type:3,message:{flags:64},data:{
 const control=(r,name)=>r.data.components.flatMap(row=>row.components).find(c=>c.label===name||c.placeholder===name);
 const click=(r,name,values)=>component(control(r,name).custom_id,values);
 const form=(r,fields,rootResolved=false)=>({...base(),type:5,data:{custom_id:r.data.custom_id,
-  components:Object.entries(fields).map(([custom_id,value])=>({type:18,component:custom_id==='member'?{type:5,custom_id,values:[value],...(!rootResolved?{resolved:{members:{[value]:{}},users:{[value]:{id:value}}}}:{})}:{type:4,custom_id,value}})),
+  components:Object.entries(fields).map(([custom_id,value])=>({type:18,component:custom_id==='member'?{type:5,custom_id,values:[value],...(!rootResolved?{resolved:{members:{[value]:{}},users:{[value]:{id:value}}}}:{})}:custom_id==='notify'?{type:3,custom_id,values:Array.isArray(value)?value:[value]}:{type:4,custom_id,value}})),
   ...(rootResolved?{resolved:{members:{[fields.member]:{}},users:{[fields.member]:{id:fields.member}}}}:{})}});
 function fixture(t){const s=new WalletStore({guildIds:[guild],environment:'production',spinDelay:0});t.after(()=>s.close());return s;}
-const run=(i,s)=>handleCommand(i,s,[],[channel]);
+const run=(i,s,notifyGrant)=>handleCommand(i,s,[],[channel],{notifyGrant});
 
 test('two simple slash roots open a private zero-read menu; only the game awards checkin',async()=>{
   assert.deepEqual(commandDefinitions.map(c=>[c.name,c.options]),[['戲籌',[]],['戲籌管理',[]]]);
@@ -43,6 +45,9 @@ test('roster advances and returns to the first page without scanning skipped row
 test('native forms resolve guild players and use the original form request for financial deduplication',async t=>{
   const s=fixture(t),panel=await run(base(),s),modal=await run(click(panel,'發放戲籌'),s);
   assert.equal(modal.type,9);assert.ok(modal.data.components.every(c=>c.type===18));assert.equal(modal.data.components[0].component.type,5);
+  assert.equal(modal.data.components.length,4);
+  const notification=modal.data.components[3];assert.equal(notification.label,'是否通知被發放的玩家');assert.equal(notification.component.type,3);
+  assert.deepEqual(notification.component.options.map(o=>[o.label,o.value,!!o.default]),[['不通知本人','no',true],['通知本人','yes',false]]);
   const submission=form(modal,{member:target,amount:'500',reason:'活動獎勵'}),grant=await run(submission,s);assert.match(grant.data.embeds[0].description,/10,000 → \*\*10,500/);
   s.spin(guild,target,20,randomUUID());const balance=s.state(guild,target).balance;
   submission.id=snowflake();const retry=await run(submission,s);assert.match(retry.data.embeds[0].description,/沒有再次發放/);assert.equal(s.state(guild,target).balance,balance);
@@ -54,6 +59,77 @@ test('native forms resolve guild players and use the original form request for f
   const malformed=form(modal,{member:target,amount:'0',reason:'bad'});assert.match((await run(malformed,s)).data.embeds[0].description,/正整數/);
   const bot=form(queryModal,{member:target});bot.data.components[0].component.resolved.users[target].bot=true;
   assert.match((await run(bot,s)).data.embeds[0].description,/真人/);
+});
+
+test('grant notices opt in, use committed amounts, ping only the recipient and do not repeat on concurrent submissions',async t=>{
+  const s=fixture(t),posts=[],applicationId='100000000000000009';
+  // The cloud store returns the full committed ledger row; SQLite's public
+  // result has only the amount/balances. Adapt this fixture to the cloud shape.
+  const grant=s.grant.bind(s);s.grant=(...args)=>{const r=grant(...args);return {...r,entry:{...s.db.prepare('SELECT * FROM ledger WHERE id=?').get(r.entry.id)}};};
+  const bot=new CasinoBot({guild,channel,applicationId,token:'fixture-bot-token',fetchImpl:async(url,options)=>{
+    if(url.endsWith('/users/@me'))return Response.json({id:applicationId,bot:true});
+    if(url.endsWith('/channels/'+channel))return Response.json({id:channel,guild_id:guild,type:0});
+    assert.equal(url,'https://discord.com/api/v10/channels/'+channel+'/messages');
+    posts.push(JSON.parse(options.body));return Response.json({id:snowflake(),channel_id:channel});
+  }}),notify=createGrantNotifier(bot,[channel]),panel=await run(base(),s);
+  for(const preference of [undefined,'no']){
+    const modal=await run(click(panel,'發放戲籌'),s),fields={member:target,amount:'100',reason:'quiet'};
+    if(preference)fields.notify=preference;
+    const r=await run(form(modal,fields),s,notify);assert.match(r.data.embeds[0].description,/未通知本人/);
+  }
+  assert.equal(posts.length,0);
+  const modal=await run(click(panel,'發放戲籌'),s),submission=form(modal,{member:target,amount:'500',reason:'@everyone <@&100000000000000099> **活動**',notify:'yes'});
+  const results=await Promise.all([run(submission,s,notify),run({...submission,id:snowflake()},s,notify)]);
+  assert.equal(s.state(guild,target).balance,10700);assert.equal(posts.length,1);
+  assert.ok(results.some(r=>r.data.embeds[0].title==='這筆已經發放過'));
+  assert.ok(results.every(r=>r.data.flags===64));assert.deepEqual(posts[0].allowed_mentions,{parse:[],users:[target]});
+  assert.match(posts[0].content,new RegExp(`<@${target}>.*500`));assert.equal(posts[0].enforce_nonce,true);
+  assert.doesNotMatch(JSON.stringify(posts[0].embeds),/@everyone|<@&|10,700/);
+  assert.match(results.find(r=>r.data.embeds[0].title==='戲籌已發放').data.embeds[0].description,/已在遊玩文字頻道發送通知/);
+  await run({...submission,id:snowflake()},s,notify);assert.equal(posts.length,1);
+});
+
+test('invalid choices and unauthorized grant forms never mutate or send notifications',async t=>{
+  const s=fixture(t),panel=await run(base(),s),modal=await run(click(panel,'發放戲籌'),s);
+  for(const notify of ['bad',['yes','no']]){
+    const r=await run(form(modal,{member:target,amount:'500',reason:'test',notify}),s,()=>assert.fail('must not notify'));
+    assert.equal(r.data.embeds[0].title,'請重新開啟面板');
+  }
+  const submission=form(modal,{member:target,amount:'500',reason:'test',notify:'yes'});
+  const unauthorized=[i=>{i.member.permissions='0';},i=>{i.channel_id=target;},i=>{i.member.user.id=target;},i=>{i.guild_id=target;},i=>{i.data.custom_id=panelId(base(),'gs',snowflake(-31*60000));}];
+  for(const mutate of unauthorized){const i=structuredClone(submission);mutate(i);assert.notEqual((await run(i,s,()=>assert.fail('must not notify'))).data.embeds[0].title,'戲籌已發放');}
+  assert.equal(s.db.prepare("SELECT COUNT(*) n FROM ledger WHERE kind='grant'").get().n,0);
+});
+
+test('notification failures leave committed grants intact and retries cannot resend or turn a quiet grant into a notice',async t=>{
+  const s=fixture(t),panel=await run(base(),s);
+  for(const kind of ['retry','uncertain','unavailable','throw']){
+    let calls=0;const notify=()=>{calls++;if(kind==='throw')throw new Error('private-provider-token');return {kind};};
+    const modal=await run(click(panel,'發放戲籌'),s),submission=form(modal,{member:target,amount:'100',reason:'test',notify:'yes'});
+    const r=await run(submission,s,notify);assert.equal(r.data.embeds[0].title,'戲籌已發放');assert.match(r.data.embeds[0].description,/戲籌已入帳/);assert.doesNotMatch(JSON.stringify(r),/private-provider-token/);
+    await run(submission,s,notify);assert.equal(calls,1);
+  }
+  const modal=await run(click(panel,'發放戲籌'),s),quiet=form(modal,{member:target,amount:'100',reason:'test',notify:'no'});
+  await run(quiet,s,()=>assert.fail('quiet'));
+  quiet.data.components.find(c=>c.component.custom_id==='notify').component.values=['yes'];
+  await run(quiet,s,()=>assert.fail('must not notify an existing quiet grant'));
+  assert.equal(s.state(guild,target).balance,10500);
+});
+
+test('signed grant submissions acknowledge before notifying and preserve private results on HTTP redelivery',async t=>{
+  const s=fixture(t);s.backend='firestore';
+  const application='100000000000000009',key=generateKeyPairSync('ed25519'),publicKey=key.publicKey.export({type:'spki',format:'der'}).subarray(-32).toString('hex');
+  let finishNotify,notices=0;const patches=[];
+  const server=createActivityServer({clientId:application,publicKey,wallet:{store:s,commandChannelIds:[channel],notifyGrant:()=>{notices++;return new Promise(resolve=>{finishNotify=resolve;});}},fetchImpl:async(url,options)=>{
+    assert.ok(url.endsWith('/messages/@original'));assert.equal(options.method,'PATCH');patches.push(JSON.parse(options.body));return Response.json({});
+  }});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
+  const send=async i=>{const raw=JSON.stringify({...i,application_id:application,token:'isolated-fixture-token'}),timestamp=String(Math.floor(Date.now()/1000));
+    const r=await fetch(`http://127.0.0.1:${server.address().port}/api/interactions`,{method:'POST',headers:{'x-signature-timestamp':timestamp,'x-signature-ed25519':sign(null,Buffer.from(timestamp+raw),key.privateKey).toString('hex')},body:raw});return r.json();};
+  const panel=await run(base(),s),modal=await run(click(panel,'發放戲籌'),s),submission=form(modal,{member:target,amount:'500',reason:'活動獎勵',notify:'yes'});
+  assert.deepEqual(await send(submission),{type:5,data:{flags:64}});assert.equal(notices,1);assert.equal(patches.length,0);
+  finishNotify({kind:'sent'});await server.drainCommands();assert.equal(patches[0].embeds[0].title,'戲籌已發放');assert.deepEqual(patches[0].allowed_mentions,{parse:[]});
+  assert.deepEqual(await send({...submission,id:snowflake()}),{type:5,data:{flags:64}});await server.drainCommands();assert.equal(notices,1);assert.equal(patches[1].embeds[0].title,'這筆已經發放過');assert.equal(s.state(guild,target).balance,10500);
 });
 
 test('reset card captures actual balances at confirmation, preserves progress and cannot reset subsequent play twice',async t=>{

@@ -1,6 +1,7 @@
 import {AnimatedSprite,Assets,Sprite,Spritesheet} from 'pixi.js';
 import standinUrl from '../../../images/dealer/dealer-standin.webp';
 import {dealerPlacement,dealerFrameSequence} from './dealer-motion.js';
+import {createAssetRecovery} from './asset-recovery.js';
 
 const permanent=new Set(['idle']);
 let nextDealerId=0;
@@ -11,10 +12,12 @@ export class Dealer {
   request=0;action='idle';desired='idle';future=null;elapsed=0;disposed=false;
   visible=true;
 
-  constructor({resolvePage=page=>page.file,resolution=1,motionManifest=null,uploadTextures=async()=>{},canRelease=()=>true}={}){
+  constructor({resolvePage=page=>page.file,resolution=1,motionManifest=null,uploadTextures=async()=>{},canRelease=()=>true,resilient=false}={}){
     Object.assign(this,{resolvePage,resolution,motionManifest,uploadTextures,canRelease});
     this.cacheId=++nextDealerId;
     this.standin={url:standinUrl,status:'idle',texture:null,task:null,scale:1,error:null};
+    this.resilient=resilient;this.failures=new Map();this.diagnostics=[];
+    this.loadTexture=resilient?createAssetRecovery({load:url=>Assets.load(url),disposed:()=>this.disposed,report:entry=>{this.diagnostics.push(entry);if(this.diagnostics.length>64)this.diagnostics.shift();console.warn('Dealer asset attempt:',entry);}}):url=>Assets.load(url);
   }
 
   async prepare(name){
@@ -24,6 +27,7 @@ export class Dealer {
     if(this.disposed)throw new Error('Dealer disposed');
     if(this.cache.has(name))return this.cache.get(name);
     if(this.pending.has(name))return this.pending.get(name);
+    const recent=this.failures.get(name);if(recent&&performance.now()<recent.until)throw recent.error;
     const clip=this.motionManifest.clips[name];
     if(!clip)throw new Error('Unknown dealer motion');
     const task=(async()=>{
@@ -33,7 +37,7 @@ export class Dealer {
         const pages=await Promise.allSettled(clip.pages.map(async(page,index)=>{
           const url=this.resolvePage(page);
           if(!url)throw new Error('Missing dealer atlas');
-          const texture=await Assets.load(url);
+          const texture=await this.loadTexture(url);
           const resource={url,sheet:null};loaded.push(resource);
           const factor=this.resolution;
           const scaled=value=>Object.fromEntries(Object.entries(value).map(([key,v])=>[key,v*factor]));
@@ -50,8 +54,10 @@ export class Dealer {
         const result={...clip,frames:textures.length,durationMs:textures.reduce((sum,frame)=>sum+frame.time,0),sheets,textures};
         if(this.disposed)throw new Error('Dealer disposed');
         this.cache.set(name,result);
+        this.failures.delete(name);
         return result;
       }catch(error){
+        if(this.resilient&&!this.disposed)this.failures.set(name,{until:performance.now()+30000,error});
         await this.unload(loaded).catch(cleanup=>console.warn('Dealer resource cleanup unavailable:',cleanup.message));
         throw error;
       }
@@ -80,7 +86,14 @@ export class Dealer {
         throw error;
       }finally{this.standin.task=null;}
     }
-    const idle=await this.prepare('idle');
+    let idle;
+    try{idle=await this.prepare('idle');}
+    catch(error){
+      if(!this.resilient||this.disposed)throw error;
+      const task=this.loadTexture(this.standin.url);this.standin.task=task;
+      try{const texture=await task;this.standin.texture=texture;if(this.disposed)throw new Error('Dealer disposed');this.standin.scale=Math.min(256/texture.width,384/texture.height);this.usingStandin=true;idle={textures:[{texture,time:1000}]};}
+      finally{this.standin.task=null;}
+    }
     this.sprite=new AnimatedSprite({textures:idle.textures,autoUpdate:false,loop:true,animationSpeed:1});
     this.sprite.anchor.set(...this.motionManifest.anchor);
     this.sprite.label='命運荷官';this.sprite.eventMode='none';
@@ -108,13 +121,15 @@ export class Dealer {
       const clip=await this.prepare(name);
       if(request!==this.request||this.disposed){this.prune();return;}
       this.action=name;this.elapsed=0;this.reduced=reduced;
+      this.usingStandin=false;
+      if(this.lastWidth)this.layout(this.lastWidth);
       if(this.future===name)this.future=null;
       this.sprite.stop();this.sprite.textures=clip.textures;this.sprite.loop=clip.loop;
       this.sprite.onComplete=()=>{if(request===this.request&&!this.disposed)this.play('idle');};
       if(reduced||!this.visible)this.sprite.gotoAndStop(clip.loop?0:Math.floor(clip.frames/2));
       else this.sprite.gotoAndPlay(0);
       this.prune();
-    }catch(error){if(!this.disposed)console.warn('Dealer animation unavailable:',name,error.message);}
+    }catch(error){if(!this.disposed){console.warn('Dealer animation unavailable:',name,error.message);if(request===this.request&&name!=='idle'){this.future=null;await this.play('idle',{reduced});this.prune();}}}
   }
 
   update(ticker,reduced){
@@ -129,9 +144,10 @@ export class Dealer {
   }
 
   layout(width){
+    this.lastWidth=width;
     if(!this.sprite||this.disposed)return;
     const {x,y,scale}=dealerPlacement(width);
-    const assetScale=this.motionManifest?256/(this.motionManifest.frameSize[0]*this.resolution):this.standin.scale;
+    const assetScale=this.motionManifest&&!this.usingStandin?256/(this.motionManifest.frameSize[0]*this.resolution):this.standin.scale;
     this.sprite.position.set(x,y);this.sprite.scale.set(scale*assetScale);
   }
 

@@ -1,0 +1,55 @@
+{
+  "status": "three static background designs for user review only; not integrated or deployed",
+  "tool": "built-in image_gen.imagegen",
+  "date": "2026-11-06",
+  "supersedes": "review-v1/background.png",
+  "requestedChanges": [
+    "center and enlarge the protagonist",
+    "lavish MEGA WIN-inspired wardrobe",
+    "three distinct backgrounds for future random selection"
+  ],
+  "invariants": [
+    "same adult male dealer identity and red eyes",
+    "black/silver long hair and side-part fringe",
+    "white dress shirt, ruby/black cravat, brocade waistcoat, embroidered black-and-red cape, ruby spade brooch and gold chains",
+    "centered foreground waist-up hero",
+    "complete crown of hair and hands",
+    "calm dark lower area reserved for separate loading lettering",
+    "no baked-in text, logos or progress bars"
+  ],
+  "identityAndWardrobeReferences": [
+    "art/launch-screen/review-v1/background.png",
+    "art/dealer/references/costume-reference.webp"
+  ],
+  "styleMaster": "background-01-golden-salon.png",
+  "deliverables": [
+    {
+      "file": "background-01-golden-salon.png",
+      "name": "皇家金廳",
+      "prompts": [
+        "Edit the loading background into the FIRST of THREE coordinated premium casino splash illustrations, wide 16:9 landscape, ideally 1920x1080. Image 1 is the previous background and the dealer IDENTITY reference. Image 2 is ONLY the wardrobe luxury / material / detailing reference. Keep the recognizable SAME adult male face from image 1, red eyes, black-and-silver long hair, side-part fringe and seductive welcoming confidence. Do NOT make a new character.\n\nPRIMARY CHANGES: the dealer is now EXACTLY CENTERED on the vertical axis, face centered at x=50% of the canvas, dramatically larger and more attention-grabbing than image 1. He is the unmistakable focal point, close foreground waist-up portrait, head to waist fills roughly the upper 75% of the image, shoulders/cape and extended arms give a bold broad silhouette. Keep his entire crown of hair and hands safely inside frame. The casino is visible on both sides behind him, not a large empty area beside him. Warm key light makes his face the highest-contrast focal point.\n\nDesign a lavish MEGA WIN-level ceremonial casino-host outfit, inspired by the luxury wardrobe in image 2: crisp white dress shirt with artful open collar; tailored black waistcoat with deep ruby-red jacquard panels and subtle gold embroidery; ruby-and-black cravat with a gold clasp; black velvet tailcoat/cape draped over the shoulders with wine-red satin lining and tasteful gold embroidered lapels; one elegant spade-shaped ruby brooch, a few fine gold chains and diamond-shaped cuff details. Lavish, theatrical, seductive, coherent couture, NOT medieval armor, NOT a crown, NOT a plain red-shirt-and-vest look. Keep this precise outfit design suitable for reuse unchanged in the next two backgrounds.\n\nSCENE 1 — ROYAL GOLDEN SALON: a majestic casino hall with warm crystal chandeliers, dark brass columns, midnight-blue drapery and burgundy velvet curtains. The centered host stands behind a foreground emerald-felt gaming table, presents a fan of three burgundy-backed playing cards in one hand, and reaches his other hand invitingly toward the guest. Neat small chip stacks sit at the sides. Architectural lines frame his head without forming a halo or competing with his face. Painterly anime illustration matching the references, richly detailed fabric and skin, cinematic depth.\n\nReserve a calm dark near-black plum band in the bottom 18% for a SEPARATE loading wordmark; do not put any letters there. The figure should fade naturally into the foreground table/shadow above this area. Complete composition, not split panels or a collage. NO readable text, no logos, no MEGA WIN lettering, no loading letters, no interface or progress bar, no frame, no watermark. No random coin shower or excessive floating props. All faces, hands, hair and important costume details complete with 5% safe framing.",
+        "Refine ONLY the framing of this casino loading illustration. Preserve the same centered adult dealer identity, expression, pose, exact luxurious white/black/ruby/gold costume, gold-embroidered cape, playing cards, table, casino salon, painting style and colors. Pull the virtual camera back very slightly and lower the dealer a little so his ENTIRE crown of black-and-silver hair and all stray hair tips are visible with a clear minimum 5% image-height margin above the highest hair. No hair touches or crosses the top edge. His face remains exactly at horizontal center, his upper body and cape still dominate the image and the hands remain complete. Preserve the calm dark lower 18% as reserved space, no letters. This is a precise composition safety correction, not a redesign. Full wide 16:9 landscape background, no text, no logo, no interface."
+      ]
+    },
+    {
+      "file": "background-02-midnight-roulette.png",
+      "name": "午夜輪盤",
+      "prompt": "Create one coordinated alternate casino loading background by editing the provided MASTER. This must be the EXACT SAME adult male dealer, same painted anime illustration style, same face and red eyes, same black-and-silver long hair and side part. Preserve the EXACT lavish costume: white open-collar dress shirt, ruby/black patterned cravat and gold clasp, tailored black waistcoat with wine-red brocade panels and gold trim, gold-embroidered black velvet cape draped over shoulders with burgundy satin lining, spade-shaped ruby brooch, fine gold chains, diamond details on white cuffs. Do not redesign, simplify, recolor or change this wardrobe.\n\nMaintain the MASTER's wide 16:9 canvas, exact horizontal-center hero framing and similar large subject scale. Face centered x=50%, close waist-up protagonist, upper body and broad cape dominate the foreground, direct eye contact and charismatic expression, casino visible behind both shoulders. Keep a clear 5% headroom above the complete crown of hair, full hands and props inside canvas. Bright, readable face as the focal point. Bottom 18% remains calm near-black plum shadow reserved for the separate loading lettering; no words baked into the background. Cinematic painterly luxury, polished skin and richly textured fabrics, correct human anatomy and natural hands.\n\nNO text, signs, lettering, logos, loading text, UI, progress bars, border, watermark, collage, comparison sheet, extra characters, crowns, armor or indiscriminate coin shower. One complete standalone illustration.\nSCENE 2 — MIDNIGHT ROULETTE SALON: replace the warm circus hall with a distinctly nocturnal VIP casino: tall arched blue stained-glass windows, an atmospheric sapphire/indigo moonlit ceiling, dark polished marble and antique brass, restrained warm candles and side chandeliers. Cool teal and blue environmental lighting behind the subject contrasts with warm light on his face and gold costume details. A beautifully crafted roulette wheel occupies the foreground right, neat ruby/black chip stacks and dark teal gaming felt on the foreground left. Do not use readable numbers on the wheel, suggest markings as tiny ornamental ticks. The centered dealer holds a single gold-rimmed black-and-ruby casino chip forward at chest height in one natural hand, his other hand relaxed on the table. The foreground hands and chip do not obscure his face or ornate chest detailing. Slightly playful confident smile. Keep the whole head and hairstyle safely inset; the dealer remains as large and prominent as the master."
+    },
+    {
+      "file": "background-03-crimson-stage.png",
+      "name": "緋紅舞台",
+      "prompt": "Create one coordinated alternate casino loading background by editing the provided MASTER. This must be the EXACT SAME adult male dealer, same painted anime illustration style, same face and red eyes, same black-and-silver long hair and side part. Preserve the EXACT lavish costume: white open-collar dress shirt, ruby/black patterned cravat and gold clasp, tailored black waistcoat with wine-red brocade panels and gold trim, gold-embroidered black velvet cape draped over shoulders with burgundy satin lining, spade-shaped ruby brooch, fine gold chains, diamond details on white cuffs. Do not redesign, simplify, recolor or change this wardrobe.\n\nMaintain the MASTER's wide 16:9 canvas, exact horizontal-center hero framing and similar large subject scale. Face centered x=50%, close waist-up protagonist, upper body and broad cape dominate the foreground, direct eye contact and charismatic expression, casino visible behind both shoulders. Keep a clear 5% headroom above the complete crown of hair, full hands and props inside canvas. Bright, readable face as the focal point. Bottom 18% remains calm near-black plum shadow reserved for the separate loading lettering; no words baked into the background. Cinematic painterly luxury, polished skin and richly textured fabrics, correct human anatomy and natural hands.\n\nNO text, signs, lettering, logos, loading text, UI, progress bars, border, watermark, collage, comparison sheet, extra characters, crowns, armor or indiscriminate coin shower. One complete standalone illustration.\nSCENE 3 — CRIMSON GRAND SHOW: replace the casino salon with a spectacular theatrical casino stage: sumptuous sweeping wine-red velvet curtains, brass art-deco balcony rails, tall gilded proscenium arches and warm amber spotlights cutting through a restrained dark-plum haze. Strong red-and-gold celebration mood, very different from a blue moonlit salon, but still elegant and grounded in a casino. The centered dealer stands behind a polished burgundy-felt card table with small deliberate stacks of black/red/gold chips on each side. He holds a graceful fan of burgundy-backed cards near one shoulder with a natural complete hand, and with the other hand lightly offers one face-down gold-edged card toward the viewer over the felt. Keep both hands below/aside the face. His smile is assured and inviting. The red-lined embroidered cape spreads broadly around his shoulders, its EXACT material and decoration unchanged from the master. Keep theatrical architecture and light beams behind him, not bright halo crowns or floating ornaments across his face. Full uncropped crown of hair with 5% headroom."
+    }
+  ],
+  "futureBehavior": "choose one of the three backgrounds randomly when showing the application loading screen; pending user review and later implementation",
+  "reviewChecks": [
+    "all three actual generated images inspected",
+    "large horizontally centered protagonist in every scene",
+    "wardrobe and identity visually consistent across the three designs",
+    "gold salon, cool blue roulette salon, and red theatrical stage visibly distinct",
+    "no clipped crown or hands in selected designs",
+    "PNG originals retained, no individual post-generation recropping"
+  ],
+  "existingGameFilesChanged": false
+}

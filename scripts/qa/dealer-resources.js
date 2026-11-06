@@ -124,6 +124,21 @@ try{
     const destroyed=retiring.destroy();finishUpload();await Promise.all([retirement,destroyed]);
     if(retiringUrls.some(url=>assets.cache.has(url))||retiring.cache.size||retiring.pending.size)throw new Error('in-flight destroy leaked assets');
     checks.push('destroy during GPU preparation cleans late arrivals without resurrecting clips');
+    // Test-only recovery uses the real Pixi cache and resource cleanup path.
+    const recoveryManifest=manifest('recovery'),recoveryUrls=recoveryManifest.clips.trial.pages.map(p=>p.file),attempts=new Map();
+    assets.load=async(url,...args)=>{if(url===recoveryUrls[0]){const count=(attempts.get(url)||0)+1;attempts.set(url,count);if(count===1)throw new TypeError('Failed to fetch');}return load(url,...args);};
+    const recovery=new __qaDealer({motionManifest:recoveryManifest,resilient:true});
+    await recovery.prepare('trial');if(attempts.get(recoveryUrls[0])!==2)throw new Error('transient image failure did not recover exactly once');
+    await recovery.destroy();assets.load=load;
+    if(recoveryUrls.some(url=>assets.cache.has(url)))throw new Error('recovery leaked textures');
+    const missingManifest=manifest('missing'),missingUrls=missingManifest.clips.trial.pages.map(p=>p.file);let missingCalls=0;
+    assets.load=async(url,...args)=>{if(url===missingUrls[0]){missingCalls++;throw new Error('Failed to fetch atlas: 404 Not Found');}return load(url,...args);};
+    const missing=new __qaDealer({motionManifest:missingManifest,resilient:true});
+    await missing.prepare('trial').then(()=>{throw new Error('missing asset accepted');},()=>{});
+    await missing.prepare('trial').then(()=>{throw new Error('missing asset accepted');},()=>{});
+    if(missingCalls!==1||missingUrls.some(url=>assets.cache.has(url)))throw new Error('permanent failure retried or retained partial resources');
+    await missing.destroy();assets.load=load;
+    checks.push('transient failure recovers through Pixi; permanent 404 stays bounded with cooldown and no partial texture leaks');
     await d.play('win');await d.play('idle');
     await d.destroy();
     if(d.releaseTimers.size||d.cache.size||d.pending.size||d.releasing.size)throw new Error('destroy retained resources or timers');

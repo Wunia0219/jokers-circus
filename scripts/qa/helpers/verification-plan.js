@@ -2,7 +2,7 @@ export const CI_SUITES=['browser','wallet','services'];
 
 const integrationFiles={
   wallet:['firestore','firestore-v2','firestore-state-cache'],
-  services:['firestore-backup','firestore-highlights','firestore-live-migration','cloud-rest','cloud-runtime','cloud-welcome','cloud-backup-scale','segmented-runtime','customer-recovery','test-data-reset'],
+  services:['firestore-backup','firestore-highlights','firestore-live-migration','cloud-rest','cloud-runtime','cloud-welcome','cloud-backup-scale','segmented-runtime','customer-recovery','test-data-reset','yakyuken-playtest','discord-test'],
 };
 
 export function verificationPlan({ci=false,full=false,suite='all',node=process.execPath,integrationNode=node}={}){
@@ -23,6 +23,8 @@ export function verificationPlan({ci=false,full=false,suite='all',node=process.e
       step('security','正式建置 CSP 與錢包',['scripts/qa/security-smoke.js'],['build']),
     );
     if(ci)steps.push(
+      step('discord-test-ui','Discord 測試活動雙遊戲',['scripts/qa/discord-test-activity.js']),
+      step('yakyuken-reward','野球拳造型與領獎順序',['scripts/qa/yakyuken-reward.js']),
       step('reels-stress','慢幀與輸入延遲',['scripts/qa/reel-experience.js','--slow-frames','--slow-input']),
       step('security-stress','CSP 延遲通知',['scripts/qa/security-smoke.js','--delayed-csp-report'],['build']),
     );

@@ -5,8 +5,8 @@ import {checkDiscordSdk} from '../security/patch-discord-sdk.js';
 
 checkDiscordSdk();
 const port=Number(process.env.DISCORD_SDK_QA_PORT||4195);
-assert.ok(Number.isInteger(port)&&port>=1024&&port<=65535,'Invalid isolated SDK QA port');
-const out='test-results/discord-sdk',origin='http://127.0.0.1:'+port;
+assert.ok(Number.isInteger(port)&&port>=1024&&port<=65535,'DISCORD_SDK_QA_PORT must be an integer from 1024 to 65535');
+const out='test-results/discord-sdk',origin=`http://127.0.0.1:${port}`;
 await mkdir(out,{recursive:true});
 const server=await createQaServer(port,[{name:'isolated-discord-host',configureServer(server){
   server.middlewares.use((req,res,next)=>{

@@ -1,6 +1,7 @@
 import {privateReply} from './bot-replies.js';
 import {problem} from '../wallet/wallet-common.js';
 import {recordLabel,validRecordCode} from '../firestore/record-codes.js';
+import {grantNotificationStatus} from './grant-notification.js';
 
 const id=s=>typeof s==='string'&&/^\d{17,20}$/.test(s);
 const num=n=>n.toLocaleString('en-US');
@@ -41,6 +42,10 @@ export function adminPanel(i,env){return response(i,env,'戲籌管理','選擇�
 const text=(custom_id,placeholder,max_length=200,value)=>({type:4,custom_id,style:max_length===200?2:1,required:true,min_length:1,max_length,placeholder,...(value?{value}:{})});
 const label=(name,component,description)=>({type:18,label:name,component,...(description?{description}:{})});
 const userSelect=()=>label('玩家',{type:5,custom_id:'member',min_values:1,max_values:1,required:true,placeholder:'搜尋並選擇本群玩家'});
+const grantNotificationSelect=()=>label('是否通知被發放的玩家',{type:3,custom_id:'notify',min_values:1,max_values:1,required:true,options:[
+  {label:'不通知本人',value:'no',default:true},
+  {label:'通知本人',value:'yes'},
+]},'選擇通知時，會在遊玩文字頻道公開發放數量與原因，並 @ 玩家。');
 const select=(i,action,args,options,placeholder)=>row({type:3,custom_id:panelId(i,action,...args),min_values:1,max_values:1,placeholder,options});
 const modal=(i,title,action,args,components)=>({type:9,data:{title,custom_id:panelId(i,action,...args),components}});
 function request(i){if(!id(i.id))throw problem(400,'請重新開啟面板。','PANEL_INVALID');return i.id;}
@@ -96,7 +101,7 @@ async function history(i,store,recordField,target,category='r',days=0,before){
   if(rows.some(r=>r.kind==='reset'))components.push(row(button(i,'上次重設報表','rf')));
   return response(i,store.environment,title,description,fields,components);
 }
-export async function handlePanel(i,store,recordField,parsed){
+export async function handlePanel(i,store,recordField,parsed,{notifyGrant}={}){
   const {action,args}=parsed,env=store.environment,guild=i.guild_id,actor=i.member.user.id;
   if(action==='home')return adminPanel(i,env);
   if(action==='p'){
@@ -107,12 +112,15 @@ export async function handlePanel(i,store,recordField,parsed){
         row(cursor&&button(i,'回到第一頁','p'),page.next&&button(i,'下一頁','p',[page.next]),home(i)),
       ]);
   }
-  if(action==='gf')return modal(i,'發放戲籌','gs',[request(i)],[userSelect(),label('數量',text('amount',`1～${num(store.grantMax)}`,String(store.grantMax).length)),label('發放原因',text('reason','例如活動獎勵',200,'活動獎勵'))]);
+  if(action==='gf')return modal(i,'發放戲籌','gs',[request(i)],[userSelect(),label('數量',text('amount',`1～${num(store.grantMax)}`,String(store.grantMax).length)),label('發放原因',text('reason','例如活動獎勵',200,'活動獎勵')),grantNotificationSelect()]);
   if(action==='hf')return modal(i,'查詢玩家紀錄','hs',[],[userSelect()]);
   if(action==='hs'){const f=inputs(i);return history(i,store,recordField,f.member());}
   if(action==='gs'){
-    fresh(args[0],store.resetAt);const f=inputs(i),target=f.member(),r=await store.grant(guild,actor,target,integer(f.one('amount')),f.one('reason'),args[0]);
-    return response(i,env,r.duplicate?'這筆已經發放過':'戲籌已發放',`${r.duplicate?'這次沒有再次發放。':'已發放 '+num(r.entry.delta)+' 戲籌給 <@'+target+'>。'}\n本筆發放前後：${num(r.entry.before)} → **${num(r.entry.after)}**\n原因：${esc(f.one('reason'))}\n紀錄編號：${recordLabel({...r.entry,recordCode:r.recordCode})}`,[],[
+    fresh(args[0],store.resetAt);const f=inputs(i),target=f.member(),notify=f.one('notify')??'no';
+    if(!['yes','no'].includes(notify))throw problem(400,'請重新選擇通知方式。','PANEL_INVALID');
+    const r=await store.grant(guild,actor,target,integer(f.one('amount')),f.one('reason'),args[0]);
+    const notification=await grantNotificationStatus(notify==='yes',r,i,args[0],notifyGrant);
+    return response(i,env,r.duplicate?'這筆已經發放過':'戲籌已發放',`${r.duplicate?'這次沒有再次發放。':'已發放 '+num(r.entry.delta)+' 戲籌給 <@'+target+'>。'}\n本筆發放前後：${num(r.entry.before)} → **${num(r.entry.after)}**\n原因：${esc(f.one('reason'))}\n紀錄編號：${recordLabel({...r.entry,recordCode:r.recordCode})}\n\n${notification}`,[],[
       row(button(i,'查看玩家紀錄','h',[target,'r',0]),button(i,'收回這筆發放','rv',[r.recordCode||r.entry.id],4),button(i,'繼續發放','gf'),home(i)),
     ],r.duplicate?'warning':'success');
   }

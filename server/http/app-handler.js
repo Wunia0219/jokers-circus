@@ -105,7 +105,7 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
           const work=completeDeferredCommand(interaction,wallet,{fetchImpl}).catch(()=>console.warn('Discord command reply unavailable'));
           deferredCommands.add(work);defer(work);void work.finally(()=>deferredCommands.delete(work));return;
         }
-        return json(res,200,await handleCommand(interaction,wallet.store,wallet.adminRoles,wallet.commandChannelIds));
+        return json(res,200,await handleCommand(interaction,wallet.store,wallet.adminRoles,wallet.commandChannelIds,{notifyGrant:wallet.notifyGrant}));
       }
       if (path === '/api/token') {
         if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return json(res, 405, { error:'請使用 POST。' }); }

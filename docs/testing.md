@@ -8,7 +8,7 @@
 |---|---|
 | `npm run verify` | 固定順序：一般回歸、前端／Worker dry-run、啟動／荷官／數字／停輪／CSP 瀏覽器驗證 |
 | `npm run verify:full` | 上述全部，再跑官方 emulator、REST／workerd、備份恢復、重設與監控 |
-| `npm run verify:ci` | 完整驗證＋慢幀／輸入延遲＋CSP 延遲通知，共 14 項；彙整獨立失敗 |
+| `npm run verify:ci` | 完整驗證＋Discord 測試活動雙遊戲＋野球拳領獎順序＋慢幀／輸入延遲＋CSP 延遲通知，共 16 項；彙整獨立失敗 |
 | `node scripts/qa/check-toolchain.js` | 安裝相依前核對 Node／npm、lockfile、Netlify、Docker 與 CI 的版本設定 |
 | `npm test` | 算獎、介面契約、Discord 權限、SQLite、備份、同步與防重送 |
 | `npm run test:bot` | 指令、HTTP、帳本與維運 |
@@ -23,6 +23,14 @@
 | `npm run test:security` | 先 build；Edge：CSP、腳本注入阻擋、SQLite 結算 |
 | `npm run test:discord-sdk` | 隔離父頁／iframe：真實 SDK 握手、OAuth、方向鎖定及大型非法集合拒絕 |
 | `npm run test:monitor` | scheduled handler、持久去重、故障與恢復通知 |
+| `node --test tests/yakyuken*.test.js` | 野球拳規則、紀錄、測試錢包邊界、原請求恢復與去重 |
+| `node scripts/qa/yakyuken-cloud-test.js` | 隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道 |
+| `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸、選牌／請求中／勝敗的文字與雙按鈕間距、COINS、收藏／單圖相同外框與 6 次 PNG 原檔下載 |
+| `node scripts/qa/yakyuken-reward.js` | 隔離錢包：造型先於領獎、金額與音效同步、獨立靜音、縮放／背景恢復、重載不重播、勝敗再次挑戰／返回及新場只扣一次費 |
+| `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：三張原圖下載、位元組比對、CSP 與僅同源請求；不呼叫錢包 |
+| `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
+| `node scripts/qa/discord-test-activity.js` | 已建置前端＋真正 Embedded App SDK：三圖×五尺寸的開場讀取／光波／故障與來源驗證，再跑桌機／手機雙遊戲；不連接真實 Discord 帳號 |
+| `node scripts/qa/test-firestore.js tests/discord-test.integration.js` | 官方 emulator＋真正 workerd：Discord 簽章／頻道、OAuth、每位玩家、共用錢包／簽到與重啟 |
 | `node --test tests/cloudflare-usage.test.js tests/monitor.test.js` | Free 門檻／Paid 觀測、方案切換、跨日、通知意圖、429／未知送出、可信附件恢復；不聯絡正式服務 |
 | `npm run build`、`cloud:build`、`monitor:build` | 前端與 Worker dry-run，不部署 |
 | `npm run verify:math`、`verify:sessions` | 完整枚舉與固定 seed 回合驗算 |
@@ -31,7 +39,11 @@
 
 `npm ci` 會執行 Discord SDK 的相容安全修補；不可略過專案 `postinstall`。使用 `--ignore-scripts` 安裝時，必須另執行 `node scripts/security/patch-discord-sdk.js`，再以 `--check` 核對。完整驗證與正式建置會拒絕未修補或未知的 SDK 內容；細節見[資料保護](security.md#discord-sdkzod-修補)。
 
-瀏覽器測試使用鎖定的 Playwright 開發相依；一般驗證在 Windows 預設 Edge、Linux 預設 Chromium。`verify:ci` 在兩個平台都預設使用 Playwright 隨附的 Chromium，先執行 `npx playwright install chromium`（Linux 加 `--with-deps`）。可用 `PLAYWRIGHT_MODULE_PATH` 指定既有模組目錄、`PLAYWRIGHT_BROWSER_CHANNEL` 指定測試通道；`bundled` 表示鎖定版本的 Chromium。實際 Node／瀏覽器／Playwright 版本寫入 `test-results/browser-runtime.json`；同版瀏覽器仍不能取代遠端 Linux CI 驗證。
+瀏覽器測試使用鎖定的 Playwright 開發相依；一般驗證在 Windows 預設 Edge、Linux 預設 Chromium。`verify:ci` 在兩個平台都預設使用 Playwright 隨附的 Chromium，先執行 `npx playwright install chromium`（Linux 加 `--with-deps`）。可用 `PLAYWRIGHT_MODULE_PATH` 指定既有模組目錄、`PLAYWRIGHT_BROWSER_CHANNEL` 指定測試通道；`bundled` 表示鎖定版本的 Chromium，Windows 使用完整 Chromium 的新 headless 模式（`channel: 'chromium'`），Linux 沿用 headless shell，兩者由同一份 Playwright browser revision 鎖定。Windows ARM 執行 x64 headless shell 時曾在動畫與資源載入期間發生控制命令延遲；同版完整 Chromium 的對照測試保留真實輸入、可操作性及反向案例。此模式也由上述安裝指令準備，不需額外相依。[Playwright 新 headless 模式](https://playwright.dev/docs/browsers#chromium-new-headless-mode)
+
+實際 Node／瀏覽器／Playwright 版本與啟動 channel 寫入 `test-results/browser-runtime.json`；同版瀏覽器仍不能取代遠端 Linux CI 驗證。
+
+Discord SDK 隔離測試預設使用 4195；若正在開啟同埠的野球拳預覽，可設定 `DISCORD_SDK_QA_PORT=4199` 再跑驗證，保留既有預覽。替代連接埠仍須未被占用，並維持只監聽 `127.0.0.1`。
 
 數字測試以 `willReadFrequently: true` 固定 Canvas 軟體繪製，避免 GPU／CPU 切換造成像素雜湊差異；此設定僅限隔離測試頁，正式遊戲不受影響。固定基準位於 `tests/fixtures/number-rendering.json`，仍逐一核對像素、尺寸及無障礙文字。僅在有意更改字型／外觀，或已證實需要統一測試繪圖路徑時，用 `npm run test:numbers -- --baseline` 更新並審查差異；失敗時也會保存 `test-results/number-rendering/after.json`。
 
@@ -44,6 +56,8 @@
 CSP 注入測試等待非同步違規通知，確認 `script-src-elem` 對 `inline` 執行實際阻擋（`enforce`），再檢查注入腳本未執行；通知未到仍會逾時失敗，不更改正式安全政策。`npm run test:security -- --delayed-csp-report` 將測試收集通知的時間延後 500ms，防止重新引入立即讀取的競態。
 
 `node scripts/qa/verify.js --full --list` 或 `--ci --list` 只列出步驟。檢查清單與依賴集中在 `scripts/qa/helpers/verification-plan.js`；一般驗證第一個失敗即停止，CI 模式則繼續獨立檢查。建置失敗時，依賴它的 CSP／Worker／整合測試標為受阻，絕不當成通過。每一步結束都更新 `test-results/verification.json`；任何失敗／受阻都保留非零結束碼。Windows ARM 的 workerd 步驟使用 `.tools/node-x64/` 中與 `.node-version` 一致的 Node；其他步驟使用啟動驗證的 Node。
+
+手動 `yakyuken-preview.js` 與 `dealer-resources.js` 共用 4196 埠；先結束前者，再執行後者或完整 CI，不要與 CI 同時啟動。
 
 GitHub Actions 使用三個獨立 runner 並行驗證，各組內仍循序執行：
 
