@@ -85,3 +85,14 @@ export function tableLayout(width,height,{touch=false}={}) {
 }
 export const TABLE_MOVES=Object.freeze(['rock','scissors','paper']);
 export const TABLE_MOVE_NAMES=Object.freeze({rock:'拳頭',scissors:'剪刀',paper:'布'});
+
+export function resultActionLayout(layout){
+  const a=layout.action,status=layout.status,stackStatus=!!status.sideBySide&&layout.ui.height-status.feltTop<108;
+  const width=stackStatus?a.width+status.width+12:a.width,x=stackStatus?status.x-status.width/2+width/2:a.x,split=width>=220||stackStatus,gap=12;
+  const height=stackStatus?44:split?a.height:44,totalHeight=split?height:height*2+8;
+  const y=Math.min(a.y,layout.ui.height-totalHeight/2-4);
+  const primaryWidth=split?(width-gap)*.60:width,secondaryWidth=split?width-gap-primaryWidth:width;
+  return {x,y,width,height:totalHeight,stackStatus,
+    primary:{x:split?x-width/2+primaryWidth/2:x,y:split?y:y-26,width:primaryWidth,height,fontSize:Math.min(a.fontSize??22,split?22:18)},
+    secondary:{x:split?x+width/2-secondaryWidth/2:x,y:split?y:y+26,width:secondaryWidth,height,fontSize:split?18:17}};
+}

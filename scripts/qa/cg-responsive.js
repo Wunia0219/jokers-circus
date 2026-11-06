@@ -43,8 +43,15 @@ try{
       assert.equal(controls.unit,'COINS');
       assert.ok(controls.caption<=controls.buttonWidth-20,'button caption fits even in short landscape windows');
       assert.ok(controls.titleBottom<controls.detailTop,'heading and description remain separate');
-      assert.ok(controls.detailBottom<controls.buttonTop||controls.detailRight<controls.x,'status never overlaps the confirm button');
+      assert.ok(controls.detailBottom<controls.buttonTop||controls.detailRight<controls.x,`${width}x${height}: status never overlaps confirm: ${JSON.stringify(controls)}`);
       assert.ok(controls.x>=0&&controls.right<=width&&controls.buttonBottom<height,'enlarged button stays inside the viewport');
+      const result=await page.evaluate(()=>{const s=window.__responsiveScene;if(!s.returnButton.visible)return null;const b=s.returnButton.getBounds();return {x:b.x,y:b.y,right:b.x+b.width,bottom:b.y+b.height,width:s.returnButton.buttonWidth,height:s.returnButton.buttonHeight,caption:s.returnButton.caption.width};});
+      if(result){
+        assert.ok(result.width>=44&&result.height>=44&&result.caption<=result.width-20,'return remains a readable touch control');
+        assert.ok(result.x>=0&&result.right<=width&&result.y>=0&&result.bottom<height,'return stays inside the viewport');
+        assert.ok(controls.right<=result.x||controls.buttonBottom<=result.y,'retry and return never overlap');
+        assert.ok(controls.detailBottom<result.y||controls.detailRight<result.x,'status stays clear of return');
+      }
     };
     await checkFeedback();
     await page.screenshot({path:`${output}/table-${width}x${height}.png`});
@@ -52,6 +59,8 @@ try{
     await page.evaluate(()=>{const s=window.__responsiveScene;s.phase='requesting';s.updateControls();s.app.render();});await checkFeedback();
     await page.evaluate(()=>{const s=window.__responsiveScene;s.phase='confirmed';s.duel={dealer:'paper',outcome:'win'};s.challenge={...s.challenge,status:'won',wins:2,reward:2500};s.updateControls();s.app.render();});await checkFeedback();
     await page.screenshot({path:`${output}/complete-${width}x${height}.png`});
+    await page.evaluate(()=>{const s=window.__responsiveScene;s.challenge={...s.challenge,status:'lost',wins:0,losses:2,reward:0};s.duel={dealer:'paper',outcome:'loss'};s.updateControls();s.app.render();});await checkFeedback();
+    await page.screenshot({path:`${output}/lost-${width}x${height}.png`});
     await page.evaluate(saved=>{const s=window.__responsiveScene;Object.assign(s,saved);s.updateControls();s.app.render();},saved);
     await page.getByRole('button',{name:'CG 收藏',exact:true}).click();await frame();
     const collection=await bounds();

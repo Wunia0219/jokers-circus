@@ -1,20 +1,27 @@
 import assert from 'node:assert/strict';
-import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,readdirSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {resolve} from 'node:path';
-import {randomBytes,randomUUID} from 'node:crypto';
+import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {build} from 'vite';
 import {discordTestBuildOptions} from '../game/discord-test-build.js';
 import {createActivityHandler} from '../../server/http/app-handler.js';
 import {PlaytestService,discordTestPlayer,slotTestState} from '../../cloud/yakyuken-playtest-core.js';
 import {TEST_GUILD,TEST_CHANNEL} from '../../cloud/discord-test-auth.js';
 import {launchBrowser} from './helpers/browser.js';
+import {verifyLaunchScreen} from './helpers/launch-screen.js';
 
 const output='test-results/discord-test-activity',clientId='100000000000000003',port=4203,origin='http://127.0.0.1:'+port;
 mkdirSync(output,{recursive:true});const dist=resolve(output,'dist');
 const buildOptions=discordTestBuildOptions(dist,clientId);
 buildOptions.plugins.push({name:'isolated-player-scene',transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/games/yakyuken/scene.js'))return {code:code.replace('this.host = host;','globalThis.__playerScene=this;this.host = host;'),map:null};}});
 await build(buildOptions);
+const shipped=readdirSync(dist+'/assets'),approvedArt=JSON.parse(readFileSync('art/launch-screen/approved-assets.json','utf8')).images;
+assert.ok(!shipped.some(file=>/\.png$/i.test(file)),'review PNGs never ship as runtime assets');
+for(const art of approvedArt){
+  const file=shipped.find(name=>name.startsWith(art.id+'-')&&name.endsWith('.webp'));assert.ok(file,'each approved launch painting ships as WebP');
+  assert.equal(createHash('sha256').update(readFileSync(dist+'/assets/'+file)).digest('hex'),art.outputSha256,'runtime bytes match the verified approved artwork');
+}
 const docs=new Map(),services=new Map(),sessions=new Map(),users={A:'100000000000000111',B:'100000000000000112'},financial=[];
 function service(who){
   if(services.has(who))return services.get(who);const values=new Map(),player=discordTestPlayer(TEST_GUILD,users[who]);
@@ -54,9 +61,11 @@ const server=createServer(async(req,res)=>{
   return staticHandler(req,res);
 });
 await new Promise((done,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',done);});
-let browser;const errors=[],checks=[];
+let browser;const errors=[],checks=[];let launch=[];
 try{
   browser=await launchBrowser();
+  launch=await verifyLaunchScreen({browser,origin,output});
+  assert.deepEqual(financial,[],'launching and viewing the lobby does not begin a paid match or claim rewards');
   for(const mobile of [false,true]){
     const who=mobile?'B':'A',context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:900},isMobile:mobile,hasTouch:mobile,reducedMotion:'reduce'}),page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
     await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
@@ -130,6 +139,6 @@ try{
     assert.equal(docs.get(who).balance,beforeEntry-2000);assert.notEqual(docs.get(who).activeId,active);
     checks.push((mobile?'mobile touch':'desktop')+': real SDK handshake/OAuth, scoped identity, Yakyuken reward, sandbox-safe CG external link/download/cancel after round trip, shared slot balance/checkin, persistent SDK and child/host reload');await context.close();
   }
-  assert.deepEqual(errors,[]);assert.notEqual(docs.get('A').player,docs.get('B').player);writeFileSync(output+'/report.json',JSON.stringify({ok:true,checks,errors},null,2)+'\n');console.log(JSON.stringify({ok:true,checks:checks.length,output}));
+  assert.deepEqual(errors,[]);assert.notEqual(docs.get('A').player,docs.get('B').player);writeFileSync(output+'/report.json',JSON.stringify({ok:true,checks,launch,errors},null,2)+'\n');console.log(JSON.stringify({ok:true,checks:checks.length,launchChecks:launch.length,output}));
 }catch(error){writeFileSync(output+'/failure.json',JSON.stringify({message:error.message,checks,errors},null,2)+'\n');throw error;}
 finally{await browser?.close();await new Promise(done=>{server.close(done);server.closeAllConnections();});}

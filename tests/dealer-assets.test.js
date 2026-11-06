@@ -4,6 +4,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {join,relative} from 'node:path';
 import {inflateSync} from 'node:zlib';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
 import {dealerFrameSequence} from '../src/ui/dealer/dealer-motion.js';
 import {webpSize} from './helpers/webp.js';
 const root=new URL('../',import.meta.url);
@@ -34,8 +35,9 @@ test('shipping dealer atlas contains complete authored idle/win sequences and ac
 });
 
 const downloadPNGs=[0,1,2].map(i=>`public/downloads/yakyuken/dealer-stage-${i}.png`);
-const assertPNGInventory=files=>assert.deepEqual([...files].sort(),downloadPNGs);
-test('only three explicitly requested downloadable CG originals may be PNG; runtime art stays WebP',()=>{
+const reviewPNGs=JSON.parse(readFileSync(new URL('art/launch-screen/review-sources.json',root),'utf8')).images;
+const assertPNGInventory=files=>assert.deepEqual([...files].sort(),[...downloadPNGs,...reviewPNGs.map(r=>r.file)].sort());
+test('runtime PNGs are limited to three CG downloads; recorded offline review originals retain exact provenance',()=>{
   const files=[];
   function scan(path){for(const entry of readdirSync(path,{withFileTypes:true})){
     const file=join(path,entry.name);
@@ -43,7 +45,14 @@ test('only three explicitly requested downloadable CG originals may be PNG; runt
   }}
   for(const directory of ['images','art','public'])scan(fileURLToPath(new URL(directory,root)));
   assertPNGInventory(files);
-  for(const file of files){
+  for(const record of reviewPNGs){
+    assert.match(record.file,/^art\/launch-screen\/review-v\d+\/[\w-]+\.png$/);
+    const bytes=readFileSync(new URL(record.file,root));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'),record.sha256);
+    assert.deepEqual([...bytes.subarray(0,8)],[137,80,78,71,13,10,26,10]);
+    assert.deepEqual([bytes.readUInt32BE(16),bytes.readUInt32BE(20)],record.dimensions);
+  }
+  for(const file of downloadPNGs){
     const png=readFileSync(new URL(file,root));assert.deepEqual([...png.subarray(0,8)],[137,80,78,71,13,10,26,10]);
     assert.equal(png.toString('ascii',12,16),'IHDR');assert.equal(png.readUInt32BE(16),1024);assert.equal(png.readUInt32BE(20),1536);assert.equal(png[24],8);assert.equal(png[25],6,'full 8-bit RGBA');
     const data=[];for(let offset=8;offset<png.length;){const length=png.readUInt32BE(offset);assert.ok(offset+length+12<=png.length);if(png.toString('ascii',offset+4,offset+8)==='IDAT')data.push(png.subarray(offset+8,offset+8+length));offset+=length+12;}
@@ -61,7 +70,10 @@ test('only three explicitly requested downloadable CG originals may be PNG; runt
   }
 });
 test('CG download exception still rejects new runtime PNGs and missing originals',()=>{
-  assert.throws(()=>assertPNGInventory([...downloadPNGs,'images/dealer/unexpected.png']));
-  assert.throws(()=>assertPNGInventory([...downloadPNGs,'public/downloads/yakyuken/extra.png']));
-  assert.throws(()=>assertPNGInventory(downloadPNGs.slice(1)));
+  const expected=[...downloadPNGs,...reviewPNGs.map(r=>r.file)];
+  assert.throws(()=>assertPNGInventory([...expected,'images/dealer/unexpected.png']));
+  assert.throws(()=>assertPNGInventory([...expected,'public/downloads/yakyuken/extra.png']));
+  assert.throws(()=>assertPNGInventory([...expected,'art/launch-screen/review-v99/unregistered.png']));
+  assert.throws(()=>assertPNGInventory(expected.slice(1)));
+  assert.throws(()=>assertPNGInventory(expected.slice(0,-1)));
 });

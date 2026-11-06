@@ -2,6 +2,19 @@
 
 本入口專供兩款遊戲的 Discord 測試，不更新正式 App、正式 Worker、正式 Firestore 或既有 SQLite 測試帳本。產品版本維持 1.0.2，老虎機停輪與兩秒開轉冷卻沿用已驗收基準。
 
+## 大廳前的獨立開場讀取（2026-11-06）
+
+- 使用者確認的三張圖為 `review-v2/background-01-golden-salon.png`、`review-v6/background-02-last-spin.png`、`review-v8/background-03-curtain-rises.png`（均位於 `art/launch-screen/`）。`python scripts/assets/prepare-launch-art.py` 將它們轉成 `images/launch/` 的無損 WebP，逐張比對解碼後 RGBA 完全一致，來源／輸出雜湊見 `art/launch-screen/approved-assets.json`；原畫不覆寫、不裁切或重新繪製。
+- 每個新的 Discord 外框文件只隨機選一次，且只下載選中的一張。縮放、遊戲切換與內頁重新載入都不重新選圖；關閉活動後再開則重新選擇。桌機保留整張寬版構圖，較窄手機以各圖的人物位置居中裁切，底部字樣固定在深色留白內，支援 Discord／裝置安全區。
+- 字樣依審稿實作為即時金色襯線 `LOADING...`；文字固定，後方金色與淡紫色細光波循環，不使用讀條、百分比或隨機進度。背景準備完成後給予短暫閱讀時間；減少動態效果時光波與淡出均改靜態。切到背景時暫停光波。
+- 獨立讀取層先於 SDK 載入，涵蓋 Discord 登入、錢包讀取與 Pixi 大廳準備。內頁實際繪製大廳後才發送不含憑證的同來源就緒事件；外框核對來源及真正內頁 window 後淡出，再解除內頁的輸入／無障礙鎖定。正常切換遊戲不再出現此層，各遊戲原有載入與停輪體驗維持。
+- 背景圖失敗或逾時使用原深色底繼續，避免裝飾圖片阻擋已就緒的大廳；登入／大廳失敗則保留遮罩並提示關閉活動後重新開啟，不在原活動內建立第二次 SDK 握手。外框關閉時取消等待與事件，沒有新增結算、扣款、簽到或 Firestore 輪詢。
+- `discord-test-activity.js` 納入三圖×五尺寸、文字固定／光波移動、只載入一張、登入成功但大廳未就緒、錯誤 window 的就緒事件、減少動態、登入失敗、新活動恢復及圖片故障降級。專項結果在 `test-results/launch-screen-sdk-final.log`、`test-results/discord-test-activity/report.json` 與 `launch-*.png`；正式建置不含隔離測試入口。
+- 審稿原圖另以明確清單及 SHA-256 記錄在 `art/launch-screen/review-sources.json`，只允許已登記的離線設計稿保留 PNG；未登記稿件、新增遊戲 PNG 與缺失原圖仍會被反向測試拒絕。已建置前端另檢查 `assets/` 不得出現 PNG，三張 WebP 的實際位元組須與已驗證來源清單相同。這項檢查區分原畫保存與實際發布，沒有把審稿檔帶進遊戲。
+- 初次完整本機 CI 15/16 項通過，唯一失敗為舊素材盤點尚未區分上述離線審稿原圖；其餘含停輪、安全、Discord、Firestore SDK／REST／workerd／恢復及監控均通過。修正盤點契約並增加未登記稿件／缺失原圖／發布資產反向檢查後，最終 `npm run verify:ci -- --suite=browser` 12/12 項全數通過（一般回歸 567 項通過、1 項既有條件略過）。保存初次結果 `test-results/launch-screen-verify-ci.log`、`launch-screen-initial-verification.json` 與最終結果 `launch-screen-browser-ci.log`、`launch-screen-browser-verification.json`。啟動與雙遊戲報告快照為 `launch-screen-ui-report.json`；未執行遠端 CI。
+- 已更新專用測試 Worker，版本 ID `b3f8996d-ccc3-490e-9d16-95f49d43331f`。部署初期 Cloudflare 管理 API 回傳 504／503；保留失敗日誌，服務恢復後以同一專用設定直接發布程式／素材，沿用既有密鑰（Wrangler 保留 secret bindings），未修改部署工具或正式環境。最終健康檢查、公開頁面、安全標頭、未登入錢包拒絕，以及根頁／動畫 JS／CSS／三張 WebP／大廳入口的線上位元組比對均通過。證據為 `test-results/launch-screen-deploy-final.log`、`launch-screen-public-final.log`、`launch-screen-deploy-report.json`、`launch-screen-deployment.json`；產品版本維持 1.0.2，commit／merge／push 由使用者處理。
+- 本機純美術動畫預覽：`node scripts/game/launch-preview.js`，入口 `http://127.0.0.1:4205/`，可用 `?art=1`、`?art=2`、`?art=3` 固定看各張；不啟動 SDK、遊戲或錢包。已驗證三圖動畫與私密檔案拒絕，報告為 `test-results/launch-preview-report.json`。這個工具不進入發布建置。
+
 ## 固定環境邊界
 
 | 設定 | 值 |
@@ -55,7 +68,7 @@ Portal 的 Interactions Endpoint 已保存為該來源的 `/api/interactions`，
 1. `tests/discord-test.test.js`：拒絕正式 App、啟動參數白名單、共用餘額／簽到、原老虎機冷卻及客戶端同身分重授權。
 2. `tests/discord-test.integration.js`：官方 emulator 與真正 workerd，驗證簽章／頻道、OAuth、跨玩家隔離、兩款遊戲、持久會話及重啟；所有外部 Discord 回應皆是隔離 fixture，不傳送真實訊息。
 3. `scripts/qa/discord-test-activity.js`：已建置前端與真正 Embedded App SDK，透過模擬 Discord RPC 外框，在桌機與手機觸控跑完整大廳／野球拳／老虎機、CG 下載、共用簽到與重載。前端受原有 CSP 約束；這項自動檢查不冒充真實 Discord 客戶端驗收。
-4. `npm run verify:ci`：目前共 15 步，包含上述瀏覽器檢查與新後端整合，保留全部停輪、慢幀、安全與恢復檢查。CI services 不啟動瀏覽器；新的 SDK 雙遊戲檢查由 browser 組執行。
+4. `npm run verify:ci`：目前共 16 步，包含上述瀏覽器檢查、野球拳領獎順序與新後端整合，保留全部停輪、慢幀、安全與恢復檢查。CI services 不啟動瀏覽器；SDK 雙遊戲檢查由 browser 組執行。
 5. 部署後實際核對公開頁面、未登入 API 401、Portal 設定與安靜入口；再由真正 Discord 桌機／手機及實際測試帳號確認使用體驗。真人／實機結果與上述隔離檢查分開記錄。
 
 測試證據位於 `test-results/discord-test-*`。Portal 憑證、加密金鑰、OAuth token、資料庫與實際玩家資料不得加入 CI 附件或版控。

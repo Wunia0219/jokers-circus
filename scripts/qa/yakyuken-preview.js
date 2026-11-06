@@ -95,7 +95,7 @@ const assertHeader=async(page,screen)=>{
     for(const key of ['x','y','width','height'])assert.ok(Math.abs(checkinBox[key]-h.checkin[key])<1,'checkin matches slot geometry');
     const tools=await page.evaluate(()=>{
       const hud=window.__yakyukenTest.hud;
-      return ['音效尚未加入',window.__qaSound.musicEnabled?'關閉音樂':'開啟音樂','CG 收藏','遊玩紀錄','返回遊戲大廳'].map(name=>{
+      return [window.__yakyukenTest.audio.effectsMuted?'開啟音效':'關閉音效',window.__qaSound.musicEnabled?'關閉音樂':'開啟音樂','CG 收藏','遊玩紀錄','返回遊戲大廳'].map(name=>{
         const node=hud.children.find(child=>child.accessibleTitle===name);return node && {x:node.x,y:node.y,width:node.buttonWidth,height:node.buttonHeight};
       });
     });
@@ -218,10 +218,10 @@ try {
   checks.push('CG collection locks unearned stages and reviews earned full artwork without changing the battle');
 
   await openMenuItem(page,'遊戲設定');
-  assert.equal(await page.getByRole('button',{name:'切換音效',exact:true}).count(),0,'no duel SFX control');
   await page.getByRole('button',{name:'切換動態效果',exact:true}).click();
   await page.getByRole('button',{name:'關閉視窗',exact:true}).click();
-  assert.equal(await page.evaluate(()=>window.__qaSound.context),null,'duel does not initialize effects');
+  await page.getByRole('button',{name:'關閉音效',exact:true}).waitFor({state:'visible'});
+  assert.equal(await page.evaluate(()=>window.__qaSound.enabled),true,'a player gesture unlocks reward effects');
   await page.getByRole('button',{name:'關閉音樂',exact:true}).click();
   assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),false,'first click turns default music off');
   await page.getByRole('button',{name:'開啟音樂',exact:true}).click();
@@ -394,8 +394,8 @@ try {
   await archiveA.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(archiveA,'selecting');
   await archivePlay(archiveA,'win');await advance(archiveA);await archivePlay(archiveA,'win');
   assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.archive.isUnlocked('dealer',2)),true);
-  await archiveA.getByRole('button',{name:'再挑戰一次',exact:true}).click();await phase(archiveA,'selecting');
-  await archivePlay(archiveA,'loss');await advance(archiveA);await archivePlay(archiveA,'loss');await phase(archiveA,'characters');
+  await archiveA.getByRole('button',{name:'再次挑戰',exact:true}).click();await phase(archiveA,'selecting');
+  await archivePlay(archiveA,'loss');await advance(archiveA);await archivePlay(archiveA,'loss');await archiveA.getByRole('button',{name:'返回',exact:true}).click();await phase(archiveA,'characters');
   assert.deepEqual(await archiveA.evaluate(()=>window.__yakyukenTest.archive.records().map(r=>r.status).sort()),['left','lost','won']);
   const blocked=await archiveContext.newPage();blocked.on('pageerror',error=>errors.push(error.message));
   await blocked.addInitScript(()=>{window.__qaPlayer='archive-blocked';Storage.prototype.setItem=()=>{throw new Error('Storage blocked');};});
@@ -429,18 +429,19 @@ try {
     assert.equal((await canvasState(challengePage)).reward,String(rule.reward));
     assert.equal(await challengePage.getByRole('button',{name:'下一局',exact:true}).count(),0);
     await challengePage.screenshot({path:`${output}/character-dealer-${width}-won.png`});
-    await challengePage.getByRole('button',{name:'再挑戰一次',exact:true}).click();
+    await challengePage.getByRole('button',{name:'再次挑戰',exact:true}).click();
     assert.deepEqual([(await canvasState(challengePage)).wins,(await canvasState(challengePage)).losses,(await canvasState(challengePage)).round],['0','0','0']);
     for(let losses=1;losses<=rule.lossLimit;losses++){
       await play('loss');assert.equal((await canvasState(challengePage)).challengeStatus,losses===rule.lossLimit?'lost':'playing');
       if(losses<rule.lossLimit)await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
     }
     assert.equal((await canvasState(challengePage)).reward,'0');
-    assert.equal(await challengePage.getByRole('button',{name:'再挑戰一次',exact:true}).count(),0,'defeat has no replay control');
-    await challengePage.evaluate(()=>{void window.__yakyukenTest.confirm();});
-    assert.equal((await canvasState(challengePage)).challengeStatus,'lost','direct confirm cannot restart a lost challenge');
+    assert.equal(await challengePage.getByRole('button',{name:'再次挑戰',exact:true}).count(),1,'defeat offers an explicit new match');
+    assert.equal(await challengePage.getByRole('button',{name:'返回',exact:true}).count(),1,'defeat also offers return to character selection');
     await challengePage.screenshot({path:`${output}/character-dealer-${width}-lost.png`});
+    await challengePage.getByRole('button',{name:'返回',exact:true}).click();
     await phase(challengePage,'characters');
+    await challengePage.getByRole('button',{name:'選擇命運荷官',exact:true}).waitFor({state:'visible'});
     assert.equal(await challengePage.getByRole('button',{name:'選擇命運荷官',exact:true}).count(),1);
     assert.equal(await challengePage.getByRole('button',{name:/^選擇(拳頭|剪刀|布)$/}).count(),0);
     assert.equal((await canvasState(challengePage)).challengeStatus,'','the finished challenge is cleared after returning to selection');
@@ -449,7 +450,7 @@ try {
     assert.equal(await challengePage.evaluate(()=>window.__yakyukenTest.archive.records().length),3,'victory, defeat and new entry are separate matches');
     await challengeContext.close();
   }
-  checks.push('character-bound rules, draws, cumulative wins, exact win/loss endings, rewards, victory retry and automatic defeat return work across five screen sizes with one persistent record per match');
+  checks.push('character-bound rules, draws, cumulative wins, exact endings, rewards, victory retry and explicit defeat return work across five screen sizes with one persistent record per match');
 
   const fluid=await context.newPage();fluid.on('pageerror',error=>errors.push(error.message));
   await fluid.goto(`${origin}/yakyuken-preview.html`);await phase(fluid,'games');
@@ -517,7 +518,7 @@ try {
   await wardrobePage.getByRole('button',{name:'下一局',exact:true}).click();await phase(wardrobePage,'selecting');
   await wardrobePlay();await phase(wardrobePage,'confirmed');
   assert.deepEqual([(await canvasState(wardrobePage)).wins,(await canvasState(wardrobePage)).pose,(await canvasState(wardrobePage)).challengeStatus],['2','2','won']);
-  await wardrobePage.getByRole('button',{name:'再挑戰一次',exact:true}).click();await phase(wardrobePage,'selecting');
+  await wardrobePage.getByRole('button',{name:'再次挑戰',exact:true}).click();await phase(wardrobePage,'selecting');
   assert.equal((await canvasState(wardrobePage)).pose,'0');
   await wardrobePage.emulateMedia({reducedMotion:'no-preference'});
   await wardrobePage.evaluate(()=>{const s=window.__yakyukenTest;void s.changePose(1);s.app.stop();});

@@ -1,3 +1,24 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Joker’s Circus · Test</title><link rel="stylesheet" href="/src/platform/discord-test-shell.css"></head>
-<body><p id="status" role="status">正在連接測試遊戲…</p><iframe id="game" title="Joker’s Circus 測試遊戲" allow="autoplay; fullscreen" hidden></iframe><script type="module" src="/src/platform/discord-test-shell.js"></script></body></html>
+<body>
+<div id="launch-screen" class="app-launch" aria-label="正在載入遊戲" aria-busy="true">
+  <div class="launch-art-frame">
+    <img class="launch-art" alt="" decoding="async" fetchpriority="high" hidden>
+    <div class="launch-wordmark" aria-hidden="true">
+      <svg class="launch-waves" viewBox="0 0 900 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="launch-gold" x1="0" y1="0" x2="900" y2="0" gradientUnits="userSpaceOnUse"><stop stop-color="#e6bc78" stop-opacity="0"/><stop offset=".35" stop-color="#d7a861"/><stop offset=".6" stop-color="#fff0bb"/><stop offset="1" stop-color="#e6bc78" stop-opacity="0"/></linearGradient>
+          <linearGradient id="launch-mauve" x1="0" y1="0" x2="900" y2="0" gradientUnits="userSpaceOnUse"><stop stop-color="#b27b96" stop-opacity="0"/><stop offset=".45" stop-color="#a86b88" stop-opacity=".5"/><stop offset="1" stop-color="#b27b96" stop-opacity="0"/></linearGradient>
+        </defs>
+        <g class="launch-wave"><path d="M-100 85C40 15 150 15 300 85S560 155 710 85S970 15 1100 85L1100 100C970 30 850 30 710 100S440 170 300 100S40 30-100 100Z" fill="url(#launch-mauve)"/><path d="M-100 85C40 15 150 15 300 85S560 155 710 85S970 15 1100 85" stroke="url(#launch-gold)" stroke-width="1.6"/></g>
+        <g class="launch-wave"><path d="M-100 82C60 145 180 145 330 82S590 19 740 82S980 145 1100 82L1100 69C980 132 880 132 740 69S480 6 330 69S60 132-100 69Z" fill="url(#launch-mauve)"/><path d="M-100 82C60 145 180 145 330 82S590 19 740 82S980 145 1100 82" stroke="url(#launch-gold)" stroke-width="1.2"/></g>
+        <g class="launch-wave"><path d="M-100 92C70 45 160 45 300 92S560 139 710 92S970 45 1100 92" stroke="url(#launch-gold)" stroke-width="2"/></g>
+      </svg>
+      <p class="launch-word">LOADING<span class="launch-dots">...</span></p>
+    </div>
+  </div>
+  <p class="launch-status" role="status" aria-live="polite">正在開啟賭場…</p>
+</div>
+<iframe id="game" title="Joker’s Circus 測試遊戲" allow="autoplay; fullscreen" aria-hidden="true" inert hidden></iframe>
+<script type="module" src="/src/platform/discord-test-shell.js"></script>
+</body></html>

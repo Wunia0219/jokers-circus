@@ -1,7 +1,7 @@
 import {Container,FillGradient,Graphics,Sprite} from 'pixi.js';
 import {icon} from '../../../ui/shared/icons.js';
 import {label,PALETTE,PixiButton,slotIcon} from './ui.js';
-import {TABLE_MOVE_NAMES} from './layout.js';
+import {TABLE_MOVE_NAMES,resultActionLayout} from './layout.js';
 import {yakyukenHeaderLayout} from './header-layout.js';
 import {characterRule} from '../characters.js';
 import {attachPortrait,buildBalance,playerIdentity,updateBalance} from './player-display.js';
@@ -69,21 +69,25 @@ export function buildSlotHud(scene){
   scene.checkinCopy=leftLabel('查看七日獎勵',narrow?11:12,0xffdfab,copyX,11,checkin);
   const {toolsX,toolsY,toolsWidth,toolsHeight,centers}=h,cy=toolsY+toolsHeight/2;
   hud.addChild(new Graphics().roundRect(toolsX,toolsY,toolsWidth,toolsHeight,narrow?11:12).fill({color:0x2b1d2d,alpha:.85}).stroke({color:0xc99b5b,alpha:.21,width:1}));
-  const sound=at(new PixiButton({name:'音效尚未加入',variant:'utility',width:48,height:48,icon:icon('muted')}),centers[0],cy,hud);sound.setEnabled(false);sound.alpha=1;sound.glyph.tint=0xc1b1bf;
+  const sound=at(new PixiButton({name:scene.audio.effectsMuted?'開啟音效':'關閉音效',variant:'utility',width:48,height:48,icon:icon(scene.audio.effectsMuted?'muted':'sound'),onPress:async()=>{
+    await scene.audio.toggleEffects();scene.refreshAudioIcons?.();
+  }}),centers[0],cy,hud);
   const music=at(new PixiButton({name:scene.audio.musicMuted?'開啟音樂':'關閉音樂',variant:'utility',width:48,height:48,icon:icon(scene.audio.musicMuted?'musicMuted':'music'),onPress:async()=>{
     await scene.audio.toggleMusic();scene.refreshAudioIcons?.();
   }}),centers[1],cy,hud);
   scene.refreshAudioIcons=()=>{
-    if(scene.disposed || music.destroyed)return;
+    if(scene.disposed || music.destroyed || sound.destroyed)return;
+    sound.setActive(!scene.audio.effectsMuted);sound.setIcon(icon(scene.audio.effectsMuted?'muted':'sound'));sound.setName(scene.audio.effectsMuted?'開啟音效':'關閉音效');
     music.setActive(!scene.audio.musicMuted);music.setIcon(icon(scene.audio.musicMuted?'musicMuted':'music'));music.setName(scene.audio.musicMuted?'開啟音樂':'關閉音樂');
   };scene.refreshAudioIcons();
   hud.addChild(new Graphics().moveTo(centers[1]+33,toolsY+9).lineTo(centers[1]+33,toolsY+toolsHeight-9).stroke({color:0xc99b5b,width:1,alpha:.19}));
-  at(new PixiButton({name:'CG 收藏',variant:'utility',width:48,height:48,icon:icon('gallery'),onPress:()=>scene.openModal('collection')}),centers[2],cy,hud);
-  at(new PixiButton({name:'遊玩紀錄',variant:'utility',width:48,height:48,icon:icon('clock'),onPress:()=>{scene.historyScroll=0;scene.openModal('history');}}),centers[3],cy,hud);
+  scene.collectionButton=at(new PixiButton({name:'CG 收藏',variant:'utility',width:48,height:48,icon:icon('gallery'),onPress:()=>scene.openModal('collection')}),centers[2],cy,hud);
+  scene.historyButton=at(new PixiButton({name:'遊玩紀錄',variant:'utility',width:48,height:48,icon:icon('clock'),onPress:()=>{scene.historyScroll=0;scene.openModal('history');}}),centers[3],cy,hud);
   scene.lobbyButton=at(new PixiButton({name:'返回遊戲大廳',variant:'utility',width:48,height:48,icon:icon('lobby'),onPress:()=>scene.visitScreen('games')}),centers[4],cy,hud);
   if(scene.screen!=='table')return;
   const {action,status}=scene.layout;
   scene.confirmButton=at(new PixiButton({text:'確認出牌',name:'確認出牌',variant:'duel',width:action.width,height:action.height,fontSize:action.fontSize??17,onPress:()=>scene.confirm()}),action.x,action.y,hud);
+  scene.returnButton=at(new PixiButton({text:'返回',name:'返回',width:action.width,height:action.height,fontSize:18,onPress:()=>scene.returnToCharacters()}),action.x,action.y,hud);scene.returnButton.visible=false;scene.returnButton.setEnabled(false);
   scene.status=at(label('',status.fontSize??(ui.mobile?16:18),PALETTE.cream,{fontWeight:'600',wordWrap:true,wordWrapWidth:status.width,lineHeight:status.lineHeight??Math.max(23,(status.fontSize??18)*1.3)}),status.x,status.y,hud);
   scene.statusDetail=at(label('',status.detailSize??12,0xcbb8b5,{wordWrap:true,wordWrapWidth:status.width,lineHeight:status.detailLineHeight??Math.max(17,(status.detailSize??12)*1.4)}),status.x,status.y+status.detailGap,hud);
   buildProgress(scene,hud);
@@ -98,6 +102,7 @@ export function updateSlotHud(scene){
     scene.checkinButton.setEnabled(!view.claimed&&!scene.settling&&!scene.rewardPresentation.busy&&(!scene.wallet.pending||retry));
   }
   scene.lobbyButton?.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.wallet?.pending&&scene.phase!=='presenting' && !scene.changing && !scene.ending);
+  scene.collectionButton?.setEnabled(!scene.rewardPresentation.busy);scene.historyButton?.setEnabled(!scene.rewardPresentation.busy);
   if(scene.screen!=='table' || !scene.confirmButton)return;
   const {phase,selected,duel}=scene,confirmed=phase==='confirmed';
   const rule=characterRule(scene.selectedCharacter),challenge=scene.challenge,finished=challenge?.status!=='playing';
@@ -105,12 +110,20 @@ export function updateSlotHud(scene){
   const wins=(challenge?.wins || 0)-Number(pending==='win'),losses=(challenge?.losses || 0)-Number(pending==='loss');
   scene.scoreWins.text=String(wins);scene.scoreLosses.text=String(losses);
   scene.scoreDescription=rule.name+'，'+wins+' 勝，目標 '+rule.winsRequired+' 勝；'+losses+' 敗，上限 '+rule.lossLimit+' 敗';
-  const next=challenge?.status==='lost'?'返回選擇荷官…':finished?'再挑戰一次':'下一局';
+  const results=confirmed&&finished,resultLayout=results?resultActionLayout(scene.layout):null;
+  const primary=resultLayout?.primary??scene.layout.action;
+  const statusX=resultLayout?.stackStatus?resultLayout.x:scene.layout.status.x,statusWidth=resultLayout?.stackStatus?resultLayout.width:scene.layout.status.width;
+  for(const text of [scene.status,scene.statusDetail]){text.x=statusX;text.style.wordWrapWidth=statusWidth;}
+  scene.confirmButton.resizeButton(primary.width,primary.height);scene.confirmButton.position.set(primary.x,primary.y);scene.confirmButton.caption.style.fontSize=primary.fontSize??17;
+  scene.returnButton.visible=results;
+  if(results){const back=resultLayout.secondary;scene.returnButton.resizeButton(back.width,back.height);scene.returnButton.position.set(back.x,back.y);scene.returnButton.caption.style.fontSize=back.fontSize;}
+  scene.returnButton.setEnabled(results&&!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing&&!scene.entering&&!scene.wallet?.pending);
+  const next=finished?'再次挑戰':'下一局';
   scene.confirmButton.setText(scene.rewardPresentation.busy?'領獎中…':confirmed?next:phase==='requesting'?'正在確認出牌…':phase==='presenting'?'荷官出牌中…':scene.wallet?.pending?'重試上一拳':'確認出牌');
   scene.confirmButton.caption.scale.set(1);
   scene.confirmButton.caption.scale.set(Math.min(1,(scene.confirmButton.buttonWidth-24)/scene.confirmButton.caption.width));
   scene.confirmButton.setName(confirmed?next:'確認出牌');
-  scene.confirmButton.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing && !scene.ending && challenge?.status!=='lost' && (confirmed || phase==='selecting' && !!selected));
+  scene.confirmButton.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing && !scene.ending && (confirmed || phase==='selecting' && !!selected));
   scene.status.text=confirmed?{win:'你贏了',loss:'荷官獲勝',draw:'平手，再來一拳'}[duel.outcome]:phase==='presenting'?'荷官即將揭牌':selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
   scene.statusDetail.text=confirmed?'你出'+TABLE_MOVE_NAMES[selected]+' · 荷官出'+TABLE_MOVE_NAMES[duel.dealer]:phase==='presenting'?'好戲，即將揭曉':selected?'準備好了，就出這一張':'選擇手牌，與命運一決勝負';
   if(confirmed && finished){
@@ -119,8 +132,8 @@ export function updateSlotHud(scene){
     if(scene.rewardPresentation.busy)scene.statusDetail.text=scene.rewardPresentation.stage==='counting'?'獎金累計中…':'最後一幕，為你揭曉';
   }
   if(scene.layout.status.autoStack){
-    const {action,status}=scene.layout;
-    if(status.sideBySide){
+    const {status}=scene.layout,action=resultLayout?{...scene.layout.action,y:resultLayout.y,height:resultLayout.height}:scene.layout.action;
+    if(status.sideBySide&&!resultLayout?.stackStatus){
       const total=scene.status.height+status.gap+scene.statusDetail.height;
       const top=Math.min(scene.layout.ui.height-8-total,Math.max(status.feltTop+8,action.y-total/2));
       scene.status.y=top+scene.status.height/2;

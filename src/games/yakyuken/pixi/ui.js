@@ -88,6 +88,10 @@ export class PixiButton extends Container {
   focus(value){if(this.destroyed)return;this.focused=value;this.outline.visible=!!(value || !['link','close','quiet','gallery'].includes(this.variant) && this.hovered) && this.enabled!==false;}
   setEnabled(value){this.enabled=value;this.eventMode=value?'static':'none';this.accessible=value;this.alpha=value?1:.5;if(!value){this.hover(false);this.focus(false);}}
   setText(text){this.caption.text=text;}
+  resizeButton(width,height){
+    if(this.buttonWidth===width&&this.buttonHeight===height)return;
+    this.buttonWidth=width;this.buttonHeight=height;this.hitArea=new Rectangle(-width/2,-height/2,width,height);this.boundsArea=this.hitArea;this.draw();
+  }
   setSubtitle(text){this.subtitle.text=text;}
   setName(name){
     this.accessibleTitle=this.accessibleHint=name;

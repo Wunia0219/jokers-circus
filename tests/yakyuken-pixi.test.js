@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {tableLayout,TABLE_MOVES} from '../src/games/yakyuken/pixi/layout.js';
+import {tableLayout,TABLE_MOVES,resultActionLayout} from '../src/games/yakyuken/pixi/layout.js';
 import {Motion} from '../src/games/yakyuken/pixi/motion.js';
 import {demoDuel} from '../src/games/yakyuken/pixi/demo-duel.js';
 import {revealCard} from '../src/games/yakyuken/pixi/card-flip.js';
@@ -8,6 +8,15 @@ import {slotChrome,SLOT_UI} from '../src/games/yakyuken/pixi/slot-theme.js';
 import {slotHeaderLayout,yakyukenHeaderLayout} from '../src/games/yakyuken/pixi/header-layout.js';
 import {lobbyLayout} from '../src/games/yakyuken/pixi/lobby-layout.js';
 import {CHARACTERS,canEnterCharacter} from '../src/games/yakyuken/characters.js';
+
+test('finished matches offer two separate, touch-sized actions in the same table lane',()=>{
+  for(const [width,height] of [[1255,700],[1255,550],[900,700],[1600,900],[2560,1440],[844,390],[600,420],[768,1024],[390,844],[320,568]]){
+    const l=tableLayout(width,height),r=resultActionLayout(l),a=r.primary,b=r.secondary;
+    for(const button of [a,b]){assert.ok(button.width>=44&&button.height>=44);assert.ok(button.x-button.width/2>=0&&button.x+button.width/2<=width);assert.ok(button.y-button.height/2>=0&&button.y+button.height/2<height);}
+    assert.ok(a.x+a.width/2+8<=b.x-b.width/2||a.y+a.height/2+8<=b.y-b.height/2);
+    if(l.status.sideBySide)assert.ok(a.y-a.height/2>=l.status.feltTop,`${width}x${height}: result controls stay on the felt`);
+  }
+});
 
 test('Pixi table: enlarged player hands and mirrored progress/reveal wings fit around the character',() => {
   for(const [width,height,touch] of [[1600,900,false],[1440,1000,false],[1100,800,false],[390,844,true],[320,568,true],[324,699,true],[360,640,true],[360,740,true],[844,390,true],[600,420,true],[700,500,true],[768,1024,true],[544,680,true],[544,680,false]]){

@@ -1,0 +1,35 @@
+{
+  "status": "background 03 lower loading-space correction for user review; not integrated or deployed",
+  "date": "2026-11-06",
+  "tool": "built-in image_gen.imagegen",
+  "source": "art/launch-screen/review-v7/background-03-curtain-rises.png",
+  "deliverable": "background-03-curtain-rises.png",
+  "bottomBandReference": "art/launch-screen/review-v2/background-01-golden-salon.png",
+  "prompt": "Precisely edit ONLY the LOWER FADE / EMPTY LOADING SPACE of IMAGE 1 (the curtain-and-staircase illustration). IMAGE 2 (the approved golden casino salon) is the exact reference for the lower dark area's height, color and soft transition. Do NOT copy image 2's character, pose, casino scene or table.\n\nThe three loading backgrounds must support the same loading wordmark in the same location. In image 2 the illustration softly disappears into a calm full-width near-black burgundy/plum band: the transition is around 79–83% of the image height, and the entire bottom approximately 16–17% is clean dark empty space. Match this SAME visual band in image 1.\n\nCONCRETE CORRECTION: begin gently fading the bottom of the scene at about y=78% of the canvas height. By y=84%, all visible trouser folds, cape embroidery, staircase treads, stair-edge lights, railing detail and curtain texture must have COMPLETELY disappeared into the empty dark band. From y=84% to y=100%, across the ENTIRE WIDTH including both sides and the center, use only the same smooth near-black plum/burgundy color/very subtle gradient from image 2. No figure silhouette, stair lines, rails, bright gold, decoration, objects, texture, spotlight streaks or readable elements intrude into this area. The fade should be natural and cinematic, not a harsh rectangular black panel. Do not add a loading word or bar; this is reserved blank space.\n\nPreserve EVERYTHING ABOVE that lower transition as faithfully as possible: same large adult male face, black/silver hair, red eyes, expression, head angle, low-angle viewpoint, curtain-holding arm and hand, other hand, cape sweep, jewelry, rich black/ruby/gold/white costume, warm spotlight, existing staircase leading to a FLAT LANDING then an ARCHED VIP ENTRANCE with partly open wine-red doors and gold spade motif. Keep the coherent stair-to-landing-to-door architecture clearly visible above the fade. No returning to tables/chairs. Do not move, shrink or zoom the character; simply control the lowermost fade to match the reference.\n\nRetain the original wide 16:9 canvas and painterly illustration quality. No border, text, logo, watermark, UI, decorative panels or new objects. One complete revised image, not a side-by-side comparison.",
+  "change": "full-width lower scene fades into clean near-black burgundy/plum space at the same approximate proportional height as background 01, for a shared loading wordmark position",
+  "preserved": [
+    "dealer identity and curtain-holding pose",
+    "ornate costume and sweeping cape above the fade",
+    "stairs to flat landing to arched VIP doorway",
+    "low-angle staging and spotlight"
+  ],
+  "inspection": "actual image inspected; lower clothing, stairs and railing fade out above the blank band, with no bright object or scene line across the bottom",
+  "currentSet": [
+    {
+      "number": 1,
+      "status": "user approved",
+      "file": "art/launch-screen/review-v2/background-01-golden-salon.png"
+    },
+    {
+      "number": 2,
+      "status": "user approved",
+      "file": "art/launch-screen/review-v6/background-02-last-spin.png"
+    },
+    {
+      "number": 3,
+      "status": "revised loading-space band, awaiting user review",
+      "file": "art/launch-screen/review-v8/background-03-curtain-rises.png"
+    }
+  ],
+  "existingGameFilesChanged": false
+}

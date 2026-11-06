@@ -25,11 +25,11 @@
 | `npm run test:monitor` | scheduled handler、持久去重、故障與恢復通知 |
 | `node --test tests/yakyuken*.test.js` | 野球拳規則、紀錄、測試錢包邊界、原請求恢復與去重 |
 | `node scripts/qa/yakyuken-cloud-test.js` | 隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道 |
-| `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸、選牌／請求中／通關的操作區間距與 COINS 標記、收藏／單圖相同外框與 6 次 PNG 原檔下載 |
-| `node scripts/qa/yakyuken-reward.js` | 隔離錢包：實際繪製最後造型後才累計獎金、舊餘額保留、縮放與背景恢復、減少動態、重載不重播及零額外結算請求 |
+| `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸、選牌／請求中／勝敗的文字與雙按鈕間距、COINS、收藏／單圖相同外框與 6 次 PNG 原檔下載 |
+| `node scripts/qa/yakyuken-reward.js` | 隔離錢包：造型先於領獎、金額與音效同步、獨立靜音、縮放／背景恢復、重載不重播、勝敗再次挑戰／返回及新場只扣一次費 |
 | `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：三張原圖下載、位元組比對、CSP 與僅同源請求；不呼叫錢包 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
-| `node scripts/qa/discord-test-activity.js` | 已建置前端＋真正 Embedded App SDK 的隔離桌機／手機雙遊戲驗證，不連接真實 Discord 帳號 |
+| `node scripts/qa/discord-test-activity.js` | 已建置前端＋真正 Embedded App SDK：三圖×五尺寸的開場讀取／光波／故障與來源驗證，再跑桌機／手機雙遊戲；不連接真實 Discord 帳號 |
 | `node scripts/qa/test-firestore.js tests/discord-test.integration.js` | 官方 emulator＋真正 workerd：Discord 簽章／頻道、OAuth、每位玩家、共用錢包／簽到與重啟 |
 | `node --test tests/cloudflare-usage.test.js tests/monitor.test.js` | Free 門檻／Paid 觀測、方案切換、跨日、通知意圖、429／未知送出、可信附件恢復；不聯絡正式服務 |
 | `npm run build`、`cloud:build`、`monitor:build` | 前端與 Worker dry-run，不部署 |
@@ -56,6 +56,8 @@ Discord SDK 隔離測試預設使用 4195；若正在開啟同埠的野球拳預
 CSP 注入測試等待非同步違規通知，確認 `script-src-elem` 對 `inline` 執行實際阻擋（`enforce`），再檢查注入腳本未執行；通知未到仍會逾時失敗，不更改正式安全政策。`npm run test:security -- --delayed-csp-report` 將測試收集通知的時間延後 500ms，防止重新引入立即讀取的競態。
 
 `node scripts/qa/verify.js --full --list` 或 `--ci --list` 只列出步驟。檢查清單與依賴集中在 `scripts/qa/helpers/verification-plan.js`；一般驗證第一個失敗即停止，CI 模式則繼續獨立檢查。建置失敗時，依賴它的 CSP／Worker／整合測試標為受阻，絕不當成通過。每一步結束都更新 `test-results/verification.json`；任何失敗／受阻都保留非零結束碼。Windows ARM 的 workerd 步驟使用 `.tools/node-x64/` 中與 `.node-version` 一致的 Node；其他步驟使用啟動驗證的 Node。
+
+手動 `yakyuken-preview.js` 與 `dealer-resources.js` 共用 4196 埠；先結束前者，再執行後者或完整 CI，不要與 CI 同時啟動。
 
 GitHub Actions 使用三個獨立 runner 並行驗證，各組內仍循序執行：
 

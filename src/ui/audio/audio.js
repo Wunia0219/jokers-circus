@@ -69,9 +69,12 @@ export class Sound {
   }
   cancelCues(){for(const voice of [...this.voices])voice.stop();}
   play(kind,index=0){
+    this.playVoices(cueVoices(kind,index));
+  }
+  playVoices(voices){
     if(!this.enabled||!this.context||this.context.state!=='running'||this.suspended||this.isHidden())return;
     const context=this.context;
-    for(const voice of cueVoices(kind,index)){
+    for(const voice of voices){
       while(this.voices.size>=96)this.voices.values().next().value.stop();
       const oscillator=context.createOscillator(),gain=context.createGain(),start=context.currentTime+voice.at;
       oscillator.type='sine';oscillator.frequency.setValueAtTime(voice.frequency,start);

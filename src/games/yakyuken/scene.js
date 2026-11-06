@@ -212,12 +212,16 @@ export class YakyukenScene {
     if(this.modal!=='leave'||this.disposed||this.entering||this.settling||this.wallet?.pending)return;
     return this.beginEntry('lobby',{leaveConfirmed:true});
   }
+  returnToCharacters(){
+    if(this.disposed||this.entering||this.entryOverlay||this.settling||this.wallet?.pending||this.changing||this.modal||this.rewardPresentation.busy||this.screen!=='table'||this.phase!=='confirmed'||!['won','lost'].includes(this.challenge?.status))return;
+    return this.beginEntry('reselect');
+  }
   beginEntry(kind,{leaveConfirmed=false}={}){
     if(this.disposed)return Promise.resolve(false);
     if(this.entering)return this.entryPromise;
     if(this.rewardPresentation.busy)return Promise.resolve(false);
     if(kind==='lobby'&&this.needsLeaveConfirmation()&&!leaveConfirmed){this.openModal('leave');return Promise.resolve(false);}
-    this.rewardPresentation.clear();
+    this.rewardPresentation.clear();this.audio.background.cancelCues();
     const source=this.screen;this.closeModal();this.app.canvas.dataset.entryKind=kind;
     this.entryOverlay?.destroy();this.entering=true;
     this.world.interactiveChildren=false;this.world.accessibleChildren=false;this.updateControls();
@@ -298,7 +302,7 @@ export class YakyukenScene {
   }
   async confirm() {
     if(this.settling||this.rewardPresentation.busy)return;
-    if(this.disposed || this.entering || this.entryOverlay || this.ending || this.challenge?.status==='lost' || this.changing || this.modal || this.screen!=='table' || this.phase === 'presenting')return;
+    if(this.disposed || this.entering || this.entryOverlay || this.ending || this.changing || this.modal || this.screen!=='table' || this.phase === 'presenting')return;
     if(this.phase === 'confirmed'){
       const restarting=this.challenge.status!=='playing';
       if(restarting&&this.wallet)return this.beginEntry('table');
@@ -359,18 +363,6 @@ export class YakyukenScene {
         this.app.ticker.addOnce(this.rewardReveal,undefined,UPDATE_PRIORITY.LOW-1);
       }
     }
-    else if(this.challenge.status==='lost')await this.endChallenge();
-  }
-  async endChallenge(){
-    if(this.ending || this.disposed || this.challenge?.status!=='lost')return;
-    const finished=this.challenge;this.ending=true;this.world.interactiveChildren=false;this.world.accessibleChildren=false;this.updateControls();
-    // Reading time is content, so reduced motion and viewport rebuilds must
-    // not skip the final result before the player can read it.
-    await new Promise(resolve=>{
-      const finish=()=>{clearTimeout(timer);this.abort.signal.removeEventListener('abort',finish);resolve();};
-      const timer=setTimeout(finish,1600);this.abort.signal.addEventListener('abort',finish,{once:true});
-    });
-    if(!this.disposed && this.challenge===finished && this.screen==='table')await this.beginEntry('reselect');
   }
   updateControls() {
     updateSlotHud(this);
@@ -429,14 +421,16 @@ export class YakyukenScene {
   }
   syncWorldInput(){
     if(!this.world)return;
-    const enabled=!this.entering&&!this.entryOverlay&&!this.changing&&!this.ending&&!this.modal&&!this.rewardPresentation.busy;
+    const enabled=!this.entering&&!this.entryOverlay&&!this.changing&&!this.ending&&!this.modal;
     this.world.interactiveChildren=enabled;this.world.accessibleChildren=enabled;
   }
   tickReward(elapsed){
     if(this.disposed)return;
     const stage=this.rewardPresentation.stage;
     const ms=this.rewardSkipElapsed?0:elapsed;this.rewardSkipElapsed=false;
-    if(!this.rewardPresentation.tick(ms,{reduced:this.motion.reduced}))return;
+    const changed=this.rewardPresentation.tick(ms,{reduced:this.motion.reduced});
+    this.audio.syncReward(this.rewardPresentation);
+    if(!changed)return;
     if(stage!==this.rewardPresentation.stage)this.updateControls();else updateBalance(this);
   }
   keydown(event) {
