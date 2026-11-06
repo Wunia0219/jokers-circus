@@ -180,9 +180,13 @@ try {
     window.__dealerStages=[];window.__dealerFaces=[];
     new MutationObserver(() => {const data=document.querySelector('canvas').dataset;if(!window.__dealerStages.includes(data.dealerStage))window.__dealerStages.push(data.dealerStage);window.__dealerFaces.push({stage:data.dealerStage,fronts:data.dealerFrontCount,scale:window.__yakyukenTest.dealerCards[0].visual.scale.x});}).observe(document.querySelector('canvas'),{attributes:true,attributeFilter:['data-dealer-stage','data-dealer-front-count']});
   });
+  await page.evaluate(()=>window.__yakyukenTest.app.stop());
   await page.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(page,'presenting');
-  await page.keyboard.press('Enter');await phase(page,'confirmed');
-  assert.deepEqual(await page.evaluate(() => window.__dealerStages),['thinking','playing','shown']);
+  await page.keyboard.press('Enter');
+  await page.evaluate(async()=>{const s=window.__yakyukenTest;s.motion.tick(150);await Promise.resolve();s.app.render();});
+  await page.evaluate(async()=>{const s=window.__yakyukenTest;s.motion.tick(180);await Promise.resolve();s.app.render();});
+  await phase(page,'confirmed');await page.evaluate(()=>window.__yakyukenTest.app.start());
+  assert.deepEqual(await page.evaluate(() => window.__dealerStages),['playing','shown']);
   const flips=await page.evaluate(()=>window.__dealerFaces);
   assert.ok(flips.some(event=>event.stage==='playing' && event.fronts==='0'),'playing starts on the back');
   assert.ok(flips.some(event=>event.stage==='playing' && event.fronts==='1'),'the chosen front appears during the flip');
@@ -196,7 +200,7 @@ try {
   assert.equal((await canvasState(page)).selected,'');
   assert.equal((await canvasState(page)).dealerMove,'');
   assert.equal((await canvasState(page)).dealerFrontCount,'0','next round restores all backs');
-  checks.push('player confirmation triggers thinking, dealer card play and result; duplicate input cannot repeat the round');
+  checks.push('player confirmation immediately plays and flips the dealer card; duplicate input cannot repeat the round');
 
   await page.keyboard.press('3');assert.equal((await canvasState(page)).selected,'paper');
   await page.keyboard.press('Enter');await phase(page,'confirmed');
@@ -376,6 +380,7 @@ try {
   assert.equal(await archiveA.getByRole('button',{name:'遊戲選單',exact:true}).count(),0,'history has no unrelated navigation menu');
   await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   await archiveA.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).waitFor();
   assert.equal(await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).count(),1,'earned CG persists after reload');
   await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   const archiveB=await playerPage('archive-B');await archiveB.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(archiveB,'characters');
@@ -531,8 +536,11 @@ try {
   await resizing.goto(`${origin}/yakyuken-preview.html`);await startTable(resizing);
   await resizing.evaluate(()=>{window.__duelWeights=[4000];});
   await resizing.getByRole('button',{name:'選擇布',exact:true}).click();
+  await resizing.getByRole('button',{name:'確認出牌',exact:true}).waitFor();
+  await resizing.evaluate(()=>window.__yakyukenTest.app.stop());
   await resizing.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(resizing,'presenting');
   await resizing.setViewportSize({width:390,height:844});await phase(resizing,'confirmed');
+  await resizing.evaluate(()=>window.__yakyukenTest.app.start());
   assert.deepEqual([(await canvasState(resizing)).dealerMove,(await canvasState(resizing)).outcome,(await canvasState(resizing)).round],['scissors','loss','1']);
   assert.equal((await canvasState(resizing)).dealerFrontCount,'1','resize preserves only the chosen front');
   checks.push('resize during dealer presentation reveals the same round once, including a losing result');

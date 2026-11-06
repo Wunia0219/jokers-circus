@@ -10,22 +10,46 @@ export function createChallenge(characterId='dealer'){
 }
 
 export function weightedDuel(characterId,player,cryptoSource=globalThis.crypto){
-  const rule=characterRule(characterId);
+  characterRule(characterId);
   if(!MOVES.includes(player))throw new Error('不支援的出拳');
+  return duelForOutcome(player,drawOutcome(characterId,cryptoSource));
+}
+
+function drawOutcome(characterId,cryptoSource){
+  const rule=characterRule(characterId);
   const values=new Uint32Array(1),total=10000,ceiling=Math.floor(2**32/total)*total;
   do{cryptoSource.getRandomValues(values);}while(values[0]>=ceiling);
   const weight=values[0]%total;
-  const outcome=weight<rule.winWeight?'win':weight<rule.winWeight+rule.lossWeight?'loss':'draw';
+  return weight<rule.winWeight?'win':weight<rule.winWeight+rule.lossWeight?'loss':'draw';
+}
+
+export function duelForOutcome(player,outcome){
+  if(!MOVES.includes(player)||!['win','loss','draw'].includes(outcome))throw new Error('不支援的出拳結果');
   const dealer=MOVES.find(move=>roundOutcome(player,move)===outcome);
   return Object.freeze({player,dealer,outcome});
+}
+
+// Sample the same independent throws, in the same order, before play starts.
+// There is no separate clear-rate draw, draw cap or progress-dependent weight.
+export function createChallengePlan(characterId,cryptoSource=globalThis.crypto){
+  let state=createChallenge(characterId);const outcomes=[];
+  while(state.status==='playing'){
+    const outcome=drawOutcome(characterId,cryptoSource);outcomes.push(outcome);
+    state={...state,...challengeProgress(state,outcome)};
+  }
+  return Object.freeze(outcomes);
+}
+
+export function applyChallengeDuel(state,last){
+  return Object.freeze({...state,...challengeProgress(state,last.outcome),
+    draws:(state.draws||0)+Number(last.outcome==='draw'),rounds:state.rounds+1,last});
 }
 
 // Only the active challenge and latest hand are retained. No game history.
 export function playChallengeRound(state,player,cryptoSource=globalThis.crypto){
   if(state.status!=='playing')throw new Error('本場挑戰已結束');
   const last=weightedDuel(state.characterId,player,cryptoSource);
-  return Object.freeze({...state,...challengeProgress(state,last.outcome),
-    draws:state.draws+Number(last.outcome==='draw'),rounds:state.rounds+1,last});
+  return applyChallengeDuel(state,last);
 }
 
 // Shared by local presentation and authoritative settlement. Wallet effects

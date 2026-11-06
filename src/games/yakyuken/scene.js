@@ -13,7 +13,7 @@ import {tableLayout,TABLE_MOVES} from './pixi/layout.js';
 import {Motion} from './pixi/motion.js';
 import {WardrobeTransition,createWardrobeGradients,createWardrobeBackdrop,destroyWardrobeBackdrop} from './pixi/wardrobe-transition.js';
 import {earnedPose,resultDialogue} from './duel-presentation.js';
-import {createChallenge,playChallengeRound} from './challenge.js';
+import {createChallenge,playChallengeRound,applyChallengeDuel} from './challenge.js';
 import {PlayerArchive} from './player-archive.js';
 import {createTable} from './pixi/table.js';
 import {label,PALETTE,PixiButton} from './pixi/ui.js';
@@ -47,6 +47,7 @@ export class YakyukenScene {
   phase = 'selecting';
   selected = null;
   duel = null;
+  handTurn = null;
   completedRounds = 0;
   dealerStage = 'idle';
   pose = 0;
@@ -138,7 +139,10 @@ export class YakyukenScene {
     if(this.screen==='games')this.layout.ui.headerHeight=0;
     this.motion.finish();this.epoch++;
     const wasPresenting=this.phase==='presenting';
-    if(wasPresenting){this.phase='confirmed';this.dealerStage='shown';}
+    if(wasPresenting){
+      if(this.handTurn)this.handTurn.presented=true;
+      this.phase=this.handTurn&&!this.handTurn.settled?(this.handTurn.error?'retrying':'confirming'):'confirmed';this.dealerStage='shown';
+    }
     this.changing=!!this.wardrobe;
     this.root.removeChildren().forEach(child => child.destroy({children:true}));
     this.modalRoot=null;this.root.scale.set(this.layout.scale);
@@ -151,7 +155,7 @@ export class YakyukenScene {
     this.syncWorldInput();
     this.entryOverlay?.resize(width,height);this.wardrobe?.resize(width,height);
     this.app.render();
-    if(wasPresenting)void this.presentResult();
+    if(wasPresenting&&this.phase==='confirmed')void this.presentResult();
   }
 
   buildBackdrop() {
@@ -179,7 +183,7 @@ export class YakyukenScene {
     this.playerCards=TABLE_MOVES.map((move,index) => {
       const card = new HandCard({move,index,owner:'player',motion:this.motion,textures:this.cardTextures,onChoose:value => this.select(value)});
       card.place(l.playerCards.x+(index-1)*l.playerCards.gap,l.playerCards.y,l.playerCards.scale,(index-1)*.055,{selectedLift:l.selectedLift,hoverLift:l.hoverLift,perspective:l.playerCards.perspective});
-      card.selected=move === this.selected;card.highlight.visible=card.selected;if(card.selected)card.y-=this.phase==='confirmed'?l.confirmedLift:l.selectedLift;
+      card.selected=move === this.selected;card.highlight.visible=card.selected;if(card.selected)card.y-=this.phase==='confirmed'||this.handTurn?.presented?l.confirmedLift:l.selectedLift;
       card.lock(this.phase !== 'selecting');this.world.addChild(card);return card;
     });
   }
@@ -261,10 +265,11 @@ export class YakyukenScene {
       if(this.wallet&&kind==='lobby')await this.wallet.leave(this.matchId);
       if(this.disposed)return false;
       overlay.update?.(76,'正在準備選角舞台…');
-      this.screen=kind==='table'?'table':kind==='game' || kind==='reselect'?'characters':'games';this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';
+      this.screen=kind==='table'?'table':kind==='game' || kind==='reselect'?'characters':'games';this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.handTurn=null;
       if(kind==='table'){
         const active=this.wallet?.active();this.selectedCharacter=active?.characterId??this.selectedCharacter;
-        this.challenge=active?{...active,rounds:active.wins+active.losses,last:null}:createChallenge(this.selectedCharacter);
+        const rounds=this.wallet?.nextHand&&this.wallet.nextHand.matchId===active?.id?this.wallet.nextHand.index:active?active.wins+active.losses:0;
+        this.challenge=active?{...active,rounds,draws:rounds-active.wins-active.losses,last:null}:createChallenge(this.selectedCharacter);
         this.completedRounds=this.challenge.rounds;this.pose=active?Math.min(active.wins,2):0;this.presentedRound=this.challenge.rounds;this.dialogue='';
       }
       this.resize();
@@ -303,6 +308,8 @@ export class YakyukenScene {
   async confirm() {
     if(this.settling||this.rewardPresentation.busy)return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.changing || this.modal || this.screen!=='table' || this.phase === 'presenting')return;
+    if(this.phase==='retrying')return this.retryHandTurn();
+    if(['requesting','confirming'].includes(this.phase))return;
     if(this.phase === 'confirmed'){
       const restarting=this.challenge.status!=='playing';
       if(restarting&&this.wallet)return this.beginEntry('table');
@@ -310,41 +317,79 @@ export class YakyukenScene {
         this.challenge=createChallenge(this.selectedCharacter);this.completedRounds=0;this.presentedRound=0;
         this.matchId=this.archive.begin(this.selectedCharacter);
       }
-      this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.dialogue='';
+      this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.dialogue='';this.handTurn=null;
       this.playerCards.forEach((card,index) => {card.lock(false);card.choose(false);card.rotation=(index-1)*.055;});
       this.dealerCards.forEach(card => {card.choose(false);card.setFaceUp(false);card.visual.scale.x=1;card.rotation=0;});
       this.updateControls();if(restarting && this.pose!==0)await this.changePose(0);return;
     }
     if(!this.selected)return;
+    const prepared=this.wallet?.previewHand?.(this.matchId,this.selected);
+    const turn=this.handTurn={before:this.challenge,move:this.selected,handIndex:prepared?.handIndex,duel:prepared?.duel,settled:!this.wallet,presented:false,error:null};
     if(this.wallet){
-      this.settling=true;this.phase='requesting';this.playerCards.forEach(card=>card.lock(true));this.updateControls();
-      try{
-        const data=await this.wallet.hand(this.matchId,this.selected);if(this.disposed)return;
-        const record=data.wallet.records.find(r=>r.id===this.matchId);
-        if(record.status==='won'&&record.reward>0)this.rewardPresentation.hold({id:this.matchId,after:data.wallet.balance,reward:record.reward});
-        this.challenge={...record,rounds:this.challenge.rounds+1,last:data.duel};
-      }catch(error){
-        if(this.disposed)return;
-        this.phase='selecting';this.settling=false;this.playerCards.forEach(card=>card.lock(false));this.updateControls();
-        this.status.text='出牌尚未確認';this.statusDetail.text=error.message;return;
-      }finally{this.settling=false;}
-    }else this.challenge=playChallengeRound(this.challenge,this.selected);
-    this.archive.update(this.matchId,this.challenge);
-    this.duel=this.challenge.last;this.completedRounds=this.challenge.rounds;
-    this.phase='presenting';this.dealerStage='thinking';this.playerCards.forEach(card => card.lock(true));this.updateControls();
-    const epoch=this.epoch,card=this.playerCards.find(value => value.move === this.selected);
-    await this.motion.to(card,{y:card.baseY-this.layout.confirmedLift,rotation:0},240);
-    if(this.disposed || epoch !== this.epoch)return;
-    await this.motion.to({time:0},{time:1},260);
-    if(this.disposed || epoch !== this.epoch)return;
-    this.dealerStage='playing';
+      this.phase='requesting';this.playerCards.forEach(card=>card.lock(true));
+      // Dispatch the original request first; the already-authoritative ticket
+      // lets both cards move while Firestore confirms this same hand.
+      const settlement=this.settleHandTurn(turn);
+      if(prepared){this.challenge=applyChallengeDuel(turn.before,prepared.duel);await Promise.all([settlement,this.animateHandTurn(turn)]);}
+      else{await settlement;if(turn.settled)await this.animateHandTurn(turn);}
+    }else{
+      this.challenge=playChallengeRound(this.challenge,this.selected);turn.duel=this.challenge.last;
+      this.archive.update(this.matchId,this.challenge);await this.animateHandTurn(turn);
+    }
+    await this.finishHandTurn(turn);
+  }
+  async settleHandTurn(turn){
+    this.settling=true;turn.error=null;this.updateControls();
+    try{
+      const data=await this.wallet.hand(this.matchId,turn.move,turn.handIndex);
+      if(this.disposed||this.handTurn!==turn)return;
+      const record=data.wallet.records.find(r=>r.id===this.matchId);
+      if(!record||data.duel?.player!==turn.move||turn.duel&&(data.duel.outcome!==turn.duel.outcome||data.duel.dealer!==turn.duel.dealer))throw new Error('出牌進度不符，請重新同步。');
+      turn.duel=data.duel;turn.settled=true;
+      if(record.status==='won'&&record.reward>0)this.rewardPresentation.hold({id:this.matchId,after:data.wallet.balance,reward:record.reward});
+      this.challenge={...record,rounds:turn.before.rounds+1,draws:(turn.before.draws||0)+Number(data.duel.outcome==='draw'),last:data.duel};
+    }catch(error){if(!this.disposed&&this.handTurn===turn)turn.error=error.message;}
+    finally{this.settling=false;if(!this.disposed&&this.handTurn===turn)this.updateControls();}
+  }
+  async animateHandTurn(turn){
+    if(this.disposed||this.handTurn!==turn)return;
+    this.duel=turn.duel;this.completedRounds=this.challenge.rounds;
+    this.phase='presenting';this.dealerStage='playing';this.playerCards.forEach(card=>card.lock(true));
+    const card=this.playerCards.find(value=>value.move===turn.move);
     const dealerCard=this.dealerCards[0];
     dealerCard.setMove(this.duel.dealer,TABLE_MOVES.indexOf(this.duel.dealer));
     dealerCard.selected=true;dealerCard.highlight.visible=true;
     this.updateControls();
-    await Promise.all([this.motion.to(dealerCard,{y:dealerCard.baseY-this.layout.dealerLift,rotation:0},280),dealerCard.reveal(()=>this.updateControls())]);
-    if(this.disposed || epoch !== this.epoch)return;
-    this.phase='confirmed';this.dealerStage='shown';await this.presentResult();
+    await Promise.all([this.motion.to(card,{y:card.baseY-this.layout.confirmedLift,rotation:0},240),this.motion.to(dealerCard,{y:dealerCard.baseY-this.layout.dealerLift,rotation:0},280),dealerCard.reveal(()=>this.updateControls())]);
+    if(this.disposed||this.handTurn!==turn)return;
+    turn.presented=true;this.dealerStage='shown';
+    this.phase=turn.settled?'confirmed':turn.error?'retrying':'confirming';this.updateControls();
+  }
+  async finishHandTurn(turn){
+    if(this.disposed||this.handTurn!==turn)return;
+    this.phase=turn.settled&&turn.presented?'confirmed':turn.error?'retrying':'confirming';this.updateControls();
+    if(this.phase==='confirmed')await this.presentResult();
+  }
+  async retryHandTurn(){
+    const turn=this.handTurn;if(!turn||this.settling)return;
+    if(this.wallet.pending?.action==='hand'){
+      this.phase='confirming';await this.settleHandTurn(turn);
+      if(turn.settled&&!turn.presented)await this.animateHandTurn(turn);
+      return this.finishHandTurn(turn);
+    }
+    // A definitive conflict (for example another device consuming the ticket)
+    // cannot be retried as a fresh hand. Reload current progress without a fee.
+    this.settling=true;this.updateControls();
+    try{
+      await this.wallet.refresh();if(this.disposed)return;
+      const active=this.wallet.active(),rounds=this.wallet.nextHand?.index??(active?.wins||0)+(active?.losses||0);
+      this.handTurn=null;this.selected=null;this.duel=null;this.dealerStage='idle';this.phase='selecting';this.dialogue='';
+      if(active?.status==='playing'){
+        this.challenge={...active,rounds,draws:rounds-active.wins-active.losses,last:null};this.matchId=active.id;this.pose=Math.min(active.wins,2);this.completedRounds=rounds;this.presentedRound=rounds;
+      }else{this.screen='characters';this.challenge=null;this.matchId=null;}
+      this.resize();
+    }catch(error){turn.error=error.message;}
+    finally{this.settling=false;if(!this.disposed)this.updateControls();}
   }
   async presentResult(){
     if(this.disposed || this.phase!=='confirmed' || !this.challenge || this.presentedRound===this.challenge.rounds)return;

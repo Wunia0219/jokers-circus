@@ -72,3 +72,27 @@ test('failed refresh retains the original operation for retry; definitive reject
   assert.equal(client.pending,null);assert.equal(client.inFlight,null);
   mode='ok';await client.checkin();assert.notEqual(sent.at(-1).requestId,sent[0].requestId);
 });
+
+test('prefetched outcomes map every player move without IO and persist the original hand index through a lost response',async()=>{
+  const disk=storage(),calls=[];let fail=true;
+  const active={id:'prepared-match-0001',characterId:'dealer',status:'playing',wins:0,losses:0};
+  const state={...wallet(1),activeId:active.id,records:[active]};
+  const client=new TestWalletClient({storage:disk,fetchImpl:async(path,options)=>{
+    if(!options.body)return Response.json({wallet:state,nextHand:{matchId:active.id,index:0,outcome:'win'}});
+    calls.push(JSON.parse(options.body));if(fail)throw new Error('offline');
+    return Response.json({wallet:{...state,revision:2},nextHand:{matchId:active.id,index:1,outcome:'loss'}});
+  }});
+  await client.refresh();
+  for(const move of ['rock','paper','scissors'])assert.equal(client.previewHand(active.id,move).duel.outcome,'win');
+  assert.equal(calls.length,0);assert.equal(client.previewHand('other-match-0001','rock'),null);
+  await assert.rejects(client.hand(active.id,'paper',0),/重試/);fail=false;
+  const restored=new TestWalletClient({storage:disk,fetchImpl:client.fetchImpl});await restored.hand(active.id,'paper',0);
+  assert.deepEqual(calls[0],calls[1]);assert.equal(calls[1].handIndex,0);assert.equal(restored.nextHand.index,1);
+});
+
+test('equal-revision delayed draw receipts cannot roll a prepared hand backwards',async()=>{
+  const activeId='prepared-match-0001',state={...wallet(1),activeId,records:[{id:activeId,status:'playing'}]};let index=2;
+  const client=new TestWalletClient({storage:null,fetchImpl:async()=>Response.json({wallet:state,nextHand:{matchId:activeId,index,outcome:'draw'}})});
+  await client.refresh();index=1;await client.refresh();assert.equal(client.nextHand.index,2);
+  index=3;await client.refresh();assert.equal(client.nextHand.index,3);
+});

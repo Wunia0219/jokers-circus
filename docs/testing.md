@@ -25,8 +25,8 @@
 | `npm run test:monitor` | scheduled handler、持久去重、故障與恢復通知 |
 | `node --test tests/yakyuken*.test.js` | 野球拳規則、紀錄、測試錢包邊界、原請求恢復與去重 |
 | `node scripts/qa/yakyuken-cloud-test.js` | 隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道 |
-| `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸、選牌／請求中／勝敗的文字與雙按鈕間距、COINS、收藏／單圖相同外框與 6 次 PNG 原檔下載 |
-| `node scripts/qa/yakyuken-reward.js` | 隔離錢包：造型先於領獎、金額與音效同步、獨立靜音、縮放／背景恢復、重載不重播、勝敗再次挑戰／返回及新場只扣一次費 |
+| `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸、選牌／請求中／同步中／重試／勝敗的文字與雙按鈕間距、COINS、收藏／單圖相同外框與 6 次 PNG 原檔下載 |
+| `node scripts/qa/yakyuken-reward.js` | 隔離錢包：造型先於領獎、金額與音效同步、獨立靜音、縮放／背景恢復、重載不重播、勝敗再次挑戰／返回、新場只扣一次費，以及預取後 330ms 翻牌規劃、暫扣結算、原拳重試、缺票券與跨裝置進度衝突 |
 | `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：三張原圖下載、位元組比對、CSP 與僅同源請求；不呼叫錢包 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
 | `node scripts/qa/discord-test-activity.js` | 已建置前端＋真正 Embedded App SDK：三圖×五尺寸的開場讀取／光波／故障與來源驗證，再跑桌機／手機雙遊戲；不連接真實 Discord 帳號 |

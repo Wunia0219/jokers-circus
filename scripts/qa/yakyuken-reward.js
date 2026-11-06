@@ -6,9 +6,15 @@ import {PLAYTEST_FS_DENY} from '../game/yakyuken-test-gateway.js';
 import {PlaytestService} from '../../cloud/yakyuken-playtest-core.js';
 import {WARDROBE_DURATION} from '../../src/games/yakyuken/duel-presentation.js';
 import {REWARD_SHOWCASE_MS,REWARD_COUNT_MS,REWARD_FADE_MS} from '../../src/games/yakyuken/reward-presentation.js';
+import {verifyYakyukenPrefetch} from './helpers/yakyuken-prefetch.js';
 
 const output='test-results/yakyuken-reward',origin='http://127.0.0.1:4204',values=new Map(),calls=[],errors=[],checks=[];
 mkdirSync(output,{recursive:true});let ledger,outcome=0;
+let handGate=null,dropHand=false;const handRequests=[];
+const holdHand=()=>{
+  let release,started;const gate={promise:new Promise(resolve=>release=resolve),started:new Promise(resolve=>started=resolve),release:()=>{handGate=null;release();},begin:body=>started(body)};
+  handGate=gate;return gate;
+};
 const storage={get:async k=>structuredClone(values.get(k)),put:async(k,v)=>values.set(k,structuredClone(v)),delete:async k=>values.delete(k),transaction:async fn=>fn(storage)};
 const repository={read:async()=>structuredClone(ledger),mutate:async(_,fn)=>{ledger=structuredClone(fn(structuredClone(ledger)));return structuredClone(ledger);}};
 const service=new PlaytestService({player:'qa-a',storage,repository,entropy:{getRandomValues:v=>{v[0]=outcome;}}});
@@ -18,7 +24,13 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:output+'
   plugins:[{name:'isolated-reward',transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/games/yakyuken/scene.js'))return {code:code.replace('this.host = host;','globalThis.__rewardScene=this;this.host = host;'),map:null};},configureServer(dev){dev.middlewares.use(async(req,res,next)=>{
     const path=new URL(req.url,origin).pathname;if(!path.startsWith('/api/playtest/'))return next();
     try{let text='';for await(const chunk of req)text+=chunk;const action=path.split('/').at(-1);if(req.method==='POST')calls.push(action);
-      const result=action==='state'?await service.stateView():await service.execute(action,JSON.parse(text));res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(result));
+      if(action==='hand'){
+        const body=JSON.parse(text);handRequests.push(body);
+        if(handGate){const gate=handGate;gate.begin(body);await gate.promise;}
+      }
+      const result=action==='state'?await service.stateView():await service.execute(action,JSON.parse(text));
+      if(action==='hand'&&dropHand){dropHand=false;throw new Error('Isolated response lost after commit');}
+      res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(result));
     }catch(error){res.writeHead(error.status||500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:error.message}));}
   });}}],server:{host:'127.0.0.1',port:4204,strictPort:true,hmr:false,fs:{deny:PLAYTEST_FS_DENY},watch:{ignored:['**/test-results/**']}}});
 let browser;
@@ -94,6 +106,9 @@ try{
   const beforeReturn=calls.length;await page.getByRole('button',{name:'返回',exact:true}).click();await page.waitForFunction(()=>window.__rewardScene.screen==='characters'&&!window.__rewardScene.entering);
   assert.equal(calls.length,beforeReturn,'returning from a finished match does not charge, refund or settle again');assert.equal(ledger.balance,12500);
   checks.push('slot reward tones follow visible amounts, mute independently, and both endings offer explicit retry/return with exactly one fee per new match');
+  outcome=0;
+  checks.push(await verifyYakyukenPrefetch({page,holdHand,dropHandResponse:()=>{dropHand=true;},handRequests,serverWallet:()=>ledger,
+    otherHand:ticket=>service.execute('hand',{requestId:'other-device-hand-0001',matchId:ticket.matchId,move:'paper',handIndex:ticket.index}),output}));
   assert.deepEqual(errors,[]);writeFileSync(output+'/report.json',JSON.stringify({ok:true,checks,calls,errors},null,2));console.log(JSON.stringify({ok:true,checks:checks.length,output}));
 }catch(error){writeFileSync(output+'/failure.json',JSON.stringify({error:error.stack,checks,calls,errors},null,2));throw error;}
-finally{await browser?.close();await server.close();}
+finally{handGate?.release();await browser?.close();await server.close();}

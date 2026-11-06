@@ -55,8 +55,10 @@ try{
     };
     await checkFeedback();
     await page.screenshot({path:`${output}/table-${width}x${height}.png`});
-    const saved=await page.evaluate(()=>{const s=window.__responsiveScene;return {challenge:s.challenge,phase:s.phase,duel:s.duel};});
+    const saved=await page.evaluate(()=>{const s=window.__responsiveScene;return {challenge:s.challenge,phase:s.phase,duel:s.duel,handTurn:s.handTurn};});
     await page.evaluate(()=>{const s=window.__responsiveScene;s.phase='requesting';s.updateControls();s.app.render();});await checkFeedback();
+    await page.evaluate(()=>{const s=window.__responsiveScene;s.phase='confirming';s.updateControls();s.app.render();});await checkFeedback();
+    await page.evaluate(()=>{const s=window.__responsiveScene;s.phase='retrying';s.handTurn={error:'測試雲端連線中斷，請重試原操作，不會重複扣款。'};s.updateControls();s.app.render();});await checkFeedback();
     await page.evaluate(()=>{const s=window.__responsiveScene;s.phase='confirmed';s.duel={dealer:'paper',outcome:'win'};s.challenge={...s.challenge,status:'won',wins:2,reward:2500};s.updateControls();s.app.render();});await checkFeedback();
     await page.screenshot({path:`${output}/complete-${width}x${height}.png`});
     await page.evaluate(()=>{const s=window.__responsiveScene;s.challenge={...s.challenge,status:'lost',wins:0,losses:2,reward:0};s.duel={dealer:'paper',outcome:'loss'};s.updateControls();s.app.render();});await checkFeedback();
