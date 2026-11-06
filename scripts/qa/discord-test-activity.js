@@ -10,6 +10,7 @@ import {PlaytestService,discordTestPlayer,slotTestState} from '../../cloud/yakyu
 import {TEST_GUILD,TEST_CHANNEL} from '../../cloud/discord-test-auth.js';
 import {launchBrowser} from './helpers/browser.js';
 import {verifyLaunchScreen} from './helpers/launch-screen.js';
+import {verifySlotAtlasRecovery} from './helpers/slot-atlas-recovery.js';
 
 const output='test-results/discord-test-activity',clientId='100000000000000003',port=4203,origin='http://127.0.0.1:'+port;
 mkdirSync(output,{recursive:true});const dist=resolve(output,'dist');
@@ -61,7 +62,7 @@ const server=createServer(async(req,res)=>{
   return staticHandler(req,res);
 });
 await new Promise((done,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',done);});
-let browser;const errors=[],checks=[];let launch=[];
+let browser;const errors=[],checks=[],atlasRecovery=[];let launch=[];
 try{
   browser=await launchBrowser();
   launch=await verifyLaunchScreen({browser,origin,output});
@@ -70,10 +71,6 @@ try{
     const who=mobile?'B':'A',context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:900},isMobile:mobile,hasTouch:mobile,reducedMotion:'reduce'}),page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
     await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
     await page.route('https://cdn.discordapp.com/avatars/**',route=>route.fulfill({status:200,contentType:'image/webp',body:readFileSync('images/lobby/yakyuken-cover-v3.webp')}));
-    let failedAtlasAttempts=0;
-    await page.route(/\/assets\/win-018-[^/]+\.webp$/,route=>{failedAtlasAttempts++;return failedAtlasAttempts===1?route.fulfill({status:503,contentType:'text/plain',body:'isolated transient image failure'}):route.continue();});
-    const recoveredAtlas=page.waitForResponse(r=>/\/assets\/win-018-[^/]+\.webp$/.test(r.url())&&r.status()===200,{timeout:60000});
-    recoveredAtlas.catch(()=>{}); // Preserve an earlier assertion when cleanup cancels this pending response.
     await page.goto(origin+'/__host?who='+who+'&platform='+(mobile?'mobile':'desktop'));
     const element=await page.waitForSelector('iframe'),shell=await element.contentFrame();const game=await shell.waitForSelector('#game:not([hidden])'),frame=await game.contentFrame(),phase=value=>frame.waitForFunction(value=>document.querySelector('canvas')?.dataset.phase===value&&document.querySelector('canvas').dataset.changing!=='true',value);
     await phase('games');assert.ok((await page.evaluate(()=>__commands)).includes('AUTHENTICATE'));
@@ -98,8 +95,10 @@ try{
     const downloadEvent=downloadPage.waitForEvent('download');await downloadPage.getByRole('link',{name:'下載圖片',exact:true}).click();assert.equal((await downloadEvent).suggestedFilename(),'Jokers-Circus-Yakyuken-Dealer-finale.png');await downloadPage.close();
     await frame.getByRole('button',{name:'關閉視窗',exact:true}).click();await page.screenshot({path:output+'/'+who+'-yakyuken.png'});
     await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');
-    await frame.getByRole('button',{name:'選擇老虎機',exact:true}).click();await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);
-    await recoveredAtlas;assert.equal(failedAtlasAttempts,2,'one transient atlas failure is retried once');assert.equal(new URL(frame.url()).pathname,'/slot/');assert.equal((await page.evaluate(()=>__commands)).filter(x=>x==='HANDSHAKE').length,1,'persistent shell retains one live SDK connection across games');for(const [key,value] of Object.entries({discord_shim:'1',location_id:'fixture-location',mobile_app_version:'300.0'}))assert.equal(new URL(frame.url()).searchParams.get(key),value);assert.equal(new URL(frame.url()).searchParams.get('channel_id'),TEST_CHANNEL);assert.equal((await frame.locator('#balance').textContent()).replaceAll(',',''),'11500');
+    atlasRecovery.push({device:mobile?'mobile':'desktop',...await verifySlotAtlasRecovery(page,async()=>{
+      await frame.getByRole('button',{name:'選擇老虎機',exact:true}).click();await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);
+    })});
+    assert.equal(new URL(frame.url()).pathname,'/slot/');assert.equal((await page.evaluate(()=>__commands)).filter(x=>x==='HANDSHAKE').length,1,'persistent shell retains one live SDK connection across games');for(const [key,value] of Object.entries({discord_shim:'1',location_id:'fixture-location',mobile_app_version:'300.0'}))assert.equal(new URL(frame.url()).searchParams.get(key),value);assert.equal(new URL(frame.url()).searchParams.get('channel_id'),TEST_CHANNEL);assert.equal((await frame.locator('#balance').textContent()).replaceAll(',',''),'11500');
     assert.equal(await frame.locator('#player-name').textContent(),identity.name);assert.equal(await frame.locator('#player-id').textContent(),identity.uid);await frame.locator('.player-avatar-image:not([hidden])').waitFor();
     await frame.locator('#daily-checkin').click();await frame.getByRole('button',{name:/領取.*戲籌/}).click();await frame.waitForFunction(()=>document.querySelector('#balance')?.textContent.replaceAll(',','')==='12000');await frame.locator('#close-dialog').click();
     const settlement=page.waitForResponse(r=>r.url().includes('/api/spin'));await frame.locator('#spin').click();const spin=await (await settlement).json();
@@ -139,6 +138,6 @@ try{
     assert.equal(docs.get(who).balance,beforeEntry-2000);assert.notEqual(docs.get(who).activeId,active);
     checks.push((mobile?'mobile touch':'desktop')+': real SDK handshake/OAuth, scoped identity, Yakyuken reward, sandbox-safe CG external link/download/cancel after round trip, shared slot balance/checkin, persistent SDK and child/host reload');await context.close();
   }
-  assert.deepEqual(errors,[]);assert.notEqual(docs.get('A').player,docs.get('B').player);writeFileSync(output+'/report.json',JSON.stringify({ok:true,checks,launch,errors},null,2)+'\n');console.log(JSON.stringify({ok:true,checks:checks.length,launchChecks:launch.length,output}));
-}catch(error){writeFileSync(output+'/failure.json',JSON.stringify({message:error.message,checks,errors},null,2)+'\n');throw error;}
+  assert.deepEqual(errors,[]);assert.notEqual(docs.get('A').player,docs.get('B').player);writeFileSync(output+'/report.json',JSON.stringify({ok:true,checks,launch,atlasRecovery,errors},null,2)+'\n');console.log(JSON.stringify({ok:true,checks:checks.length,launchChecks:launch.length,output}));
+}catch(error){writeFileSync(output+'/failure.json',JSON.stringify({message:error.message,checks,errors,atlasRecovery:error.atlasRecovery||atlasRecovery},null,2)+'\n');throw error;}
 finally{await browser?.close();await new Promise(done=>{server.close(done);server.closeAllConnections();});}

@@ -43,6 +43,8 @@
 
 實際 Node／瀏覽器／Playwright 版本與啟動 channel 寫入 `test-results/browser-runtime.json`；同版瀏覽器仍不能取代遠端 Linux CI 驗證。
 
+Discord 雙遊戲的荷官圖片恢復檢查，以 `verifySlotAtlasRecovery` 將故障注入、回應觀察與「選擇老虎機」動作放在同一階段；原 60 秒門檻保留，不把前面的野球拳／CG 流程計入。桌機與手機都必須實際收到 503→200、恰好兩次圖片請求，並等待老虎機就緒；報告保存各回應的階段耗時，失敗報告也保存已觀察結果。`tests/slot-atlas-recovery.test.js` 覆蓋超過 60 秒的前段延遲、即時回應、不發請求、不重試、恢復失敗、額外重試及未就緒等情境；真實缺圖仍須失敗。這些都只作用於隔離 QA，不調整正式遊戲的載入、停輪或重試參數。
+
 Discord SDK 隔離測試預設使用 4195；若正在開啟同埠的野球拳預覽，可設定 `DISCORD_SDK_QA_PORT=4199` 再跑驗證，保留既有預覽。替代連接埠仍須未被占用，並維持只監聽 `127.0.0.1`。
 
 數字測試以 `willReadFrequently: true` 固定 Canvas 軟體繪製，避免 GPU／CPU 切換造成像素雜湊差異；此設定僅限隔離測試頁，正式遊戲不受影響。固定基準位於 `tests/fixtures/number-rendering.json`，仍逐一核對像素、尺寸及無障礙文字。僅在有意更改字型／外觀，或已證實需要統一測試繪圖路徑時，用 `npm run test:numbers -- --baseline` 更新並審查差異；失敗時也會保存 `test-results/number-rendering/after.json`。
