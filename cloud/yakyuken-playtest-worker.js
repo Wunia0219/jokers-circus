@@ -5,6 +5,7 @@ import {assertPlaytestIdentity,PlaytestService,PLAYTEST_IDENTITY,PLAYTEST_PLAYER
 import {assertDiscordTestApp} from './discord-test-auth.js';
 import {secureResponse} from '../server/http/security-headers.js';
 import {audioAsset} from './audio-asset.js';
+import {testWalletRepository} from './test-wallet-repository.js';
 export {DiscordTestAuth} from './discord-test-auth.js';
 
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
@@ -65,17 +66,25 @@ export class YakyukenTestPlayer{
       if(!this.service){
         const credentials=JSON.parse(this.env.GOOGLE_SERVICE_ACCOUNT_JSON||'null');
         if(credentials?.type!=='service_account'||credentials.project_id!==PLAYTEST_IDENTITY.projectId)throw new Error('Test credentials mismatch');
-        const db=new FirestoreRest({projectId:this.env.FIRESTORE_PROJECT_ID,namespace:this.env.FIRESTORE_NAMESPACE,credentials,endpoint:this.env.FIRESTORE_ENDPOINT,fetchImpl:cloudFetch}),ref=db.doc(`circus_wallet_v1/${this.env.FIRESTORE_NAMESPACE}/players/${player}`);
-        const decode=snap=>{
-          if(!snap.exists)return null;
-          if(snap.get('environment')!=='test'||snap.get('namespace')!==PLAYTEST_IDENTITY.namespace)throw new Error('Stored test identity mismatch');
-          const state=JSON.parse(snap.get('state'));if(state.player!==player||state.version!==1)throw new Error('Stored player mismatch');return state;
-        };
-        const repository={read:async()=>decode(await ref.get()),mutate:async(_,change)=>db.runTransaction(async tx=>{
-          const current=decode(await tx.get(ref)),state=change(current);if(state!==current)tx.set(ref,{environment:'test',namespace:PLAYTEST_IDENTITY.namespace,state:JSON.stringify(state)});return state;
-        })};
+        const db=new FirestoreRest({projectId:this.env.FIRESTORE_PROJECT_ID,namespace:this.env.FIRESTORE_NAMESPACE,credentials,endpoint:this.env.FIRESTORE_ENDPOINT,fetchImpl:cloudFetch});
+        const repository=testWalletRepository(db,player,{ledger:this.env.DISCORD_TEST_COMMANDS_ENABLED==='true'&&player.startsWith('d_760012177326997544_')});
         this.service=new PlaytestService({repository,storage:this.ctx.storage,player});
       }
+      if(path.startsWith('/__admin/')){
+        if(this.env.DISCORD_TEST_COMMANDS_ENABLED!=='true'||!player.startsWith('d_760012177326997544_')||request.method!=='POST')return json({error:'管理入口未開放。'},403);
+        const body=await request.json();
+        if(['freeze','release'].includes(action)){
+          if(typeof body.lease!=='string'||!/^[-a-zA-Z0-9]{16,80}$/.test(body.lease))return json({error:'無效的重設鎖。'},400);
+          const lease=await this.ctx.storage.get('admin-freeze');if(lease&&lease!==body.lease)return json({error:'另一筆重設進行中。'},409);
+          if(action==='freeze'){await this.service.recover();await this.ctx.storage.put('admin-freeze',body.lease);}
+          else{this.service.state=null;await this.ctx.storage.delete('admin-freeze');}
+          return json({ok:true});
+        }
+        if(await this.ctx.storage.get('admin-freeze'))return json({error:'測試錢包重設中。'},503);
+        if(!['grant','reverse'].includes(action))return json({error:'管理操作不存在。'},404);
+        return json(await this.service.execute(action,body));
+      }
+      if(await this.ctx.storage.get('admin-freeze'))return json({error:'測試錢包重設中，請稍後。'},503);
       const decorate=data=>{const name=request.headers.get('X-Test-Name');if(name&&data.wallet)data.wallet.name=decodeURIComponent(name);return data;};
       if((action==='state'||path==='/api/wallet')&&request.method==='GET'){
         const data=decorate(await this.service.stateView());return json(path==='/api/wallet'?{state:slotTestState(data.wallet)}:data);

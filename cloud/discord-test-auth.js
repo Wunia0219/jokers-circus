@@ -1,5 +1,8 @@
 import {WalletService} from '../server/wallet/wallet-service.js';
-import {validSignature} from '../server/discord/commands.js';
+import {validSignature,handleCommand} from '../server/discord/commands.js';
+import {deferWalletInteraction} from '../server/discord/discord-panel.js';
+import {completeDeferredCommand,validInteractionToken} from '../server/discord/deferred-command.js';
+import {TestCommandStore} from './test-command-store.js';
 import {CloudState,CloudSessions,CloudLoginLimit,Sealer} from './storage.js';
 import {cloudFetch} from './fetch.js';
 import {assertPlaytestIdentity,discordTestPlayer} from './yakyuken-playtest-core.js';
@@ -18,13 +21,18 @@ export class DiscordTestAuth{
     assertDiscordTestApp(this.env);this.state=new CloudState(this.ctx.storage);this.limit=new CloudLoginLimit(this.state);
     this.sealer=new Sealer(this.env.CLOUD_ENCRYPTION_KEY);
     const store={environment:'test',walletEpoch:'discord-test-v1',assertGuild:g=>{if(g!==TEST_GUILD)throw failure(403,'請從指定測試伺服器開啟。');},validate:(g,u)=>{if(g!==TEST_GUILD||!/^\d{17,20}$/.test(u||''))throw failure(403,'測試玩家身分無效。');}};
-    this.service=new WalletService(store,{fetchImpl:cloudFetch,sessions:new CloudSessions(this.ctx.storage,this.sealer)});
+    this.loginStore=store;this.service=new WalletService(store,{fetchImpl:cloudFetch,sessions:new CloudSessions(this.ctx.storage,this.sealer)});
+    if(this.env.DISCORD_TEST_COMMANDS_ENABLED==='true'){
+      this.commands=new TestCommandStore(this.env,this.state);this.commands.grantNotificationsEnabled=false;
+      this.wallet={store:this.commands,adminRoles:(this.env.DISCORD_TEST_ADMIN_ROLE_IDS||'').split(',').filter(Boolean),commandChannelIds:[TEST_CHANNEL],removeGrantNotice:async()=>({kind:'none'})};
+    }
   }
   async fetch(request){
     try{
       this.setup();const url=new URL(request.url),origin=request.headers.get('origin');
       if(origin&&origin!==`https://${this.env.DISCORD_CLIENT_ID}.discordsays.com`&&origin!==`https://${this.env.DISCORD_TEST_ORIGIN_HOST}`)return json({error:'不允許的測試來源。'},403);
       if(url.pathname==='/authorize'){
+        await this.commands?.guard();
         const session=await this.service.authorize(request.headers.get('authorization'));
         const testers=(this.env.DISCORD_TESTER_IDS||'').split(',').filter(Boolean);
         if(testers.length&&!testers.includes(session.user))throw failure(403,'此帳號尚未加入測試名單。');
@@ -36,11 +44,19 @@ export class DiscordTestAuth{
       if(url.pathname==='/api/interactions'){
         if(!validSignature(this.env.DISCORD_PUBLIC_KEY,Object.fromEntries(request.headers),Buffer.from(text)))return json({error:'無效的 Discord 簽章。'},401);
         if(body.type===1)return json({type:1});
-        if(body.application_id!==this.env.DISCORD_CLIENT_ID||body.type!==2||body.data?.type!==4||body.guild_id!==TEST_GUILD||(body.channel_id||body.channel?.id)!==TEST_CHANNEL||body.member?.user?.bot||!/^\d{17,20}$/.test(body.member?.user?.id||''))return json({type:4,data:{flags:64,content:`請到 <#${TEST_CHANNEL}> 啟動測試版。`}});
+        if(body.application_id!==this.env.DISCORD_CLIENT_ID||body.guild_id!==TEST_GUILD||(body.channel_id||body.channel?.id)!==TEST_CHANNEL||body.member?.user?.bot||!/^\d{17,20}$/.test(body.member?.user?.id||''))return json({type:4,data:{flags:64,content:`請到 <#${TEST_CHANNEL}> 啟動測試版。`}});
         const user=body.member.user.id,testers=(this.env.DISCORD_TESTER_IDS||'').split(',').filter(Boolean);
         if(testers.length&&!testers.includes(user))return json({type:4,data:{flags:64,content:'此帳號尚未加入測試名單。'}});
-        this.state.set('launch:'+user,{guild:TEST_GUILD,channel:TEST_CHANNEL,expires:Date.now()+86400000});
-        return json({type:12});
+        if(body.type===2&&body.data?.type===4||body.type===3&&body.data?.custom_id?.split('|')[1]==='go'){
+          const result=await handleCommand(body,this.commands||this.loginStore,[],[TEST_CHANNEL]);
+          if(result.type===12)this.state.set('launch:'+user,{guild:TEST_GUILD,channel:TEST_CHANNEL,expires:Date.now()+86400000});return json(result);
+        }
+        if(!this.commands||![2,3,5].includes(body.type))return json({type:4,data:{flags:64,content:'測試指令未開放。'}});
+        if(deferWalletInteraction(body)){
+          if(!validInteractionToken(body.token))return json({type:4,data:{flags:64,content:'互動已失效，請重新開啟指令。'}});
+          this.ctx.waitUntil(completeDeferredCommand(body,this.wallet,{fetchImpl:cloudFetch}));return json({type:5,data:{flags:64}});
+        }
+        return json(await handleCommand(body,this.commands,this.wallet.adminRoles,[TEST_CHANNEL],this.wallet));
       }
       if(url.pathname!=='/api/token')return json({error:'找不到此功能。'},404);
       if(text.length>4096||typeof body.code!=='string'||!/^[A-Za-z0-9_-]{1,512}$/.test(body.code)||body.guildId!==TEST_GUILD)return json({error:'請從指定測試伺服器重新啟動。'},403);
@@ -56,7 +72,7 @@ export class DiscordTestAuth{
         if(!permit||permit.guild!==TEST_GUILD||permit.channel!==TEST_CHANNEL||permit.expires<Date.now())throw failure(403,'請從指定測試頻道的活動入口重新啟動。');
         const testers=(this.env.DISCORD_TESTER_IDS||'').split(',').filter(Boolean);
         if(testers.length&&!testers.includes(session.userId))throw failure(403,'此帳號尚未加入測試名單。');
-        this.state.set('player:'+discordTestPlayer(TEST_GUILD,session.userId),{guild:TEST_GUILD,user:session.userId});
+        await this.commands?.guard();this.state.set('player:'+discordTestPlayer(TEST_GUILD,session.userId),{guild:TEST_GUILD,user:session.userId});
         succeeded=true;
         return json({access_token:token.access_token,session:{...session,discordTest:true},profile:{name:authorized.profile?.name||'測試玩家'}});
       }finally{this.active--;if(!succeeded)this.limit.failed();}

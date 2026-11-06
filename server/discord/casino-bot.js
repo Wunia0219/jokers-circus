@@ -46,4 +46,16 @@ export class CasinoBot {
     if([400,401,403,404].includes(response.status)){this.verified=false;return {kind:'retry',delay:300000};}
     return {kind:'uncertain'};
   }
+  async removeMessage(messageId){
+    if(!snowflake(messageId))return {kind:'unavailable'};
+    if(this.blockedUntil>this.clock())return {kind:'retry'};
+    if(!this.verified){try{await this.verify();}catch{return {kind:'retry'};}}
+    try{
+      const response=await this.request('/channels/'+this.channel+'/messages/'+messageId,{method:'DELETE'});
+      if(response.status===204||response.status===404)return {kind:'deleted'};
+      if(response.status===429){let body;try{body=await response.json();}catch{}const seconds=Number(body?.retry_after??response.headers.get('Retry-After'));this.blockedUntil=this.clock()+(Number.isFinite(seconds)&&seconds>0?Math.min(300000,Math.ceil(seconds*1000)):60000);}
+      if([401,403].includes(response.status))this.verified=false;
+      return {kind:'retry'};
+    }catch{return {kind:'retry'};} // DELETE is idempotent, unlike an uncertain POST.
+  }
 }

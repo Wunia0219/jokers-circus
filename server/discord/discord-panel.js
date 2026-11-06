@@ -1,7 +1,7 @@
 import {privateReply} from './bot-replies.js';
 import {problem} from '../wallet/wallet-common.js';
 import {recordLabel,validRecordCode} from '../firestore/record-codes.js';
-import {grantNotificationStatus} from './grant-notification.js';
+import {grantNotificationStatus,revokeNotificationStatus,deletionStatus} from './grant-notification.js';
 
 const id=s=>typeof s==='string'&&/^\d{17,20}$/.test(s);
 const num=n=>n.toLocaleString('en-US');
@@ -26,7 +26,7 @@ export function parsePanel(i){
 export function deferWalletInteraction(i){
   if(i.type===2)return i.data?.type!==4&&i.data?.name!=='簽到';
   if(![3,5].includes(i.type))return false;
-  return ['p','h','hc','hd','rp','rr','ra','rf','gs','hs','vs','rs'].includes(i.data?.custom_id?.split('|')[1]);
+  return ['p','h','hc','hd','rp','rr','ra','rf','gs','hs','vs','rs','nd'].includes(i.data?.custom_id?.split('|')[1]);
 }
 const button=(i,label,action,args=[],style=2)=>({type:2,style,label,custom_id:panelId(i,action,...args)});
 const home=i=>button(i,'返回管理面板','home');
@@ -101,7 +101,7 @@ async function history(i,store,recordField,target,category='r',days=0,before){
   if(rows.some(r=>r.kind==='reset'))components.push(row(button(i,'上次重設報表','rf')));
   return response(i,store.environment,title,description,fields,components);
 }
-export async function handlePanel(i,store,recordField,parsed,{notifyGrant}={}){
+export async function handlePanel(i,store,recordField,parsed,{notifyGrant,removeGrantNotice,retryGrantNotice}={}){
   const {action,args}=parsed,env=store.environment,guild=i.guild_id,actor=i.member.user.id;
   if(action==='home')return adminPanel(i,env);
   if(action==='p'){
@@ -112,12 +112,13 @@ export async function handlePanel(i,store,recordField,parsed,{notifyGrant}={}){
         row(cursor&&button(i,'回到第一頁','p'),page.next&&button(i,'下一頁','p',[page.next]),home(i)),
       ]);
   }
-  if(action==='gf')return modal(i,'發放戲籌','gs',[request(i)],[userSelect(),label('數量',text('amount',`1～${num(store.grantMax)}`,String(store.grantMax).length)),label('發放原因',text('reason','例如活動獎勵',200,'活動獎勵')),grantNotificationSelect()]);
+  if(action==='gf')return modal(i,'發放戲籌','gs',[request(i)],[userSelect(),label('數量',text('amount',`1～${num(store.grantMax)}`,String(store.grantMax).length)),label('發放原因',text('reason','例如活動獎勵',200,'活動獎勵')),...(store.grantNotificationsEnabled===false?[]:[grantNotificationSelect()])]);
   if(action==='hf')return modal(i,'查詢玩家紀錄','hs',[],[userSelect()]);
   if(action==='hs'){const f=inputs(i);return history(i,store,recordField,f.member());}
   if(action==='gs'){
     fresh(args[0],store.resetAt);const f=inputs(i),target=f.member(),notify=f.one('notify')??'no';
     if(!['yes','no'].includes(notify))throw problem(400,'請重新選擇通知方式。','PANEL_INVALID');
+    if(notify==='yes'&&store.grantNotificationsEnabled===false)throw problem(400,'測試服未啟用公開通知，請重新開啟表單。','PANEL_INVALID');
     const r=await store.grant(guild,actor,target,integer(f.one('amount')),f.one('reason'),args[0]);
     const notification=await grantNotificationStatus(notify==='yes',r,i,args[0],notifyGrant);
     return response(i,env,r.duplicate?'這筆已經發放過':'戲籌已發放',`${r.duplicate?'這次沒有再次發放。':'已發放 '+num(r.entry.delta)+' 戲籌給 <@'+target+'>。'}\n本筆發放前後：${num(r.entry.before)} → **${num(r.entry.after)}**\n原因：${esc(f.one('reason'))}\n紀錄編號：${recordLabel({...r.entry,recordCode:r.recordCode})}\n\n${notification}`,[],[
@@ -130,7 +131,13 @@ export async function handlePanel(i,store,recordField,parsed,{notifyGrant}={}){
   }
   if(action==='vs'){
     fresh(args[1],store.resetAt);const f=inputs(i),entry=validRecordCode(args[0],'R')?args[0]:integer(args[0]),r=await store.reverse(guild,actor,entry,f.one('reason'),args[1]);
-    return response(i,env,r.duplicate?'這筆已經收回過':'誤發戲籌已收回',`${r.duplicate?'這次沒有再次扣除戲籌。':'已收回 '+num(-r.entry.delta)+' 戲籌。'}\n對應發放：${r.referenceCode||'#'+r.entry.reference}\n本筆收回前後：${num(r.entry.before)} → **${num(r.entry.after)}**\n原因：${esc(f.one('reason'))}\n原始發放紀錄保留。`,[],[row(home(i))],'warning');
+    const notification=await revokeNotificationStatus(i,r,removeGrantNotice);
+    return response(i,env,r.duplicate?'這筆已經收回過':'誤發戲籌已收回',`${r.duplicate?'這次沒有再次扣除戲籌。':'已收回 '+num(-r.entry.delta)+' 戲籌。'}\n對應發放：${r.referenceCode||'#'+r.entry.reference}\n本筆收回前後：${num(r.entry.before)} → **${num(r.entry.after)}**\n原因：${esc(f.one('reason'))}\n原始發放紀錄保留。\n\n${notification.message}`,[],[row(notification.retry&&r.entry.reference&&button(i,'重試刪除通知','nd',[r.entry.reference]),home(i))],'warning');
+  }
+  if(action==='nd'){
+    const entry=integer(args[0]);let delivery;try{delivery=await retryGrantNotice?.(i,entry);}catch{delivery={kind:'retry'};}
+    const notification=deletionStatus(delivery);
+    return response(i,env,'撤回通知處理',notification.message,[],[row(notification.retry&&button(i,'重試刪除通知','nd',[entry]),home(i))],'warning');
   }
   if(action==='h')return history(i,store,recordField,args[0],args[1],Number(args[2]),args[3]);
   if(action==='hc')return history(i,store,recordField,args[0],i.data.values?.[0],Number(args[1]));

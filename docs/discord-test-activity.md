@@ -84,6 +84,26 @@ Portal 的 Interactions Endpoint 已保存為該來源的 `/api/interactions`，
 
 測試證據位於 `test-results/discord-test-*`。Portal 憑證、加密金鑰、OAuth token、資料庫與實際玩家資料不得加入 CI 附件或版控。
 
+## 測試服共用管理指令（2026-11-06）
+
+`DISCORD_TEST_COMMANDS_ENABLED=true` 後，既有測試 App 提供與正式服共用的 `/戲籌`、`/戲籌管理`、原生表單、紀錄分頁與重設確認卡。以 `node scripts/game/discord-test.js register-commands` 註冊，只使用測試 App 的 client credentials 與指定測試群；保留 Activity Launch，不安裝 Bot、不建立或要求 Bot Token、不發送公開通知。測試發放表單省略公開通知選項，竄改提交通知選項也會拒絕。
+
+所有指令與元件重新驗證簽章、App、測試群 `760012177326997544`、頻道 `1564243344857632818`、面板開啟者及管理權限。預設只有 Discord 管理員可操作；可另設定 `DISCORD_TEST_ADMIN_ROLE_IDS`。資料與雲端固定為既有專用測試 Worker、`slot-game-203db`、`yakyuken-playtest-20261105-test`，不使用正式 App、正式 DO 或正式資料庫。表單原請求也綁定操作、目標、金額及原因，不能以同一表單改發給第二位玩家。
+
+發放與收回經原玩家 DO 依序操作同一份測試錢包，兩款遊戲立即共用餘額。正常玩法、持久去重與未知提交恢復沿用原機制。開啟面板／表單不查 Firestore，重複管理操作使用原結果；沒有新服務、輪詢、推播或排程。必要的實際結算與查帳仍會計入既有 Cloudflare／Firestore 用量，不能宣稱零用量：啟用後成功改變測試錢包的交易增加同一測試命名空間內的計數器與一份查帳紀錄，發放另更新每日額度，收回另標記原發放；暖機後平手和重播遊戲憑證仍不讀寫 Firestore。
+
+新查帳資料存於 `testAdminLedger`（單欄索引）、`testAdminMeta`、`testAdminDays`；從功能啟用後開始記錄，不批次改寫舊遊玩。原有遊玩紀錄、收藏與簽到狀態保留。歷史每頁 10 筆；單次摘要最多 1,000 筆，超出明確提示縮短期間，不回傳不完整的總計。
+
+全群重設只涵蓋本測試群既有 Discord 玩家錢包，合成 `qa-*` 玩家不在其中。先以既有 Auth DO 保存意圖、逐一凍結玩家 DO 並完成未確認操作，再以單筆 Firestore 交易更新全部錢包、重設帳本與一份結果憑證；成功後清除快取及解凍。中斷或未知提交時，後續授權先用原意圖恢復；不允許遊玩穿插到半完成的重設。每次最多 100 份錢包，保留簽到／遊玩／收藏／舊去重憑證；超出整筆拒絕，不略過玩家。結果位於 `testAdminOperations`，與正式帳本集合完全分離。
+
+本次部署採本機建置及直接 Wrangler 部署，不推送 Git、不合併 main、不呼叫 Netlify 部署。既有網站流量及供應商正常用量仍依其方案計算。
+
+本次本機 `verify:ci` 完成 16/16 步：一般回歸 596 通過、1 個既有條件略過；Firestore／workerd 整合 80 通過、2 個既有條件略過；監控 2 通過。沒有新增略過、延長 CI 逾時或調整停輪。日誌與完整報告為 `test-results/branch-commands-verify-ci.log`、`test-results/branch-commands-verification.json`。遠端 CI 未觸發，避免 Git push 連帶觸發 Netlify。
+
+正式 Worker 版本 `fdae6a33-2e1d-490f-95b7-9cee20bcb6dc`，測試 Worker 版本 `e4470c47-3700-406e-a80d-cbddae35e1fe`；產品版本仍為 1.0.3。部署後唯讀核對正式群／資料庫／DO／監控設定未變、正式桌機／手機頁面就緒、9 個測試入口 404，測試 Worker 綁定只增加指令啟用旗標。測試群的兩個 slash 根指令及原 APP_HANDLER Launch 已透過 Discord API 核對，未安裝 Bot、未重設或保存 Bot Token。證據位於 `test-results/branch-commands-release/`，部署日誌為 `test-results/branch-commands-production-deploy.log`、`test-results/branch-commands-test-deploy.log`、`test-results/branch-commands-test-registration.log`。
+
+Netlify 最近部署仍為 `6aedbb42fa418ba844b992a1`，開始與結束時的五筆清單完全相同，沒有進行中的部署。修改留在 `modify` 工作分支，未 commit、push 或合併 main。正式服驗證沒有發放／扣除真實玩家戲籌或發送測試公告；實際金融操作與通知清理由隔離測試覆蓋，不能冒充真人 Discord 點擊驗收。
+
 2026-11-05 本機 `verify:ci` 全部 15/15 步通過，一般回歸 549 項通過、1 項既有條件略過；結果與日誌為 `test-results/discord-test-verification.json`、`test-results/discord-test-verify-ci.log`。獨立 runtime 補驗 2 項通過；桌機與手機觸控的實際 SDK／已建置前端檢查皆通過，證據為 `test-results/discord-test-runtime.log`、`test-results/discord-test-activity/report.json` 及同目錄截圖。新瀏覽器檢查第一輪使用錯誤的簽到選擇器，修正為實際 `daily-checkin` 控制後通過，原始失敗另保留。這些是本機及隔離平台結果，未冒充遠端 CI 或真人 Discord 手機結果。
 
 跨頁連線修正後再次完整執行 `verify:ci`，15/15 步通過；結果與日誌為 `test-results/discord-test-verification-navigation.json`、`test-results/discord-test-verify-ci-navigation.log`。正式停輪與兩秒冷卻參數沒有調整。

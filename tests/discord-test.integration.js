@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDiscordTestRuntime} from '../scripts/qa/helpers/discord-test-runtime.js';
-import {TEST_GUILD} from '../cloud/discord-test-auth.js';
+import {TEST_GUILD,TEST_CHANNEL} from '../cloud/discord-test-auth.js';
 
 test('Discord test launch requires signed channel/guild scope; OAuth sessions isolate real players and share both games',async t=>{
   const rt=await createDiscordTestRuntime();t.after(()=>rt.dispose());
@@ -31,4 +31,39 @@ test('Discord test launch requires signed channel/guild scope; OAuth sessions is
   const won=await rt.call('/api/playtest/state',{token:a});assert.equal(won.data.wallet.balance,spin.data.state.balance+2500);assert.equal(won.data.wallet.records[0].wins,2);
   assert.equal((await rt.call('/api/wallet',{token:b})).data.state.balance,10000);assert.equal((await rt.call('/api/playtest/state',{token:b})).data.wallet.records.length,0);
   await rt.restart();assert.equal((await rt.call('/api/session',{token:a})).data.user,loginA.data.session.userId);assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,won.data.wallet.balance,'encrypted sessions and player state survive a worker restart');
+});
+
+test('test App shares production command panels without a bot and settles only the existing test wallets',async t=>{
+  const rt=await createDiscordTestRuntime({commands:true});t.after(()=>rt.dispose());let seq=0n;
+  const snowflake=()=>String(((BigInt(Date.now())-1420070400000n)<<22n)|(++seq));
+  const base=()=>({id:snowflake(),type:2,application_id:rt.clientId,token:'command-fixture-token-'+String(seq),guild_id:TEST_GUILD,channel_id:TEST_CHANNEL,member:{user:{id:rt.users.A},permissions:'8',roles:[]},data:{name:'戲籌管理',type:1}});
+  const perform=async i=>{const ack=await rt.interact(i);assert.equal(ack.status,200);if(ack.data.type!==5)return ack.data;assert.equal(ack.data.data.flags,64);return {type:4,data:await rt.completed(i.token)};};
+  const control=(r,label)=>r.data.components.flatMap(row=>row.components).find(c=>c.label===label||c.placeholder===label);
+  const click=(r,label)=>({...base(),type:3,message:{flags:64},data:{custom_id:control(r,label).custom_id}});
+  const form=(r,fields)=>({...base(),type:5,data:{custom_id:r.data.custom_id,components:Object.entries(fields).map(([custom_id,value])=>({type:18,component:custom_id==='member'?{type:5,custom_id,values:[value],resolved:{users:{[value]:{id:value}},members:{[value]:{}}}}:custom_id==='notify'?{type:3,custom_id,values:[value]}:{type:4,custom_id,value}}))}});
+  await rt.launch('A');await rt.launch('B');const a=(await rt.call('/api/token',{body:{code:'code-A',guildId:TEST_GUILD}})).data.session.token,b=(await rt.call('/api/token',{body:{code:'code-B',guildId:TEST_GUILD}})).data.session.token;
+  const beforeMenu=rt.firestoreCalls,panel=await perform(base());assert.equal(panel.data.embeds[0].title,'戲籌管理');assert.equal(rt.firestoreCalls,beforeMenu,'opening menu does not access Firestore');
+  const modal=await perform(click(panel,'發放戲籌'));assert.equal(modal.type,9);assert.equal(modal.data.components.length,3,'no notification selector or bot is needed');
+  const bad=form(modal,{member:rt.users.B,amount:'500',reason:'bad',notify:'yes'});assert.notEqual((await perform(bad)).data.embeds[0].title,'戲籌已發放');assert.equal(rt.firestoreCalls,beforeMenu);
+  const denied=base();denied.member.permissions='0';assert.match((await perform(denied)).data.embeds[0].description,/管理員/);
+  for(const change of [i=>i.guild_id='1503958213454856252',i=>i.channel_id='1565731918107115690',i=>i.application_id='1561284960986599626']){const i=base();change(i);assert.notEqual((await perform(i)).data.embeds?.[0]?.title,'戲籌管理');}
+  const submit=form(modal,{member:rt.users.B,amount:'500',reason:'測試獎勵'}),granted=await perform(submit);assert.equal(granted.data.embeds[0].title,'戲籌已發放');assert.match(granted.data.embeds[0].description,/10,000 → \*\*10,500/);
+  assert.equal((await rt.call('/api/wallet',{token:b})).data.state.balance,10500);assert.equal((await rt.call('/api/playtest/state',{token:b})).data.wallet.balance,10500);assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,10000);
+  const duplicate=await perform({...submit,id:snowflake(),token:'duplicate-fixture-token'});assert.match(duplicate.data.embeds[0].description,/沒有再次發放/);
+  const changed=form(modal,{member:rt.users.A,amount:'500',reason:'測試獎勵'});assert.notEqual((await perform(changed)).data.embeds[0].title,'戲籌已發放');assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,10000,'a form cannot grant to a second player under the same request ID');
+  const roster=await perform(click(panel,'玩家戲籌'));assert.ok(roster.data.embeds[0].fields.some(row=>row.value.includes(rt.users.B)));
+  const revoked=await perform(form(await perform(click(granted,'收回這筆發放')),{reason:'測試撤回'}));assert.equal(revoked.data.embeds[0].title,'誤發戲籌已收回');assert.equal((await rt.call('/api/wallet',{token:b})).data.state.balance,10000);
+  // A second reversal must not leave an unrecoverable intent in the player's DO.
+  const failed=await perform(form(await perform(click(granted,'收回這筆發放')),{reason:'再收回'}));assert.notEqual(failed.data.embeds[0].title,'誤發戲籌已收回');assert.equal((await rt.call('/api/wallet',{token:b})).status,200);
+  const entry=await rt.call('/api/playtest/begin',{token:b,body:{requestId:'commands-duel-00000001',characterId:'dealer'}});assert.equal(entry.data.wallet.balance,9000);
+  const drawReads=rt.firestoreCalls;await rt.call('/api/playtest/state',{token:b});assert.equal(rt.firestoreCalls,drawReads,'warm state does not poll Firestore');
+  await rt.call('/api/checkin',{token:b,body:{requestId:'commands-checkin-0001'}});
+  const resetCard=await perform(click(panel,'重設全群')),resetClick=click(resetCard,'確認重設全群'),reset=await perform(resetClick);assert.match(JSON.stringify(reset),/10,000/);
+  const afterReset=(await rt.call('/api/playtest/state',{token:b})).data.wallet;assert.equal(afterReset.balance,10000);assert.equal(afterReset.records.length,1);assert.ok(afterReset.checkin);
+  const more=await perform(form(await perform(click(panel,'發放戲籌')),{member:rt.users.B,amount:'50',reason:'reset後測試'}));assert.equal(more.data.embeds[0].title,'戲籌已發放');await perform({...resetClick,id:snowflake(),token:'reset-duplicate-token'});assert.equal((await rt.call('/api/wallet',{token:b})).data.state.balance,10050,'old reset confirmation cannot reset later play or grants');
+  await rt.restart();assert.equal((await rt.call('/api/wallet',{token:b})).data.state.balance,10050);const history=await perform(form(await perform(click(panel,'查詢紀錄')),{member:rt.users.B}));assert.match(JSON.stringify(history),/已收回/);const report=await perform(click(resetCard,'上次重設報表'));assert.match(JSON.stringify(report),/重設/);
+  const recoveryCard=await perform(click(panel,'重設全群')),recoveryClick=click(recoveryCard,'確認重設全群');rt.loseResetCommit();assert.notEqual((await perform(recoveryClick)).data.embeds[0].title,'戲籌已重設');
+  await rt.restart();assert.equal((await rt.call('/api/wallet',{token:b})).data.state.balance,10000,'an unknown reset commit is recovered from its durable receipt after restart');
+  await perform(form(await perform(click(panel,'發放戲籌')),{member:rt.users.B,amount:'50',reason:'恢復後獎勵'}));await perform({...recoveryClick,id:snowflake(),token:'recovery-reset-duplicate'});assert.equal((await rt.call('/api/wallet',{token:b})).data.state.balance,10050,'unknown reset recovery cannot reset subsequent grants twice');
+  assert.equal((await rt.call('/__admin/grant',{body:{}})).status,404,'internal management endpoints are never public');
 });
