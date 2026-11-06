@@ -1,5 +1,15 @@
 # 野球拳：純 Pixi 牌桌框架
 
+## 通關造型與領獎演出（2026-11-06）
+
+- 通關回應仍由伺服器一次完成權威結算；畫面暫時保留領獎前的餘額，先完成最後造型。確認該造型實際繪製一幀後，再保留 350ms 展示，接著於 1,200ms 內將金色 `+0` 累加至 `+2,500`，上方 COINS 同步增加，最後停留並淡出 650ms。金額由該場實際獎金帶入，不在演出中呼叫發獎或改寫錢包。
+- 獎金依版面放在餘額旁、手機餘額下方，或極窄手機的餘額列內，避免遮住人物臉部；數字上浮與柔光沿用牌桌金色。縮放會保留累加進度，切回前景不會因背景經過時間跳過演出。減少動態效果時仍先顯示造型，再以靜態完整金額更新。
+- 演出期間鎖定重新入場、離場與簽到，完成精確金額後恢復操作；相同場次不重播。中途關閉會移除待執行的顯示回呼，重開直接顯示伺服器已確認餘額，不重複發獎。無錢包的本機預覽不虛構 COINS。
+- 新增純時間軸單元檢查與隔離瀏覽器檢查 `node scripts/qa/yakyuken-reward.js`，驗證造型實際繪製先於累加、累加中的餘額一致、四種視窗、背景恢復、減少動態、關閉恢復及零額外財務請求，並加入完整 CI。
+- 整體檢查初次抓到柔光的繪製範圍超出 40px 餘額列；已縮回列內，保留原本的邊界斷言，再以 Discord 桌機／手機雙遊戲及領獎專項補驗通過，沒有略過檢查或放寬版面條件。日誌為 `test-results/yakyuken-reward-discord-fixed.log`、`yakyuken-reward-glow-fixed.log`。
+- 初次完整本機 CI 15/16 項通過，唯一失敗為上述柔光邊界；Firestore SDK／REST／workerd／恢復及監控均通過。修正後使用最終版本執行 `npm run verify:ci -- --suite=browser`，12/12 項全部通過（一般回歸 562 項通過、1 項既有條件略過）。隔離錢包 UI 10 組另行通過。日誌／快照為 `test-results/yakyuken-reward-verify-ci.log`、`yakyuken-reward-initial-verification.json`、`yakyuken-reward-browser-ci.log`、`yakyuken-reward-browser-verification.json`、`yakyuken-reward-cloud-ui.log`；未執行遠端 CI。
+- 已更新既有獨立 Discord 測試 Worker，版本 ID `7f969242-c0a8-4c22-ab3b-b2b3a49d4b4a`；健康檢查、公開頁面、未登入錢包拒絕與線上 HTML／遊戲入口／圖片目錄程式位元組比對均通過。發布程式不含 `__rewardScene` 測試入口，證據為 `test-results/yakyuken-reward-deploy.log`、`yakyuken-reward-deploy-report.json`。未修改伺服器獎金／扣款規則、老虎機停輪設定、產品版本或正式服；commit／merge／push 仍由使用者處理。
+
 ## 牌桌操作區與 COINS 呈現
 
 - 餘額標記統一使用老虎機實際的 `COINS` 字樣，移除籌碼圖案與「持有戲籌」。野球拳改採金色襯線字、較大的淡金餘額、細分隔線與低亮度底色；保留獨立餘額區與伺服器確認後的更新方式，左上 Discord 身分不變。

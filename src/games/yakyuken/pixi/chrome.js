@@ -95,9 +95,9 @@ export function updateSlotHud(scene){
   if(scene.wallet&&scene.checkinCopy&&!scene.checkinCopy.destroyed){
     const view=scene.wallet.wallet.checkinView,retry=scene.wallet.pending?.action==='checkin';scene.checkinCopy.text=retry?'點此重試簽到':view.claimed?'今日已領取':`領取 ${view.daily.toLocaleString('en-US')} 戲籌`;
     scene.checkinButton.setName(retry?'重試測試週簽到':'領取測試週簽到');
-    scene.checkinButton.setEnabled(!view.claimed&&!scene.settling&&(!scene.wallet.pending||retry));
+    scene.checkinButton.setEnabled(!view.claimed&&!scene.settling&&!scene.rewardPresentation.busy&&(!scene.wallet.pending||retry));
   }
-  scene.lobbyButton?.setEnabled(!scene.settling&&!scene.wallet?.pending&&scene.phase!=='presenting' && !scene.changing && !scene.ending);
+  scene.lobbyButton?.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.wallet?.pending&&scene.phase!=='presenting' && !scene.changing && !scene.ending);
   if(scene.screen!=='table' || !scene.confirmButton)return;
   const {phase,selected,duel}=scene,confirmed=phase==='confirmed';
   const rule=characterRule(scene.selectedCharacter),challenge=scene.challenge,finished=challenge?.status!=='playing';
@@ -106,16 +106,17 @@ export function updateSlotHud(scene){
   scene.scoreWins.text=String(wins);scene.scoreLosses.text=String(losses);
   scene.scoreDescription=rule.name+'，'+wins+' 勝，目標 '+rule.winsRequired+' 勝；'+losses+' 敗，上限 '+rule.lossLimit+' 敗';
   const next=challenge?.status==='lost'?'返回選擇荷官…':finished?'再挑戰一次':'下一局';
-  scene.confirmButton.setText(confirmed?next:phase==='requesting'?'正在確認出牌…':phase==='presenting'?'荷官出牌中…':scene.wallet?.pending?'重試上一拳':'確認出牌');
+  scene.confirmButton.setText(scene.rewardPresentation.busy?'領獎中…':confirmed?next:phase==='requesting'?'正在確認出牌…':phase==='presenting'?'荷官出牌中…':scene.wallet?.pending?'重試上一拳':'確認出牌');
   scene.confirmButton.caption.scale.set(1);
   scene.confirmButton.caption.scale.set(Math.min(1,(scene.confirmButton.buttonWidth-24)/scene.confirmButton.caption.width));
   scene.confirmButton.setName(confirmed?next:'確認出牌');
-  scene.confirmButton.setEnabled(!scene.settling&&!scene.changing && !scene.ending && challenge?.status!=='lost' && (confirmed || phase==='selecting' && !!selected));
+  scene.confirmButton.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing && !scene.ending && challenge?.status!=='lost' && (confirmed || phase==='selecting' && !!selected));
   scene.status.text=confirmed?{win:'你贏了',loss:'荷官獲勝',draw:'平手，再來一拳'}[duel.outcome]:phase==='presenting'?'荷官即將揭牌':selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
   scene.statusDetail.text=confirmed?'你出'+TABLE_MOVE_NAMES[selected]+' · 荷官出'+TABLE_MOVE_NAMES[duel.dealer]:phase==='presenting'?'好戲，即將揭曉':selected?'準備好了，就出這一張':'選擇手牌，與命運一決勝負';
   if(confirmed && finished){
     scene.status.text=challenge.status==='won'?'挑戰通關':'挑戰結束';
     scene.statusDetail.text=challenge.status==='won'?'獎金 '+challenge.reward.toLocaleString('en-US')+' 戲籌 · '+(scene.wallet?'已入帳':'試玩未入帳'):'已達敗場上限，本場無獎金';
+    if(scene.rewardPresentation.busy)scene.statusDetail.text=scene.rewardPresentation.stage==='counting'?'獎金累計中…':'最後一幕，為你揭曉';
   }
   if(scene.layout.status.autoStack){
     const {action,status}=scene.layout;

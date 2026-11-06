@@ -24,6 +24,7 @@ export function verificationPlan({ci=false,full=false,suite='all',node=process.e
     );
     if(ci)steps.push(
       step('discord-test-ui','Discord 測試活動雙遊戲',['scripts/qa/discord-test-activity.js']),
+      step('yakyuken-reward','野球拳造型與領獎順序',['scripts/qa/yakyuken-reward.js']),
       step('reels-stress','慢幀與輸入延遲',['scripts/qa/reel-experience.js','--slow-frames','--slow-input']),
       step('security-stress','CSP 延遲通知',['scripts/qa/security-smoke.js','--delayed-csp-report'],['build']),
     );

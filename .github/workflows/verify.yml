@@ -76,6 +76,8 @@ jobs:
             test-results/discord-sdk/*.json
             test-results/discord-test-activity/report.json
             test-results/discord-test-activity/failure.json
+            test-results/yakyuken-reward/report.json
+            test-results/yakyuken-reward/failure.json
             test-results/startup-resources/*.json
             test-results/dealer-resources/*.json
             test-results/number-rendering/*.json

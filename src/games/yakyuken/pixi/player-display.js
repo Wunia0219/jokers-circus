@@ -40,11 +40,30 @@ export function buildBalance(scene,hud,width,headerHeight){
   const caption=label('COINS',13,PALETTE.gold,{fontFamily:['Georgia','serif'],fontWeight:'bold',letterSpacing:2});caption.label='balance-unit';caption.anchor.x=0;caption.x=-w/2+14;group.addChild(caption);
   const number=label('',25,PALETTE.bright,{fontFamily:['Georgia','serif'],fontWeight:'bold'});number.anchor.x=1;number.x=w/2-14;group.addChild(number);
   scene.balanceNumber=number;scene.balanceGroup=group;
+  const glow=new Graphics().roundRect(-w/2,-16.5,w,33,6).stroke({color:0xffdc8c,width:3,alpha:.35})
+    .roundRect(-w/2-2,-17,w+4,34,8).stroke({color:0xffdc8c,width:5,alpha:.10});glow.alpha=0;group.addChild(glow);scene.rewardGlow=glow;
+  const beside=width-(width/2+w/2)>=140,below=scene.layout.dealer.y*scene.layout.scale-group.y>=80;
+  const mode=beside?'beside':below?'below':'inline';
+  scene.rewardLayout={mode,x:beside?width/2+w/2+14:below?width/2:width/2-w/2+14,
+    y:group.y+(beside?4:below?47:1),lift:beside?.75:below?1:.28,maxWidth:mode==='inline'?73:120};
+  const payout=label('',mode==='inline'?24:30,0xffe09a,{fontFamily:['Georgia','serif'],fontWeight:'bold',stroke:{color:0x251727,width:3}});
+  payout.label='reward-payout';payout.anchor.x=below&&!beside?.5:0;payout.visible=false;hud.addChild(payout);scene.rewardNumber=payout;scene.balanceCaption=caption;
   updateBalance(scene);
 }
 
 export function updateBalance(scene){
   if(!scene.balanceNumber||scene.balanceNumber.destroyed)return;
-  const node=scene.balanceNumber;node.text=scene.wallet?scene.wallet.wallet.balance.toLocaleString('en-US'):'—';
-  node.scale.set(1);node.scale.set(Math.min(1,112/node.width));
+  const frame=scene.rewardPresentation?.frame(scene.wallet?.wallet.balance,{reduced:scene.motion.reduced});
+  const node=scene.balanceNumber,value=scene.wallet?(frame?.balance??scene.wallet.wallet.balance).toLocaleString('en-US'):'—';
+  if(node.text!==value){node.text=value;node.scale.set(1);node.scale.set(Math.min(1,112/node.width));}
+  if(scene.rewardNumber&&!scene.rewardNumber.destroyed){
+    scene.rewardNumber.visible=!!frame?.visible;
+    if(frame?.visible){
+      const {x,y,lift,maxWidth}=scene.rewardLayout,node=scene.rewardNumber;
+      node.text='+'+frame.amount.toLocaleString('en-US');node.scale.set(1);node.scale.set(Math.min(1,maxWidth/node.width));
+      node.alpha=frame.alpha;node.position.set(x,y-frame.lift*lift);
+    }
+  }
+  if(scene.balanceCaption&&!scene.balanceCaption.destroyed)scene.balanceCaption.visible=!(frame?.visible&&scene.rewardLayout.mode==='inline');
+  if(scene.rewardGlow&&!scene.rewardGlow.destroyed)scene.rewardGlow.alpha=frame?.glow??0;
 }

@@ -8,7 +8,7 @@
 |---|---|
 | `npm run verify` | 固定順序：一般回歸、前端／Worker dry-run、啟動／荷官／數字／停輪／CSP 瀏覽器驗證 |
 | `npm run verify:full` | 上述全部，再跑官方 emulator、REST／workerd、備份恢復、重設與監控 |
-| `npm run verify:ci` | 完整驗證＋Discord 測試活動雙遊戲＋慢幀／輸入延遲＋CSP 延遲通知，共 15 項；彙整獨立失敗 |
+| `npm run verify:ci` | 完整驗證＋Discord 測試活動雙遊戲＋野球拳領獎順序＋慢幀／輸入延遲＋CSP 延遲通知，共 16 項；彙整獨立失敗 |
 | `node scripts/qa/check-toolchain.js` | 安裝相依前核對 Node／npm、lockfile、Netlify、Docker 與 CI 的版本設定 |
 | `npm test` | 算獎、介面契約、Discord 權限、SQLite、備份、同步與防重送 |
 | `npm run test:bot` | 指令、HTTP、帳本與維運 |
@@ -26,6 +26,7 @@
 | `node --test tests/yakyuken*.test.js` | 野球拳規則、紀錄、測試錢包邊界、原請求恢復與去重 |
 | `node scripts/qa/yakyuken-cloud-test.js` | 隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道 |
 | `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸、選牌／請求中／通關的操作區間距與 COINS 標記、收藏／單圖相同外框與 6 次 PNG 原檔下載 |
+| `node scripts/qa/yakyuken-reward.js` | 隔離錢包：實際繪製最後造型後才累計獎金、舊餘額保留、縮放與背景恢復、減少動態、重載不重播及零額外結算請求 |
 | `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：三張原圖下載、位元組比對、CSP 與僅同源請求；不呼叫錢包 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
 | `node scripts/qa/discord-test-activity.js` | 已建置前端＋真正 Embedded App SDK 的隔離桌機／手機雙遊戲驗證，不連接真實 Discord 帳號 |
