@@ -4,11 +4,14 @@ html,body{width:100%;height:100%;margin:0;overflow:hidden;overscroll-behavior:no
 /* Match the slot's usable viewport; ResizeObserver fits Pixi to this area. */
 #yakyuken-app{position:fixed;inset:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);overflow:hidden;background:#0b1020;color:#fff0d5}
 #yakyuken-app>canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
-#yakyuken-app .checkin-dialog{box-sizing:border-box;max-width:calc(100% - var(--safe-left) - var(--safe-right) - 24px);max-height:min(85dvh,calc(100% - var(--safe-top) - var(--safe-bottom) - 24px));inset:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);border:1px solid #c79d60;color:#f6e7d7;box-shadow:0 20px 100px #0008}
-#yakyuken-app .checkin-dialog[open]{display:flex;flex-direction:column}
-#yakyuken-app .checkin-dialog::backdrop{background:#13081dd9;backdrop-filter:blur(6px)}
-#yakyuken-app .dialog-head{display:flex;flex:none;justify-content:space-between;align-items:center;gap:12px}
-#yakyuken-app .dialog-head h2{margin:0;font-size:19px;font-weight:500;color:#f5d28c}
-#yakyuken-app .dialog-head button{flex:none;display:grid;place-items:center;width:44px;height:44px;border:1px solid #c79a5f45;border-radius:50%;background:#281b2a88;color:#f5d28c;cursor:pointer}
-#yakyuken-app .dialog-head svg{width:20px;height:20px}
-#yakyuken-app #dialog-body{min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#b88d54 #24172c}
+/* Pixi's overlay shares the fixed, already-inset canvas parent. Its inline
+   viewport translation would apply the Discord safe area a second time. */
+#yakyuken-app>.yakyuken-pixi-accessibility{transform:none!important}
+#yakyuken-app>.daily-checkin{position:absolute;z-index:1}
+#yakyuken-app .notice-dialog{box-sizing:border-box;width:min(660px,calc(100% - 32px));padding:24px;border:1px solid #c79d60;border-radius:14px;background:radial-gradient(ellipse at 0 0,#60334766,transparent 80%),#24192c;color:#f6e7d7}
+#yakyuken-app .notice-dialog::backdrop{background:#13081dd9;backdrop-filter:blur(6px)}
+#yakyuken-app .notice-dialog .dialog-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+#yakyuken-app .notice-dialog h2{margin:0;color:#f5d28c;font-size:19px;font-weight:500}
+#yakyuken-app .notice-dialog .icon-button{display:grid;place-items:center;min-width:44px;height:44px;border:1px solid #e7be7140;border-radius:50%;background:#281b2a88;color:#f6e7d7;cursor:pointer}
+#yakyuken-app .notice-dialog svg{width:21px;height:21px}
+#yakyuken-app .notice-dialog .notice-action{min-height:44px;padding:10px 24px;border:1px solid #e0b66a;border-radius:8px;color:#2b1a28;background:linear-gradient(#f6dfa9,#d9ad62);font:inherit;cursor:pointer}

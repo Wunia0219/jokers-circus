@@ -1,0 +1,28 @@
+.daily-checkin { box-sizing: border-box; font: inherit; touch-action: manipulation; cursor: pointer; -webkit-tap-highlight-color: transparent; grid-column: 2; display: flex; gap: 10px; align-items: center; justify-content: center; height: var(--player-control-height, 56px); width: 164px; min-width: 0; padding: 8px 12px; color: #ffe9bc; border: 1px solid #c79a5f; border-radius: 12px; background: linear-gradient(115deg, #73452f, #5c2f39 72%); box-shadow: inset 0 1px 0 #ffe5ac25, 0 4px 14px #10071833; }
+.daily-checkin > svg { width: 20px; height: 20px; }
+.daily-checkin > span { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.daily-checkin strong { font-size: 14px; font-weight: 500; line-height: 1.4; }
+.daily-checkin small { font-size: 12px; line-height: 1.5; color: #ffdfab; white-space: nowrap; }
+.daily-checkin:hover:not(:disabled) { filter: brightness(1.13); }
+.daily-checkin:active:not(:disabled) { background: #693e37; }
+.daily-checkin.is-claimed { opacity: 1; cursor: pointer; color: #e4d3ba; border-color: #947c6070; background: #352631; box-shadow: none; }
+.daily-checkin.is-claimed small { color: #cdbab4; }
+.daily-checkin.is-loading { opacity: 1; }
+.daily-checkin.is-preview { opacity: 1; cursor: pointer; }
+.daily-checkin.is-loading > svg { animation: checkin-rotate 1.2s linear infinite; }
+.daily-checkin[hidden] { display: none; }
+.daily-checkin:disabled { opacity: .5; cursor: wait; }
+.daily-checkin.is-loading:disabled { opacity: 1; }
+.daily-checkin:focus-visible { outline: 2px solid #f5d28c; outline-offset: 3px; }
+@keyframes checkin-rotate { to { transform: rotate(360deg); } }
+@media (max-width: 700px) {
+  .daily-checkin { grid-column: 2; grid-row: 1; width: 140px; padding: 7px 10px; gap: 8px; }
+  .daily-checkin > svg { width: 18px; height: 18px; }
+  .daily-checkin strong { font-size: 12px; }
+  .daily-checkin small { font-size: 11px; }
+}
+@media (max-width: 360px) {
+  .daily-checkin { width: 124px; }
+  .daily-checkin > svg { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .daily-checkin.is-loading > svg { animation: none; } }

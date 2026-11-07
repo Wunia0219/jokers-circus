@@ -1,7 +1,8 @@
 import { mainArt } from './ui/shared/main-art.js';
 import { icon } from './ui/shared/icons.js';
 import { createPlayerBar } from './ui/player/player-bar.js';
-import { playerError } from './ui/player/player-copy.js';
+import { checkinClaimFeedback,playerError } from './ui/player/player-copy.js';
+import { createPlayerToast } from './ui/player/player-toast.js';
 import { createWeeklyCheckin } from './ui/dialogs/weekly-checkin.js';
 import { roundRecords,placeResetMarker } from './ui/player/player-records.js';
 import './style.css';
@@ -61,7 +62,7 @@ try { state=readState(localStorage.getItem(KEY)); } catch { state=freshState();s
 let bet=100, busy=false, presenting=false, ready=false, leavingLobby=false, countAnimation=0, payoutAnimation=0, celebrationTimer=0;
 const scene=new SlotScene(), sound=new Sound({effectsEnabled:true,musicUrl:MUSIC_SOURCE,onStateChange:renderAudio});
 const bigWin=new BigWinPresentation($('#app'));
-let activityMode='browser', activityUser=null, walletClient=null, claiming=false, toastTimer=0, historySync=null, checkinPanel=null;
+let activityMode='browser', activityUser=null, walletClient=null, claiming=false, historySync=null, checkinPanel=null, checkinRetry=false;
 const controls=new SpinControls({
   isReady:()=>ready&&!leavingLobby&&!claiming&&!document.hidden&&!$('#dialog').open,
   isBusy:()=>busy,
@@ -91,7 +92,8 @@ document.addEventListener('pointerup',unlockEffects,{capture:true,signal:effects
 document.addEventListener('keydown',unlockEffects,{capture:true,signal:effectsInput.signal});
 addEventListener('pagehide',event=>{if(event.persisted)void sound.setVisible(false);else{effectsInput.abort();stopDefaultMusic();sound.dispose();}});
 addEventListener('pageshow',event=>{if(event.persisted){leavingLobby=false;void sound.setVisible(true);}});
-function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,checkinPreview:!!lobbyPath&&!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(state,{ready,busy,claiming});updateLobbyButton();}
+const checkinOptions=()=>({ready:ready&&!!walletClient,busy,claiming,preview:!walletClient,retry:checkinRetry&&!state.claimed});
+function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,checkinPreview:!!lobbyPath&&!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(walletClient?state:{},checkinOptions());updateLobbyButton();}
 function updateLobbyButton(){
   const pending=walletClient?.hasPending()===true;
   playerBar.lobby({enabled:canReturnToLobby({ready,busy,claiming,pending}),note:busy||claiming?'正在完成這局或處理戲籌，完成後即可返回大廳。':pending?'上一局尚待確認，請先按 SPIN 找回結果。':'返回遊戲大廳'});
@@ -100,12 +102,7 @@ function returnToLobby(){
   if(leavingLobby || !lobbyPath || !canReturnToLobby({ready,busy,claiming,pending:walletClient?.hasPending()}))return;
   leavingLobby=true;controls.stopAuto();void fadeToLobby($('#app'),lobbyPath);
 }
-function notifyPlayer(message,tone='success'){
-  const toast=$('#player-toast');clearTimeout(toastTimer);
-  toast.replaceChildren();const text=document.createElement('span');text.textContent=message;
-  const check=document.createElement('span');check.innerHTML=icon(tone==='success'?'check':'info');check.setAttribute('aria-hidden','true');toast.dataset.tone=tone;
-  toast.append(check,text);toast.hidden=false;toastTimer=setTimeout(()=>{toast.hidden=true;},5500);
-}
+const {show:notifyPlayer}=createPlayerToast($('#player-toast'));
 function showPlayerError(error,context='game'){
   const copy=playerError(error,{context,canClaim:!!walletClient&&!state.claimed});
   if(error?.status===401){ready=false;setBusy(false);}
@@ -242,8 +239,8 @@ function openDialog(title,body,variant='notice') {
 }
 function showRules(){openDialog('遊戲規則',createGameRules(bet,state.weeklyCheckin?.rewards),'rules');}
 function showCheckin(){
-  if(!walletClient||!ready||busy||claiming)return;
-  checkinPanel=createWeeklyCheckin({onClaim:claimDaily});checkinPanel.update(state,{ready,busy,claiming});
+  if((!walletClient&&!lobbyPath)||!ready||busy||claiming)return;
+  checkinPanel=createWeeklyCheckin({onClaim:claimDaily});checkinPanel.update(walletClient?state:{},checkinOptions());
   openDialog('週簽到',checkinPanel.element,'checkin');
 }
 async function showHistory(){
@@ -286,10 +283,11 @@ async function claimDaily(){
   const panel=checkinPanel;panel?.message('');
   controls.stopAuto();claiming=true;setBusy(busy);
   try{
-    const update=await walletClient.checkin();save(update.state);renderState();
-    const message=update.duplicate?`今天已領取 ${fmt(update.entry.delta)} 戲籌，明天再來簽到吧。`:`簽到完成！${fmt(update.entry.delta)} 戲籌已加入餘額。`;
+    const update=await walletClient.checkin();checkinRetry=false;save(update.state);renderState();
+    const message=checkinClaimFeedback(update);
     if(panel?.element.isConnected&&$('#dialog').open)panel.message(message,'success');else notifyPlayer(message);
   }catch(error){
+    checkinRetry=error.status!==401;
     if(error.status===401)showPlayerError(error,'checkin');
     else if(panel?.element.isConnected&&$('#dialog').open)panel.message(playerError(error,{context:'checkin'}).message);
     else notifyPlayer(playerError(error,{context:'checkin'}).message,'info');

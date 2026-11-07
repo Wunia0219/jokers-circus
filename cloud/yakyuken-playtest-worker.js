@@ -1,7 +1,7 @@
 import {timingSafeEqual} from 'node:crypto';
 import {FirestoreRest} from './firestore-rest.js';
 import {cloudFetch} from './fetch.js';
-import {assertPlaytestIdentity,PlaytestService,PLAYTEST_IDENTITY,PLAYTEST_PLAYERS,validTestPlayer,slotTestState} from './yakyuken-playtest-core.js';
+import {assertPlaytestIdentity,PlaytestService,PLAYTEST_IDENTITY,PLAYTEST_PLAYERS,validTestPlayer,slotTestState,slotTestCheckinResult} from './yakyuken-playtest-core.js';
 import {assertDiscordTestApp} from './discord-test-auth.js';
 import {secureResponse} from '../server/http/security-headers.js';
 import {audioAsset} from './audio-asset.js';
@@ -98,7 +98,8 @@ export class YakyukenTestPlayer{
       if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'無效的測試請求。'},400);
       if(path==='/api/checkin'&&!body.requestId)body.requestId='slot-daily-'+new Date(Date.now()+8*3600000).toISOString().slice(0,10);
       const data=decorate(await this.service.execute(action,body));
-      return json(['/api/spin','/api/checkin'].includes(path)?{state:slotTestState(data.wallet),...(data.round?{round:data.round}:{})}:data);
+      if(path==='/api/checkin')return json(slotTestCheckinResult(data));
+      return json(path==='/api/spin'?{state:slotTestState(data.wallet),round:data.round}:data);
     }catch(error){if(!error.status)console.error('Playtest operation unavailable:',error.message);return json({error:error.status?error.message:'測試雲端暫時無法完成請求，請保留原操作重試。',...(error.code?{code:error.code}:{}),...(error.retryAfterMs?{retryAfterMs:error.retryAfterMs}:{})},error.status||503);}
   }
 }

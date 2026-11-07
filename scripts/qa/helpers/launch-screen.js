@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {Common} from '@discord/embedded-app-sdk';
 
 const gate=()=>{let release;const promise=new Promise(resolve=>{release=resolve;});return {promise,release};};
 const variants=['golden-salon','last-spin','curtain-rises'];
@@ -47,13 +48,17 @@ export async function verifyLaunchScreen({browser,origin,output}){
       });
       await page.route('**/api/token',async route=>{await token.promise;await route.continue();});
       await page.route('**/api/playtest/state',async route=>{await wallet.promise;await route.continue();});
-      await page.goto(origin+'/__host?who=A&platform=desktop',{waitUntil:'domcontentloaded'});
+      await page.goto(origin+'/__host?who=A&platform='+(startsPortrait?'mobile':'desktop'),{waitUntil:'domcontentloaded'});
       const shell=await (await page.waitForSelector('iframe')).contentFrame();
       await shell.waitForSelector('#launch-screen[data-art-state="ready"]');
       assert.equal(await shell.locator('#launch-screen').getAttribute('data-art'),id);
       const portraitPath='/assets/portrait-'+id+'-',landscapePath='/assets/'+id+'-';
       assert.equal(requests.length,1,'first paint requests only the active orientation');
       assert.ok(requests[0].includes(startsPortrait?portraitPath:landscapePath));
+      const {UNLOCKED,PORTRAIT}=Common.OrientationLockStateTypeObject;
+      const orientationArgs=state=>({lock_state:state,picture_in_picture_lock_state:state,grid_lock_state:state});
+      await page.waitForFunction(()=>__orientations.length===1);
+      assert.deepEqual(await page.evaluate(()=>__orientations),[orientationArgs(UNLOCKED)]);
       assert.equal(await shell.locator('.launch-word').innerText(),'LOADING...');assert.equal(await shell.getByRole('progressbar').count(),0);
       assert.equal(await shell.locator('#game').getAttribute('hidden'),'');
       await page.evaluate(()=>document.querySelector('iframe').contentWindow.postMessage({type:'circus:lobby-rendered'},location.origin));
@@ -98,10 +103,15 @@ export async function verifyLaunchScreen({browser,origin,output}){
       await page.evaluate(()=>document.querySelector('iframe').contentWindow.postMessage({type:'circus:lobby-rendered'},location.origin));
       await shell.evaluate(()=>{window.postMessage({type:'circus:lobby-rendered'},location.origin);return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
       assert.equal(await shell.locator('#launch-screen').getAttribute('data-stage'),'connecting','only the actual child may declare a rendered lobby while its wallet is still blocked');
+      assert.equal(await page.evaluate(()=>__orientations.length),1,'orientation stays unlocked while the lobby is still loading');
       wallet.release();
       const child=await (await shell.waitForSelector('#game')).contentFrame();
       await child.waitForFunction(()=>document.querySelector('canvas')?.dataset.phase==='games');
       await shell.waitForSelector('#launch-screen',{state:'detached'});
+      if(startsPortrait){
+        await page.waitForFunction(()=>__orientations.length===2);
+        assert.deepEqual(await page.evaluate(()=>__orientations),[orientationArgs(UNLOCKED),orientationArgs(PORTRAIT)]);
+      }else assert.deepEqual(await page.evaluate(()=>__orientations),[orientationArgs(UNLOCKED)]);
       assert.equal(await shell.locator('#game').getAttribute('inert'),null);assert.equal(await shell.locator('#game').getAttribute('aria-hidden'),null);
       assert.equal((await page.evaluate(()=>__commands)).filter(x=>x==='HANDSHAKE').length,1);
       checks.push({art:id,viewports:new Set(sizes.map(size=>size.join('x'))).size,selectedArtRequests:requests.length,renderedLobbyBeforeDismissal:true,...(ripple?{letterRipple:ripple}:{})});

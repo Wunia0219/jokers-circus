@@ -29,6 +29,8 @@ import {slotEntryPath} from '../../platform/game-navigation.js';
 import {loadPlayerPortrait,updateBalance} from './pixi/player-display.js';
 import {RewardPresentation} from './reward-presentation.js';
 import {createCheckinDialog} from './checkin-dialog.js';
+import {createCheckinButton} from '../../ui/player/checkin-button.js';
+import {checkinClaimFeedback,playerError} from '../../ui/player/player-copy.js';
 
 // The release entry stays separate; only the explicit test preview uses a wallet.
 export class YakyukenScene {
@@ -83,6 +85,9 @@ export class YakyukenScene {
     this.initialized = true;
     if(this.disposed){this.app.destroy({removeView:true},{children:true});return;}
     host.replaceChildren(this.app.canvas);
+    this.app.renderer.accessibility.div.classList.add('yakyuken-pixi-accessibility');
+    this.checkinButton=createCheckinButton(()=>this.showCheckin());
+    host.append(this.checkinButton.element);
     this.app.canvas.setAttribute('role','application');
     this.app.canvas.setAttribute('aria-label','野球拳：正在準備牌桌');
     this.root = new Container({label:'yakyuken-scene'});this.app.stage.addChild(this.root);
@@ -425,7 +430,7 @@ export class YakyukenScene {
     if(!['menu','collection','cg','history','settings','leave'].includes(type))return;
     if(type==='cg' && !this.archive.isUnlocked(this.selectedCharacter,this.cgIndex))return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.phase === 'presenting' || this.changing)return;
-    this.closeModal();this.modal=type;this.buildModal(type);
+    this.closeModal();this.modal=type;this.buildModal(type);this.syncCheckinButton();
   }
   openCG(index){
     if(!this.archive.isUnlocked(this.selectedCharacter,index) || !this.dealerTextures[index])return false;
@@ -436,6 +441,7 @@ export class YakyukenScene {
     this.modal=null;if(this.modalRoot){this.modalRoot.destroy({children:true});this.modalRoot=null;}
     this.syncWorldInput();
     this.app.canvas.dataset.modal='';
+    this.syncCheckinButton();
   }
   buildModal(type) { buildSlotDialog(this,type); }
 
@@ -444,22 +450,36 @@ export class YakyukenScene {
     this.checkinDialog??=createCheckinDialog(this.host,()=>void this.claimDaily());
     if(this.checkinDialog.open)return;
     this.checkinDialog.update(this.wallet,false);
+    this.checkinDialog.message('');
     this.checkinDialog.show();
+  }
+
+  syncCheckinButton(){
+    const state=this.wallet?.wallet?.checkinView;
+    this.checkinButton?.update({...state,visible:this.screen!=='games'&&!this.entryOverlay&&!this.entering&&!this.changing&&!this.modal,
+      preview:!this.wallet,ready:!this.wallet||!!state&&!this.checkinReconnect,busy:this.settling||this.rewardPresentation.busy||this.phase==='presenting'||this.ending,
+      claiming:this.claimingCheckin});
   }
 
   async claimDaily(){
     const dialog=this.checkinDialog, retry=this.wallet?.pending?.action==='checkin';
-    if(!dialog?.open||!this.wallet||this.settling||(this.wallet.pending&&!retry)||(this.wallet.wallet.checkinView.claimed&&!retry))return;
-    this.settling=true;this.updateControls();
+    if(!dialog?.open||!this.wallet||this.settling||this.checkinReconnect||(this.wallet.pending&&!retry)||(this.wallet.wallet.checkinView.claimed&&!retry))return;
+    this.claimingCheckin=this.settling=true;this.updateControls();
     dialog.message('');dialog.update(this.wallet,true);
-    let error;
-    try{await this.wallet.checkin();}catch(failure){error=failure;}
+    let feedback;
+    try{
+      const update=await this.wallet.checkin();
+      feedback={message:checkinClaimFeedback(update),tone:'success'};
+    }catch(error){
+      const copy=playerError(error,{context:'checkin'});
+      this.checkinReconnect=copy.reconnect;
+      feedback={...copy,tone:'info'};
+    }
     finally{
-      this.settling=false;
+      this.claimingCheckin=this.settling=false;
       if(!this.disposed){
         this.updateControls();dialog.update(this.wallet,false);
-        if(error)dialog.message(error.message);
-        else dialog.message('今日簽到已完成。','success');
+        dialog.feedback(feedback);
       }
     }
   }

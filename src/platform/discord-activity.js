@@ -12,6 +12,7 @@ export async function connectActivity({
   authEnabled = import.meta.env?.VITE_DISCORD_AUTH_ENABLED === 'true',
   fetchImpl = globalThis.fetch,
   walletEnabled = import.meta.env?.VITE_DISCORD_WALLET_ENABLED === 'true',
+  lockMobileOrientation = true,
 } = {}) {
   if (!isDiscordActivity(location)) return { mode: 'browser' };
   if (!/^\d{17,20}$/.test(clientId || '')) {
@@ -34,10 +35,11 @@ export async function connectActivity({
   } finally {
     clearTimeout(timer);
   }
-  // Mobile uses the portrait composition in every Discord presentation mode.
+  const mobile = params.get('platform') === 'mobile';
   // Older clients may reject this optional command; that must not block startup.
-  if (sdk.commands?.setOrientationLockState) {
-    const orientation = params.get('platform') === 'mobile'
+  const setOrientation = locked => {
+    if (!sdk.commands?.setOrientationLockState) return;
+    const orientation = mobile && locked
       ? Common.OrientationLockStateTypeObject.PORTRAIT
       : Common.OrientationLockStateTypeObject.UNLOCKED;
     sdk.commands.setOrientationLockState({
@@ -45,7 +47,9 @@ export async function connectActivity({
       picture_in_picture_lock_state: orientation,
       grid_lock_state: orientation,
     }).catch(error => console.warn('Discord orientation remains client-controlled:', error.message));
-  }
+  };
+  setOrientation(lockMobileOrientation);
   const identity = authEnabled ? await authenticateActivity(sdk, clientId, fetchImpl,walletEnabled) : null;
-  return { mode: 'discord', sdk, user:walletEnabled?identity?.user:identity,session:walletEnabled?identity?.session:null };
+  return { mode: 'discord', sdk, user:walletEnabled?identity?.user:identity,session:walletEnabled?identity?.session:null,
+    ...(mobile && !lockMobileOrientation ? { restoreMobilePortrait: () => setOrientation(true) } : {}) };
 }

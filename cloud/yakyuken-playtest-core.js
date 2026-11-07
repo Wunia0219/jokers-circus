@@ -26,6 +26,11 @@ export function publicPlaytestWallet(state){
 export function slotTestState(wallet,now=Date.now()){
   return {version:3,balance:wallet.balance,history:wallet.slotHistory||[],milestones:wallet.milestones||[],environment:'test',revision:wallet.revision,spinCooldownMs:Math.max(0,(wallet.lastSpinAt||0)+2000-now),...wallet.checkinView};
 }
+export const slotTestCheckinResult=data=>({state:slotTestState(data.wallet),entry:data.entry,duplicate:data.duplicate});
+function checkinEntry(wallet){
+  const receipt=wallet.checkin?.receipt;
+  return {delta:receipt?.rewards[receipt.cycleDay-1]??wallet.checkinView.daily};
+}
 function apply(state,intent){
   const next=structuredClone(state),{action,body,requestId,now,duel}=intent;
   if(action==='begin'){
@@ -85,7 +90,11 @@ function nextHand(state,cursor){
   if(cursor?.matchId!==plan.matchId||!Number.isSafeInteger(cursor.index)||!plan.outcomes[cursor.index])throw new Error('Stored hand cursor unavailable');
   return {matchId:plan.matchId,index:cursor.index,outcome:plan.outcomes[cursor.index]};
 }
-const result=(state,intent,cursor)=>({wallet:publicPlaytestWallet(state),nextHand:nextHand(state,cursor),...(intent.duel?{duel:intent.duel}:{}),...(['grant','reverse'].includes(intent.action)?{entry:state.lastTestEntry,recordCode:'R'+String(state.lastTestEntry.id).padStart(6,'0'),...(intent.action==='reverse'?{referenceCode:'R'+String(intent.body.reference).padStart(6,'0')}: {})}:{}),...(intent.action==='spin'?{round:state.slotHistory.find(r=>r.id===intent.requestId)}:{}),matchId:intent.action==='begin'?state.activeId:intent.body.matchId});
+const result=(state,intent,cursor)=>{
+  const wallet=publicPlaytestWallet(state);
+  return {wallet,nextHand:nextHand(state,cursor),...(intent.duel?{duel:intent.duel}:{}),...(['grant','reverse'].includes(intent.action)?{entry:state.lastTestEntry,recordCode:'R'+String(state.lastTestEntry.id).padStart(6,'0'),...(intent.action==='reverse'?{referenceCode:'R'+String(intent.body.reference).padStart(6,'0')}: {})}:{}),...(intent.action==='spin'?{round:state.slotHistory.find(r=>r.id===intent.requestId)}:{}),matchId:intent.action==='begin'?state.activeId:intent.body.matchId,
+    ...(intent.action==='checkin'?{entry:checkinEntry(wallet),duplicate:!!intent.checkinDuplicate}:{})};
+};
 
 function advancedCursor(intent,cursor){
   if(intent.action==='begin'&&intent.plan)return {matchId:intent.requestId,index:0};
@@ -126,9 +135,14 @@ export class PlaytestService{
     const fingerprint=JSON.stringify([action,body.characterId??null,body.matchId??null,body.move??null,...(body.handIndex!==undefined?[body.handIndex]:[]),...(action==='spin'?[body.bet]:[]),...(admin?[body.actor,body.amount??body.reference,body.reason]:[])]);
     await this.recover();
     const old=await this.storage.get('receipt:'+body.requestId);
-    if(old){if(old.fingerprint!==fingerprint)throw problem(409,'測試請求編號已用於其他操作。','REQUEST_CONFLICT');return admin?{...old.response,duplicate:true}:old.response;}
+    if(old){
+      if(old.fingerprint!==fingerprint)throw problem(409,'測試請求編號已用於其他操作。','REQUEST_CONFLICT');
+      if(action==='checkin')return {...old.response,wallet:publicPlaytestWallet(await this.load()),entry:old.response.entry??checkinEntry(old.response.wallet),duplicate:true,nextHand:nextHand(this.state,await this.storage.get('hand-cursor'))};
+      return admin?{...old.response,duplicate:true}:old.response;
+    }
     const state=await this.load(),record=state.records.find(r=>r.id===body.matchId),cursor=await this.storage.get('hand-cursor');
     const intent={action,body,requestId:body.requestId,fingerprint,now:this.clock()};
+    if(action==='checkin')intent.checkinDuplicate=state.checkin?.day===taipeiDay(intent.now);
     if(action==='spin')intent.stops=drawStops(()=>{const v=new Uint32Array(1);this.entropy.getRandomValues(v);return v[0];});
     if(action==='hand'){
       if(!record||record.id!==state.activeId||record.status!=='playing')throw fail(409,'這場挑戰已結束，請重新確認紀錄。');

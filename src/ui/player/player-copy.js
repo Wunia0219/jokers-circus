@@ -8,6 +8,11 @@ export function dailyRewardView({ daily = DEFAULT_CHECKIN_REWARDS[0], weeklyChec
   return { title: `週簽到・第 ${day} 天`, detail: `可領 ${fmt(daily)} 戲籌`, disabled: busy || !ready };
 }
 
+export function checkinClaimFeedback({entry,duplicate,state,wallet}){
+  const amount=fmt(entry?.delta??state?.daily??wallet.checkinView.daily);
+  return duplicate?`今天已領取 ${amount} 戲籌，明天再來簽到吧。`:`簽到完成！${amount} 戲籌已加入餘額。`;
+}
+
 // Display a useful next step, never an unfiltered server/SDK exception.
 export function playerError(error, { context = 'game', canClaim = false } = {}) {
   const message = String(error?.message || '');

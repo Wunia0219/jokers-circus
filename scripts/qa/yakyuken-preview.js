@@ -89,7 +89,7 @@ const assertHeader=async(page,screen)=>{
   if(screen==='games'){
     assert.equal(await page.getByRole('button',{name:'CG 收藏',exact:true}).count(),0,'lobby has no game header');
   }else{
-    const checkin=page.getByRole('button',{name:'查看週簽到',exact:true}),h=slotHeaderLayout(width,height);
+    const checkin=page.locator('#daily-checkin'),h=slotHeaderLayout(width,height);
     assert.equal(await checkin.count(),1,'slot-style checkin placeholder is present');
     const checkinBox=await checkin.boundingBox();
     for(const key of ['x','y','width','height'])assert.ok(Math.abs(checkinBox[key]-h.checkin[key])<1,'checkin matches slot geometry');
@@ -132,12 +132,12 @@ const startTable=async(page,screenshots)=>{
   await assertTableWings(page);
   await assertHeader(page,'table');
   assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),true,'each game starts with music enabled');
-  await page.getByRole('button',{name:'查看週簽到',exact:true}).click();
+  await page.keyboard.press('Enter');assert.equal((await canvasState(page)).entries,'1','duplicate entry input cannot start a second session');
+  await page.locator('#daily-checkin').click();
   const checkin=page.getByRole('dialog',{name:'週簽到',exact:true});
   assert.equal(await checkin.getByRole('listitem').count(),7);
   assert.equal(await checkin.getByRole('button',{name:'週簽到預覽',exact:true}).isDisabled(),true);
   await page.keyboard.press('Escape');await checkin.waitFor({state:'hidden'});
-  await page.keyboard.press('Enter');assert.equal((await canvasState(page)).entries,'1','duplicate entry input cannot start a second session');
 };
 try {
   await server.listen();browser=await launchBrowser();
@@ -152,8 +152,8 @@ try {
   checks.push('game lobby, five character positions and explicit local entry precede the table; unavailable characters and duplicate entry are blocked');
   assert.equal((await canvasState(page)).dealerFrontCount,'0','the single dealer card starts face down');
   assert.equal(await page.locator('#yakyuken-app canvas').count(),1);
-  assert.equal(await page.locator('body').innerText(),'');
-  assert.equal(await page.locator('dialog,img,main,h1,header').count(),0);
+  assert.equal(await page.locator('#daily-checkin').innerText(),'週簽到\n查看七日獎勵');
+  assert.equal(await page.locator('dialog:visible,img,main,h1,header').count(),0,'the closed check-in cannot cover the canvas');
   assert.equal(await page.getByRole('button',{name:/^選擇(拳頭|剪刀|布)$/}).count(),3);
   assert.equal(await page.evaluate(() => document.documentElement.scrollHeight===innerHeight && document.documentElement.scrollWidth===innerWidth),true);
   const help=page.getByRole('button',{name:'CG 收藏',exact:true});
@@ -569,7 +569,9 @@ try {
   await slot.locator('#loading').waitFor({state:'detached'});
   assert.equal(await slot.getByRole('button',{name:'旋轉一次',exact:true}).isEnabled(),true,'slot assets finish loading and its original controls are ready');
   assert.equal(await slot.locator('#daily-checkin').isVisible(),true);
-  assert.equal(await slot.locator('#daily-checkin').isDisabled(),true,'checkin is UI-only');
+  await slot.locator('#daily-checkin').click();
+  assert.equal(await slot.getByRole('button',{name:'週簽到預覽',exact:true}).isDisabled(),true,'wallet-free preview can view rewards but cannot claim');
+  await slot.locator('#close-dialog').click();
   const slotCheckin=await slot.locator('#daily-checkin').boundingBox(),expected=slotHeaderLayout(1600,900).checkin;
   for(const key of ['x','y','width','height'])assert.ok(Math.abs(slotCheckin[key]-expected[key])<1,`slot checkin ${key} matches shared geometry`);
   const slotTools=await slot.locator('.player-tools button').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect()).filter(r=>r.width>0 && r.height>0).map(r=>({x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height})));

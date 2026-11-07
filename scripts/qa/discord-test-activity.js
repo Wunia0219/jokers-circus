@@ -6,7 +6,7 @@ import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {build} from 'vite';
 import {discordTestBuildOptions} from '../game/discord-test-build.js';
 import {createActivityHandler} from '../../server/http/app-handler.js';
-import {PlaytestService,discordTestPlayer,slotTestState} from '../../cloud/yakyuken-playtest-core.js';
+import {PlaytestService,discordTestPlayer,slotTestState,slotTestCheckinResult} from '../../cloud/yakyuken-playtest-core.js';
 import {TEST_GUILD,TEST_CHANNEL} from '../../cloud/discord-test-auth.js';
 import {launchBrowser} from './helpers/browser.js';
 import {verifyLaunchScreen} from './helpers/launch-screen.js';
@@ -36,7 +36,7 @@ const server=createServer(async(req,res)=>{
   const url=new URL(req.url,origin),json=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
   if(url.pathname==='/__host'){
     const who=url.searchParams.get('who')==='B'?'B':'A',platform=url.searchParams.get('platform')==='mobile'?'mobile':'desktop';
-    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(`<!doctype html><html><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}</style><iframe sandbox="allow-pointer-lock allow-scripts allow-same-origin allow-forms"></iframe><script>window.__commands=[];window.__links=[];window.__openAllowed=true;window.addEventListener('message',event=>{if(event.source!==document.querySelector('iframe').contentWindow||!Array.isArray(event.data))return;const [opcode,payload]=event.data;if(opcode===2)return;__commands.push(opcode===0?'HANDSHAKE':payload.cmd);if(opcode===0&&__commands.filter(x=>x==='HANDSHAKE').length>1)return;const reply=frame=>event.source.postMessage([1,frame],location.origin);if(opcode===0)return reply({cmd:'DISPATCH',evt:'READY',nonce:null,data:{v:1,config:{api_endpoint:'//discord.com/api',environment:'test'}}});let data=null;if(payload.cmd==='OPEN_EXTERNAL_LINK'){__links.push(payload.args.url);data={opened:window.__openAllowed};}if(payload.cmd==='AUTHORIZE')data={code:'code-${who}'};if(payload.cmd==='AUTHENTICATE')data={access_token:'fixture-token',user:{id:'${users[who]}',username:'tester-${who}',discriminator:'0',public_flags:0,global_name:'測試者 ${who}',avatar:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'},scopes:['identify','guilds.members.read'],expires:'2099-01-01T00:00:00Z',application:{id:'${clientId}',name:'fixture',description:''}};reply({cmd:payload.cmd,evt:null,nonce:payload.nonce,data});});document.querySelector('iframe').src='/?frame_id=fixture-frame&instance_id=fixture-instance&platform=${platform}&guild_id=${TEST_GUILD}&channel_id=${TEST_CHANNEL}&location_id=fixture-location&discord_shim=1&mobile_app_version=300.0';</script>`);return;
+    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(`<!doctype html><html><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}</style><iframe sandbox="allow-pointer-lock allow-scripts allow-same-origin allow-forms"></iframe><script>window.__commands=[];window.__orientations=[];window.__links=[];window.__openAllowed=true;window.addEventListener('message',event=>{if(event.source!==document.querySelector('iframe').contentWindow||!Array.isArray(event.data))return;const [opcode,payload]=event.data;if(opcode===2)return;__commands.push(opcode===0?'HANDSHAKE':payload.cmd);if(opcode===0&&__commands.filter(x=>x==='HANDSHAKE').length>1)return;const reply=frame=>event.source.postMessage([1,frame],location.origin);if(opcode===0)return reply({cmd:'DISPATCH',evt:'READY',nonce:null,data:{v:1,config:{api_endpoint:'//discord.com/api',environment:'test'}}});let data=null;if(payload.cmd==='SET_ORIENTATION_LOCK_STATE')__orientations.push(payload.args);if(payload.cmd==='OPEN_EXTERNAL_LINK'){__links.push(payload.args.url);data={opened:window.__openAllowed};}if(payload.cmd==='AUTHORIZE')data={code:'code-${who}'};if(payload.cmd==='AUTHENTICATE')data={access_token:'fixture-token',user:{id:'${users[who]}',username:'tester-${who}',discriminator:'0',public_flags:0,global_name:'測試者 ${who}',avatar:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'},scopes:['identify','guilds.members.read'],expires:'2099-01-01T00:00:00Z',application:{id:'${clientId}',name:'fixture',description:''}};reply({cmd:payload.cmd,evt:null,nonce:payload.nonce,data});});document.querySelector('iframe').src='/?frame_id=fixture-frame&instance_id=fixture-instance&platform=${platform}&guild_id=${TEST_GUILD}&channel_id=${TEST_CHANNEL}&location_id=fixture-location&discord_shim=1&mobile_app_version=300.0';</script>`);return;
   }
   if(url.pathname.startsWith('/api/')){
     try{
@@ -52,7 +52,8 @@ const server=createServer(async(req,res)=>{
       if(['wallet','state'].includes(action)){const data=await s.stateView();data.wallet.name='測試者 '+who;return json(200,action==='wallet'?{state:slotTestState(data.wallet)}:data);}
       if(action==='checkin'&&!body.requestId)body.requestId='slot-daily-'+new Date(Date.now()+8*3600000).toISOString().slice(0,10);
       const data=await s.execute(action,body);data.wallet.name='測試者 '+who;
-      return json(200,['/api/spin','/api/checkin'].includes(url.pathname)?{state:slotTestState(data.wallet),...(data.round?{round:data.round}:{})}:data);
+      if(url.pathname==='/api/checkin')return json(200,slotTestCheckinResult(data));
+      return json(200,url.pathname==='/api/spin'?{state:slotTestState(data.wallet),round:data.round}:data);
     }catch(error){return json(error.status||500,{error:error.message,...(error.code?{code:error.code,retryAfterMs:error.retryAfterMs}:{})});}
   }
   if(url.pathname==='/')req.url='/discord-test-shell.html'+url.search;
@@ -96,14 +97,29 @@ try{
     await frame.waitForFunction(()=>!!window.__playerScene?.avatarTexture);
     const identity=await playerView();assert.equal(identity.name,'測試者 '+who);assert.equal(identity.uid,'ID '+users[who]);assert.equal(identity.portrait,true);assert.equal(identity.balance,'10,000');assert.ok(identity.balanceTop>=identity.header&&identity.balanceBottom<=identity.contentTop);
     const operationsBeforeCheckin=financial.length;
-    await frame.getByRole('button',{name:'查看週簽到',exact:true}).click();
+    const checkinButton=frame.locator('#daily-checkin');
+    const checkinCopy=await checkinButton.innerText();
+    assert.equal(checkinCopy,'週簽到・第 1 天\n可領 500 戲籌');
+    if(mobile)await checkinButton.tap();else await checkinButton.click();
     const checkin=frame.getByRole('dialog',{name:'週簽到',exact:true});
     assert.equal(await checkin.getByRole('listitem').count(),7);
     assert.equal(await checkin.locator('[aria-current="step"]').count(),1);
     assert.equal(financial.length,operationsBeforeCheckin,'viewing check-in never claims the reward');
     assert.equal((await playerView()).balance,identity.balance);
     await page.screenshot({path:output+'/'+who+'-checkin.png'});
-    await checkin.getByRole('button',{name:'關閉視窗',exact:true}).click();
+    const close=checkin.getByRole('button',{name:'關閉視窗',exact:true});
+    if(mobile)await close.tap();else await close.click();
+    await checkin.waitFor({state:'hidden'});
+    const lobbyPoint=await frame.evaluate(()=>{
+      const scene=window.__playerScene,canvas=scene.app.canvas.getBoundingClientRect(),bounds=scene.lobbyButton.getBounds();
+      const x=canvas.x+bounds.x+bounds.width/2,y=canvas.y+bounds.y+bounds.height/2;
+      return {x,y,hit:document.elementFromPoint(x,y)?.getAttribute('aria-label')};
+    });
+    assert.equal(lobbyPoint.hit,'返回遊戲大廳','the rendered lobby icon must hit its own DOM button after closing check-in');
+    if(mobile)await page.touchscreen.tap(lobbyPoint.x,lobbyPoint.y);else await page.mouse.click(lobbyPoint.x,lobbyPoint.y);
+    await phase('games');
+    assert.equal(await checkin.isVisible(),false);
+    await frame.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase('characters');
     await page.screenshot({path:output+'/'+who+'-identity-selection.png'});
     await frame.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase('selecting');assert.equal(docs.get(who).balance,9000);
     assert.equal((await playerView()).balance,'9,000');await page.screenshot({path:output+'/'+who+'-identity-table.png'});
@@ -130,13 +146,18 @@ try{
       return {checkin:bounds('.daily-checkin'),tools:bounds('.player-tools')};
     });
     assertSameGameHeader(yakyukenHeader,slotHeader);
-    await frame.locator('#daily-checkin').click();await frame.getByRole('button',{name:/領取.*戲籌/}).click();await frame.waitForFunction(()=>document.querySelector('#balance')?.textContent.replaceAll(',','')==='12000');await frame.locator('#close-dialog').click();
+    assert.equal(await checkinButton.innerText(),checkinCopy);
+    await checkinButton.click();await frame.getByRole('button',{name:/領取.*戲籌/}).click();await frame.waitForFunction(()=>document.querySelector('#balance')?.textContent.replaceAll(',','')==='12000');
+    await frame.getByText('簽到完成！500 戲籌已加入餘額。',{exact:true}).waitFor();
+    await frame.locator('#close-dialog').click();
+    const claimedCopy=await checkinButton.innerText();
     const settlement=page.waitForResponse(r=>r.url().includes('/api/spin'));await frame.locator('#spin').click();const spin=await (await settlement).json();
     await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false&&document.querySelector('#spin').getAttribute('aria-label')!=='快速停止');
     assert.equal(docs.get(who).balance,spin.state.balance);await page.screenshot({path:output+'/'+who+'-slot.png'});
     await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');await frame.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase('characters');
     assert.equal(docs.get(who).balance,spin.state.balance);assert.equal(docs.get(who).checkin.receipt.cycleDay,1);
-    await frame.getByRole('button',{name:'查看週簽到',exact:true}).click();
+    assert.equal(await checkinButton.innerText(),claimedCopy);
+    await checkinButton.click();
     assert.equal(await checkin.locator('.checkin-day.is-complete').count(),1,'Yakyuken shows the check-in claimed in slots');
     assert.equal(await checkin.getByRole('button',{name:'今日獎勵已領取'}).isDisabled(),true);
     await checkin.getByRole('button',{name:'關閉視窗',exact:true}).click();

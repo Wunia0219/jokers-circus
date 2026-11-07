@@ -21,7 +21,7 @@ export class TestWalletClient{
       this.session=renewed;return this.request(action,body,true);
     }
     let data;try{data=await response.json();}catch{throw new Error('測試雲端回應中斷，請重試原操作。');}
-    if(!response.ok)throw Object.assign(new Error(data.error||'測試雲端暫時無法使用。'),{status:response.status});
+    if(!response.ok)throw Object.assign(new Error(data.error||'測試雲端暫時無法使用。'),{status:response.status,code:data.code});
     if(data.wallet?.environment!=='test'||data.wallet?.player!==this.player||data.wallet?.cloud!==true)throw new Error('測試錢包身分不符，已停止連線。');
     if(!this.wallet||data.wallet.revision>=this.wallet.revision){
       const hand=data.nextHand;

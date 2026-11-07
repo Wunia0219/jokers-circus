@@ -21,7 +21,7 @@ export async function yakyukenHeaderBounds(frame){
   return frame.evaluate(()=>{
     const s=window.__playerScene,r=s.app.canvas.getBoundingClientRect();
     const bounds=node=>{const b=node.getBounds();return {x:r.x+b.x,y:r.y+b.y,width:b.width,height:b.height};};
-    return {checkin:bounds(s.checkinButton),tools:bounds(s.hud.getChildByLabel('player-tools-frame'))};
+    return {checkin:s.checkinButton.element.getBoundingClientRect().toJSON(),tools:bounds(s.hud.getChildByLabel('player-tools-frame'))};
   });
 }
 

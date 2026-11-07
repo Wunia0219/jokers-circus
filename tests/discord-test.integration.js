@@ -22,8 +22,10 @@ test('Discord test launch requires signed channel/guild scope; OAuth sessions is
   assert.equal((await rt.call('/api/wallet',{token:a,headers:{Origin:'https://untrusted.invalid'}})).status,403);
   const entry=await rt.call('/api/playtest/begin',{token:a,body:{requestId:'discord-entry-00000001',characterId:'dealer'}});assert.equal(entry.status,200);assert.equal(entry.data.wallet.balance,9000);assert.equal(entry.data.wallet.name,'測試者 A');
   assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,9000);
-  assert.equal((await rt.call('/api/checkin',{token:a,body:{}})).data.state.balance,9500);
-  assert.equal((await rt.call('/api/playtest/checkin',{token:a,body:{requestId:'discord-claim-00000001'}})).data.wallet.balance,9500);
+  const claim=(await rt.call('/api/checkin',{token:a,body:{}})).data;
+  assert.equal(claim.state.balance,9500);assert.deepEqual(claim.entry,{delta:500});assert.equal(claim.duplicate,false);
+  const alreadyClaimed=(await rt.call('/api/playtest/checkin',{token:a,body:{requestId:'discord-claim-00000001'}})).data;
+  assert.equal(alreadyClaimed.wallet.balance,9500);assert.deepEqual(alreadyClaimed.entry,claim.entry);assert.equal(alreadyClaimed.duplicate,true);
   const spinBody={requestId:'discord-spin-00000001',bet:100},spin=await rt.call('/api/spin',{token:a,body:spinBody});assert.equal(spin.status,200);assert.equal(spin.data.state.balance,9500+spin.data.round.net);
   const before=rt.firestoreCalls,replay=await rt.call('/api/spin',{token:a,body:spinBody});assert.deepEqual(replay.data.round,spin.data.round);assert.equal(rt.firestoreCalls,before,'a replay uses its durable receipt without another Firestore read/write');
   assert.equal((await rt.call('/api/spin',{token:a,body:{requestId:'discord-spin-00000002',bet:100}})).status,429);
