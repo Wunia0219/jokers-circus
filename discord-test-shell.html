@@ -3,7 +3,10 @@
 <body>
 <div id="launch-screen" class="app-launch" aria-label="正在載入遊戲" aria-busy="true">
   <div class="launch-art-frame">
-    <img class="launch-art" alt="" decoding="async" fetchpriority="high" hidden>
+    <picture>
+      <source media="(max-aspect-ratio: 1/1)">
+      <img class="launch-art" alt="" decoding="async" fetchpriority="high" hidden>
+    </picture>
     <div class="launch-wordmark" aria-hidden="true">
       <svg class="launch-waves" viewBox="0 0 900 160" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>

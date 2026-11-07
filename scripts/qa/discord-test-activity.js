@@ -95,6 +95,15 @@ try{
     const playerView=(target=frame)=>target.evaluate(()=>{const s=window.__playerScene,b=s.balanceGroup.getBounds();return {name:s.playerNameCaption.text,uid:s.playerIdCaption.text,balance:s.balanceNumber.text,portrait:!!s.hud.getChildByLabel('discord-avatar-image',true),balanceTop:b.y,balanceBottom:b.y+b.height,header:s.layout.ui.headerHeight,contentTop:s.layout.contentTop};});
     await frame.waitForFunction(()=>!!window.__playerScene?.avatarTexture);
     const identity=await playerView();assert.equal(identity.name,'測試者 '+who);assert.equal(identity.uid,'ID '+users[who]);assert.equal(identity.portrait,true);assert.equal(identity.balance,'10,000');assert.ok(identity.balanceTop>=identity.header&&identity.balanceBottom<=identity.contentTop);
+    const operationsBeforeCheckin=financial.length;
+    await frame.getByRole('button',{name:'查看週簽到',exact:true}).click();
+    const checkin=frame.getByRole('dialog',{name:'週簽到',exact:true});
+    assert.equal(await checkin.getByRole('listitem').count(),7);
+    assert.equal(await checkin.locator('[aria-current="step"]').count(),1);
+    assert.equal(financial.length,operationsBeforeCheckin,'viewing check-in never claims the reward');
+    assert.equal((await playerView()).balance,identity.balance);
+    await page.screenshot({path:output+'/'+who+'-checkin.png'});
+    await checkin.getByRole('button',{name:'關閉視窗',exact:true}).click();
     await page.screenshot({path:output+'/'+who+'-identity-selection.png'});
     await frame.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase('selecting');assert.equal(docs.get(who).balance,9000);
     assert.equal((await playerView()).balance,'9,000');await page.screenshot({path:output+'/'+who+'-identity-table.png'});
@@ -127,6 +136,10 @@ try{
     assert.equal(docs.get(who).balance,spin.state.balance);await page.screenshot({path:output+'/'+who+'-slot.png'});
     await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');await frame.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase('characters');
     assert.equal(docs.get(who).balance,spin.state.balance);assert.equal(docs.get(who).checkin.receipt.cycleDay,1);
+    await frame.getByRole('button',{name:'查看週簽到',exact:true}).click();
+    assert.equal(await checkin.locator('.checkin-day.is-complete').count(),1,'Yakyuken shows the check-in claimed in slots');
+    assert.equal(await checkin.getByRole('button',{name:'今日獎勵已領取'}).isDisabled(),true);
+    await checkin.getByRole('button',{name:'關閉視窗',exact:true}).click();
     await frame.getByRole('button',{name:'CG 收藏',exact:true}).click();await frame.getByRole('button',{name:'回顧終幕 CG',exact:true}).click();
     await page.evaluate(()=>{__openAllowed=false;});await frame.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).click();await page.waitForFunction(()=>__links.length===2);
     await frame.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).waitFor({state:'visible'});await page.evaluate(()=>{__openAllowed=true;});

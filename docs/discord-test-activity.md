@@ -41,6 +41,11 @@
 - 本機 `npm run verify:ci -- --suite=browser` **12/12 步通過**（一般回歸 567 項通過、1 項既有條件略過），結果為 `test-results/launch-letter-ripple-browser-ci.log`、`launch-letter-ripple-browser-verification.json`、`launch-letter-ripple-ui-report.json`；純美術預覽三圖動畫另通過。此次只調整文字呈現，未重跑後端服務整合，遠端 CI 未執行。
 - 已發布至既有專用測試 Worker，版本 `3069f6ac-9260-4244-bc2f-13fc4641d3ee`，沿用既有密鑰。公開頁面／CSP／未登入 API 保護及線上根頁、動畫 CSS／JS、三張背景與大廳入口的逐檔位元組比對通過；證據為 `test-results/launch-letter-ripple-deploy.log`、`launch-letter-ripple-public.log`、`launch-letter-ripple-deploy-report.json`、`launch-letter-ripple-deployment.json`。產品版本維持 1.0.2，未 commit、merge 或 push。
 
+## 開場橫直構圖（2026-11-07）
+
+- 三個主題各有一張 941 × 1672 直式 WebP。以既有橫圖為 imagegen 參考，保留荷官的臉、髮色、服裝和原畫風格，將舉牌邀請、捏住輪盤球及拉開紅幕三個動作分別重新構圖。畫面底部留深色空間給即時載入文字。
+- 直式與正方形使用直圖。極窄視窗限制裁切寬度，接近方形的平板和視窗保留側邊留白。橫式使用原畫完整構圖，長寬比差異以背景補足。首次只下載當前比例的圖片，旋轉時切換同主題構圖。
+
 ## 固定環境邊界
 
 | 設定 | 值 |

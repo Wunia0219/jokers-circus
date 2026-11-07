@@ -6,7 +6,7 @@ export const LAUNCH_FADE_MS=320;
 export function createLaunchScreen(root,{random=Math.random}={}){
   const abort=new AbortController(),{signal}=abort,art=chooseLaunchArt(random),image=root.querySelector('.launch-art');
   let disposed=false,failed=false,leaving=false,shownAt=performance.now();
-  root.dataset.art=art.id;root.dataset.stage='connecting';root.style.setProperty('--launch-art-focus',art.focus);
+  root.dataset.art=art.id;root.dataset.stage='connecting';
   const wait=ms=>new Promise(resolve=>{
     if(signal.aborted)return resolve(false);
     const done=()=>{clearTimeout(timer);signal.removeEventListener('abort',cancel);resolve(true);};
@@ -18,13 +18,24 @@ export function createLaunchScreen(root,{random=Math.random}={}){
   const artReady=new Promise(resolve=>{
     let settled=false;
     const finish=ok=>{
-      if(settled)return;settled=true;clearTimeout(timer);image.onload=image.onerror=null;signal.removeEventListener('abort',cancel);
-      if(!disposed){root.dataset.artState=ok?'ready':'fallback';image.hidden=!ok;shownAt=performance.now();}
+      if(disposed||signal.aborted){resolve(false);return;}
+      root.dataset.artState=ok?'ready':'fallback';image.hidden=!ok;
+      if(settled)return;settled=true;clearTimeout(timer);signal.removeEventListener('abort',cancel);
+      shownAt=performance.now();
       resolve(ok);
     };
-    const cancel=()=>finish(false),timer=setTimeout(()=>finish(false),4000);
+    const cancel=()=>{clearTimeout(timer);resolve(false);},timer=setTimeout(()=>finish(false),4000);
     signal.addEventListener('abort',cancel,{once:true});
-    image.onload=()=>{void image.decode().then(()=>finish(true),()=>finish(false));};image.onerror=()=>finish(false);
+    image.addEventListener('load',()=>{
+      const url=image.currentSrc;
+      void image.decode().then(()=>{
+        if(image.currentSrc===url)finish(true);
+      },()=>{
+        if(image.currentSrc===url&&image.complete&&!image.naturalWidth)finish(false);
+      });
+    },{signal});
+    image.addEventListener('error',()=>finish(false),{signal});
+    root.querySelector('picture source').srcset=art.portrait;
     image.src=art.url;
   });
   return {

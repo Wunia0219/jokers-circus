@@ -59,7 +59,7 @@ const KEY='kemet-slot-preview-v2';
 let state, storageAvailable=true;
 try { state=readState(localStorage.getItem(KEY)); } catch { state=freshState();storageAvailable=false; }
 let bet=100, busy=false, presenting=false, ready=false, leavingLobby=false, countAnimation=0, payoutAnimation=0, celebrationTimer=0;
-const scene=new SlotScene(), sound=new Sound({musicUrl:MUSIC_SOURCE,onStateChange:renderAudio});
+const scene=new SlotScene(), sound=new Sound({effectsEnabled:true,musicUrl:MUSIC_SOURCE,onStateChange:renderAudio});
 const bigWin=new BigWinPresentation($('#app'));
 let activityMode='browser', activityUser=null, walletClient=null, claiming=false, toastTimer=0, historySync=null, checkinPanel=null;
 const controls=new SpinControls({
@@ -85,7 +85,11 @@ $('#player-header').append(playerBar.element);
 function renderAudio(){playerBar.audio(sound.state);}
 renderAudio();
 const stopDefaultMusic=startDefaultMusic(sound);
-addEventListener('pagehide',event=>{if(event.persisted)void sound.setVisible(false);else{stopDefaultMusic();sound.dispose();}});
+const effectsInput=new AbortController();
+const unlockEffects=event=>{if(event.isTrusted)void sound.unlockEffects();};
+document.addEventListener('pointerup',unlockEffects,{capture:true,signal:effectsInput.signal});
+document.addEventListener('keydown',unlockEffects,{capture:true,signal:effectsInput.signal});
+addEventListener('pagehide',event=>{if(event.persisted)void sound.setVisible(false);else{effectsInput.abort();stopDefaultMusic();sound.dispose();}});
 addEventListener('pageshow',event=>{if(event.persisted){leavingLobby=false;void sound.setVisible(true);}});
 function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,checkinPreview:!!lobbyPath&&!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(state,{ready,busy,claiming});updateLobbyButton();}
 function updateLobbyButton(){

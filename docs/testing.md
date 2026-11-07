@@ -29,7 +29,7 @@
 | `node scripts/qa/yakyuken-reward.js` | 隔離錢包：造型先於領獎、金額與音效同步、獨立靜音、縮放／背景恢復、重載不重播、勝敗再次挑戰／返回、新場只扣一次費，以及預取後 330ms 翻牌規劃、暫扣結算、原拳重試、缺票券與跨裝置進度衝突 |
 | `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：三張原圖下載、位元組比對、CSP 與僅同源請求；不呼叫錢包 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
-| `node scripts/qa/discord-test-activity.js` | 已建置前端＋真正 Embedded App SDK：三圖×五尺寸的開場讀取／光波／故障與來源驗證，再跑桌機／手機雙遊戲；不連接真實 Discord 帳號 |
+| `node scripts/qa/discord-test-activity.js` | 使用已建置前端、真正的 Embedded App SDK 與隔離帳號。三主題各跑 13 種尺寸，驗證橫直切換、人物裁切、文字安全區、開場故障與來源，再跑桌機／手機雙遊戲及共用簽到 |
 | `node scripts/qa/test-firestore.js tests/discord-test.integration.js` | 官方 emulator＋真正 workerd：Discord 簽章／頻道、OAuth、每位玩家、共用錢包／簽到與重啟 |
 | `node --test tests/cloudflare-usage.test.js tests/monitor.test.js` | Free 門檻／Paid 觀測、方案切換、跨日、通知意圖、429／未知送出、可信附件恢復；不聯絡正式服務 |
 | `npm run build`、`cloud:build`、`monitor:build` | 前端與 Worker dry-run，不部署 |
@@ -53,7 +53,7 @@ Discord SDK 隔離測試預設使用 4195；若正在開啟同埠的野球拳預
 
 快停案例以動畫階段同步原按鈕／觸控操作：早期與晚期案例暫停測試 ticker，排隊案例暫扣模擬回應，並斷言輸入確實發生於指定階段；晚期快停必須保留全部落地時間。`npm run test:experience -- --slow-frames --slow-input` 再將第二次操作延後兩秒，驗證 CI 輸入延遲不會改變測試情境。這些案例的牆鐘時間包含測試等待，不作效能基準。
 
-音效按鈕是畫面內的頂部控制，停輪測試以 Playwright `scroll: 'none'` 點擊，避免曾在 Windows Chromium 卡住的自動捲動命令；仍保留可見、穩定、啟用與命中目標檢查，並確認只有一次真實點擊且音效已啟用。隔離反向案例驗證停用、遮擋、畫面外、隱藏與持續移動的按鈕都會失敗；延遲啟用案例確認實際可操作後才點擊。這不變更正式遊戲的音效或動畫。
+音效按鈕是畫面內的頂部控制，停輪測試以 Playwright `scroll: 'none'` 點擊，避開曾在 Windows Chromium 卡住的自動捲動命令。測試確認音效預設開啟、首次互動後能播放，手動靜音與重新開啟各只需一次真實點擊。隔離反向案例驗證停用、遮擋、畫面外、隱藏與持續移動的按鈕都會失敗。延遲啟用案例會等按鈕實際可操作後才點擊。
 
 CSP 注入測試等待非同步違規通知，確認 `script-src-elem` 對 `inline` 執行實際阻擋（`enforce`），再檢查注入腳本未執行；通知未到仍會逾時失敗，不更改正式安全政策。`npm run test:security -- --delayed-csp-report` 將測試收集通知的時間延後 500ms，防止重新引入立即讀取的競態。
 

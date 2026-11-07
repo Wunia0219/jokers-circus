@@ -89,7 +89,7 @@ const assertHeader=async(page,screen)=>{
   if(screen==='games'){
     assert.equal(await page.getByRole('button',{name:'CG 收藏',exact:true}).count(),0,'lobby has no game header');
   }else{
-    const checkin=page.getByRole('button',{name:'週簽到・介面預覽',exact:true}),h=slotHeaderLayout(width,height);
+    const checkin=page.getByRole('button',{name:'查看週簽到',exact:true}),h=slotHeaderLayout(width,height);
     assert.equal(await checkin.count(),1,'slot-style checkin placeholder is present');
     const checkinBox=await checkin.boundingBox();
     for(const key of ['x','y','width','height'])assert.ok(Math.abs(checkinBox[key]-h.checkin[key])<1,'checkin matches slot geometry');
@@ -132,8 +132,11 @@ const startTable=async(page,screenshots)=>{
   await assertTableWings(page);
   await assertHeader(page,'table');
   assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),true,'each game starts with music enabled');
-  await page.getByRole('button',{name:'週簽到・介面預覽',exact:true}).click();
-  assert.equal((await canvasState(page)).modal || '','','checkin remains a UI-only placeholder');
+  await page.getByRole('button',{name:'查看週簽到',exact:true}).click();
+  const checkin=page.getByRole('dialog',{name:'週簽到',exact:true});
+  assert.equal(await checkin.getByRole('listitem').count(),7);
+  assert.equal(await checkin.getByRole('button',{name:'週簽到預覽',exact:true}).isDisabled(),true);
+  await page.keyboard.press('Escape');await checkin.waitFor({state:'hidden'});
   await page.keyboard.press('Enter');assert.equal((await canvasState(page)).entries,'1','duplicate entry input cannot start a second session');
 };
 try {

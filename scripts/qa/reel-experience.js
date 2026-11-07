@@ -61,9 +61,15 @@ try{
   });
   await page.goto('http://127.0.0.1:4194/?wallet=local&platform=desktop');
   await page.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);
-  report.currentCase='enable-audio';
+  report.currentCase='default-audio-and-mute';
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true','sound is selected before any gesture');
+  assert.equal(await page.evaluate(()=>__qaSound.context),null,'the default waits for a gesture before creating an audio context');
+  await page.mouse.click(10,10);await page.waitForFunction(()=>__qaSound.context?.state==='running');
+  await clickSoundButton(page);await page.waitForFunction(()=>!__qaSound.enabled);
+  await page.mouse.click(10,10);
+  assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'false','another gesture does not override mute');
   await clickSoundButton(page);await page.waitForFunction(()=>__qaSound.enabled);
-  assert.deepEqual((await page.evaluate(()=>__qaSoundInputs)).map(input=>input.trusted),[true],'audio enabled by exactly one real button click');
+  assert.deepEqual((await page.evaluate(()=>__qaSoundInputs)).map(input=>input.trusted),[true,true],'mute and re-enable each use exactly one real button click');
   assert.equal(await page.locator('#sound').getAttribute('aria-pressed'),'true');
   if(slowFrames)await page.evaluate(()=>{__qaScene.app.ticker.maxFPS=5;});
   for(const [name,delay] of [['normal',0],['early-quick',0],['queued-quick',1500],['late-quick',0]]){
@@ -198,8 +204,10 @@ try{
     await new Promise(resolve=>setTimeout(resolve,600));await mobileSpinGate;await route.fulfill({json:{...update,state:mobileState}});
   });
   await mobile.goto('http://127.0.0.1:4194/?wallet=local&platform=mobile');await mobile.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);
+  assert.equal(await mobile.locator('#sound').getAttribute('aria-pressed'),'true');
   if(slowFrames)await mobile.evaluate(()=>{__qaScene.app.ticker.maxFPS=5;});
   await mobile.locator('#spin').tap();
+  await mobile.waitForFunction(()=>__qaSound.context?.state==='running');
   if(slowInput)await mobile.waitForTimeout(2000);
   await mobile.locator('#spin').tap();
   await mobile.waitForFunction(()=>__qaTimeline.some(event=>event.kind==='quick-request'));
@@ -211,7 +219,7 @@ try{
   assertReelCadence(touchSounds,'mobile touch');
   assert.equal(mobileRequests,1);assert.equal(mobileState.history.length,1);
   await mobile.screenshot({path:out+'/mobile.png'});await mobileContext.close();
-  report.checks.push('mobile touch queues one silent quick stop during network latency and retains the same ordered landing cadence');
+  report.checks.push('first mobile spin unlocks default effects, queues one quick stop during network latency and retains the same ordered landing cadence');
   assert.deepEqual(report.errors,[]);
   await writeFile(out+'/report.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
 }catch(error){

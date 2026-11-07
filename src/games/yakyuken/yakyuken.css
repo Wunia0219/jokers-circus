@@ -1,6 +1,14 @@
-/* Bootstrap only. Background, table, cards, buttons, dialogs and text are Pixi. */
+/* Bootstrap and the shared HTML weekly check-in dialog. */
 :root{color-scheme:dark;background:#0b1020;font-family:'Noto Sans TC',sans-serif;--safe-top:var(--discord-safe-area-inset-top,env(safe-area-inset-top,0px));--safe-bottom:var(--discord-safe-area-inset-bottom,env(safe-area-inset-bottom,0px));--safe-left:var(--discord-safe-area-inset-left,env(safe-area-inset-left,0px));--safe-right:var(--discord-safe-area-inset-right,env(safe-area-inset-right,0px))}
 html,body{width:100%;height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
 /* Match the slot's usable viewport; ResizeObserver fits Pixi to this area. */
 #yakyuken-app{position:fixed;inset:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);overflow:hidden;background:#0b1020;color:#fff0d5}
 #yakyuken-app>canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
+#yakyuken-app .checkin-dialog{box-sizing:border-box;max-width:calc(100% - var(--safe-left) - var(--safe-right) - 24px);max-height:min(85dvh,calc(100% - var(--safe-top) - var(--safe-bottom) - 24px));inset:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);border:1px solid #c79d60;color:#f6e7d7;box-shadow:0 20px 100px #0008}
+#yakyuken-app .checkin-dialog[open]{display:flex;flex-direction:column}
+#yakyuken-app .checkin-dialog::backdrop{background:#13081dd9;backdrop-filter:blur(6px)}
+#yakyuken-app .dialog-head{display:flex;flex:none;justify-content:space-between;align-items:center;gap:12px}
+#yakyuken-app .dialog-head h2{margin:0;font-size:19px;font-weight:500;color:#f5d28c}
+#yakyuken-app .dialog-head button{flex:none;display:grid;place-items:center;width:44px;height:44px;border:1px solid #c79a5f45;border-radius:50%;background:#281b2a88;color:#f5d28c;cursor:pointer}
+#yakyuken-app .dialog-head svg{width:20px;height:20px}
+#yakyuken-app #dialog-body{min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#b88d54 #24172c}

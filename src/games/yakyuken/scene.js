@@ -28,6 +28,7 @@ import {waitForEntryTask} from './pixi/entry-state.js';
 import {slotEntryPath} from '../../platform/game-navigation.js';
 import {loadPlayerPortrait,updateBalance} from './pixi/player-display.js';
 import {RewardPresentation} from './reward-presentation.js';
+import {createCheckinDialog} from './checkin-dialog.js';
 
 // The release entry stays separate; only the explicit test preview uses a wallet.
 export class YakyukenScene {
@@ -420,8 +421,8 @@ export class YakyukenScene {
   }
 
   openModal(type) {
-    if(this.settling||this.rewardPresentation.busy||this.wallet?.pending&&type!=='wallet-error')return;
-    if(!['menu','collection','cg','history','settings','leave','wallet-error'].includes(type))return;
+    if(this.settling||this.rewardPresentation.busy||this.wallet?.pending)return;
+    if(!['menu','collection','cg','history','settings','leave'].includes(type))return;
     if(type==='cg' && !this.archive.isUnlocked(this.selectedCharacter,this.cgIndex))return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.phase === 'presenting' || this.changing)return;
     this.closeModal();this.modal=type;this.buildModal(type);
@@ -438,12 +439,29 @@ export class YakyukenScene {
   }
   buildModal(type) { buildSlotDialog(this,type); }
 
+  showCheckin(){
+    if(this.disposed||this.modal||this.settling||this.rewardPresentation.busy||this.phase==='presenting'||this.entering||this.changing||this.ending)return;
+    this.checkinDialog??=createCheckinDialog(this.host,()=>void this.claimDaily());
+    if(this.checkinDialog.open)return;
+    this.checkinDialog.update(this.wallet,false);
+    this.checkinDialog.show();
+  }
+
   async claimDaily(){
-    if(!this.wallet||this.settling||this.rewardPresentation.busy||this.wallet.pending&&this.wallet.pending.action!=='checkin'||this.phase==='presenting'||this.entering)return;
-    this.walletError=null;
+    const dialog=this.checkinDialog, retry=this.wallet?.pending?.action==='checkin';
+    if(!dialog?.open||!this.wallet||this.settling||(this.wallet.pending&&!retry)||(this.wallet.wallet.checkinView.claimed&&!retry))return;
     this.settling=true;this.updateControls();
-    try{await this.wallet.checkin();}catch(error){this.walletError=error.message;}
-    finally{this.settling=false;if(!this.disposed){this.updateControls();if(this.walletError)this.openModal('wallet-error');}}
+    dialog.message('');dialog.update(this.wallet,true);
+    let error;
+    try{await this.wallet.checkin();}catch(failure){error=failure;}
+    finally{
+      this.settling=false;
+      if(!this.disposed){
+        this.updateControls();dialog.update(this.wallet,false);
+        if(error)dialog.message(error.message);
+        else dialog.message('今日簽到已完成。','success');
+      }
+    }
   }
 
   async changePose(index) {
@@ -479,6 +497,7 @@ export class YakyukenScene {
     if(stage!==this.rewardPresentation.stage)this.updateControls();else updateBalance(this);
   }
   keydown(event) {
+    if(this.checkinDialog?.open)return;
     if(event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || this.disposed || this.entering || this.entryOverlay || this.ending || this.rewardPresentation.busy || document.hidden)return;
     if(event.key==='Escape'){event.preventDefault();if(this.modal)this.closeModal();else if(!this.changing && this.screen!=='games')this.openModal('menu');return;}
     if(this.modal==='history' && ['ArrowDown','ArrowUp','PageDown','PageUp','Home','End'].includes(event.key)){
@@ -496,6 +515,7 @@ export class YakyukenScene {
     this.rewardPresentation.clear();
     if(this.rewardReveal){this.app.ticker.remove(this.rewardReveal);this.rewardReveal=null;}
     if(this.disposed)return;this.disposed=true;this.archive.leave(this.matchId);this.matchId=null;this.abort.abort();this.observer?.disconnect();if(this.resizeFrame)cancelAnimationFrame(this.resizeFrame);this.motion.destroy();this.wardrobe?.destroy();this.wardrobe=null;this.entryOverlay?.destroy();this.entryOverlay=null;this.audio.destroy();
+    this.checkinDialog?.destroy();
     if(this.initialized){this.app.stop();this.app.destroy({removeView:true,releaseGlobalResources:true},{children:true});}
     destroyWardrobeBackdrop(this.wardrobeBackdrop);this.wardrobeBackdrop=null;
     this.entryGradients?.forEach(gradient=>gradient.destroy());this.entryGradients=null;

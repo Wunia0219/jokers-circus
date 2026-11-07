@@ -46,10 +46,11 @@ export function createWeeklyCheckin({onClaim}){
         gift.innerHTML=icon(day.status==='complete'?'check':i===6?'gift':'coin');amount.querySelector('strong').textContent=fmt(day.reward);
       });
       action.disabled=view.disabled;action.setAttribute('aria-busy',String(view.claiming));
-      action.textContent=view.claiming?'正在領取獎勵…':view.claimed?'今日獎勵已領取':`領取 ${fmt(view.today)} 戲籌`;
+      action.textContent=view.claiming?'正在領取獎勵…':options?.preview?'週簽到預覽':view.retry?'重試簽到':view.claimed?'今日獎勵已領取':`領取 ${fmt(view.today)} 戲籌`;
       next.textContent=view.claimed?`明天第 ${view.nextDay} 天，可領 ${fmt(view.nextReward)} 戲籌。`:`完成今日簽到，明天第 ${view.nextDay} 天可領 ${fmt(view.nextReward)} 戲籌。`;
       if(view.legacy)next.textContent='今天的獎勵已領取，明天開始累積七日簽到。';
       else if(view.claimed&&view.today!==view.rewards[view.day-1])next.textContent=`今日已按原獎勵金額領取 ${fmt(view.today)} 戲籌；明天第 ${view.nextDay} 天可領 ${fmt(view.nextReward)} 戲籌。`;
+      if(options?.preview)next.textContent='連線錢包後即可領取簽到獎勵。';
     },
   };
 }

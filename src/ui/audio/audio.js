@@ -6,7 +6,6 @@ const defaultContext=()=>{
 };
 
 export class Sound {
-  enabled=false;
   musicEnabled=false;
   musicPending=false;
   context=null;
@@ -16,8 +15,9 @@ export class Sound {
   effectsRequest=0;
   musicRequest=0;
 
-  constructor({contextFactory=defaultContext,musicUrl=null,musicFactory=url=>new globalThis.Audio(url),isHidden=()=>globalThis.document?.hidden===true,onStateChange=()=>{}}={}){
+  constructor({effectsEnabled=false,contextFactory=defaultContext,musicUrl=null,musicFactory=url=>new globalThis.Audio(url),isHidden=()=>globalThis.document?.hidden===true,onStateChange=()=>{}}={}){
     Object.assign(this,{contextFactory,isHidden,onStateChange});
+    this.enabled=effectsEnabled;
     this.music=musicUrl?musicFactory(musicUrl):null;
     if(this.music){
       this.music.loop=true;this.music.preload='none';this.music.volume=.16;
@@ -30,7 +30,7 @@ export class Sound {
   async prepareContext(){
     this.context ||= this.contextFactory();
     if(!this.context)return false;
-    if(!this.effectsGain){this.effectsGain=this.context.createGain();this.effectsGain.gain.value=0;this.effectsGain.connect(this.context.destination);}
+    if(!this.effectsGain){this.effectsGain=this.context.createGain();this.effectsGain.gain.value=this.enabled?EFFECTS_VOLUME:0;this.effectsGain.connect(this.context.destination);}
     await this.context.resume();
     return this.context.state==='running';
   }
@@ -47,6 +47,16 @@ export class Sound {
     this.changed();return this.enabled;
   }
   enable(){return this.setEffectsEnabled(true);}
+  unlockEffects(){
+    if(!this.enabled||this.context?.state==='running'||this.suspended||this.isHidden())return;
+    const request=this.effectsRequest;
+    this.effectsUnlock=this.prepareContext().then(ready=>{
+      if(ready&&request===this.effectsRequest&&this.enabled&&!this.suspended&&!this.isHidden()){
+        this.effectsGain.gain.setValueAtTime(EFFECTS_VOLUME,this.context.currentTime);
+      }
+    }).catch(()=>{ /* A later gesture may unlock playback. */ });
+    return this.effectsUnlock;
+  }
   async setMusicEnabled(enabled,{retryBlockedPlayback=false}={}){
     const request=++this.musicRequest;
     this.musicPending=false;
@@ -99,17 +109,22 @@ export class Sound {
       oscillator.start(start);oscillator.stop(start+voice.duration+.005);
     }
   }
-  spin(){this.play('spin');}
+  spin(){
+    if(this.context?.state==='running'){this.play('spin');return;}
+    const request=this.effectsRequest,unlock=this.effectsUnlock;
+    void unlock?.then(()=>{if(request===this.effectsRequest&&unlock===this.effectsUnlock)this.play('spin');});
+  }
   stop(index){this.play('stop',index);}
   win(kind='small'){this.play(kind===true?'big':kind===false?'small':kind);}
   async setVisible(visible){
     this.suspended=!visible;
     if(!visible){
+      this.effectsUnlock=null;
       this.stopEffects();this.music?.pause();
       try{await this.context?.suspend();}catch{ /* Visibility must never interrupt the game. */ }
       return;
     }
-    if(this.enabled)await this.setEffectsEnabled(true);
+    if(this.enabled&&this.context)await this.unlockEffects();
     if(this.musicEnabled)await this.setMusicEnabled(true,{retryBlockedPlayback:true});
   }
   dispose(){

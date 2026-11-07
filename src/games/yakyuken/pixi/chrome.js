@@ -59,7 +59,7 @@ export function buildSlotHud(scene){
   while(name.width>Math.min(320,textWidth)&&name.text.length>1)name.text=name.text.replace(/…$/,'').slice(0,-1)+'…';
   scene.playerIdCaption=leftLabel(identity.detail,small?11:12,0xd7bfbf,textX,identityY+3,hud,{wordWrap:true,breakWords:true,wordWrapWidth:textWidth,align:'left',lineHeight:small?17.6:19.2});scene.playerIdCaption.anchor.y=0;
   buildBalance(scene,hud,width,headerHeight);
-  const c=h.checkin,checkin=at(new PixiButton({name:scene.wallet?'領取測試週簽到':'週簽到・介面預覽',width:c.width,height:56,onPress:()=>scene.claimDaily()}),c.x+c.width/2,c.y+28,hud);checkin.cursor=scene.wallet?'pointer':'default';scene.checkinButton=checkin;
+  const c=h.checkin,checkin=at(new PixiButton({name:'查看週簽到',width:c.width,height:56,onPress:()=>scene.showCheckin()}),c.x+c.width/2,c.y+28,hud);scene.checkinButton=checkin;
   checkin.background.clear().roundRect(-c.width/2,-28,c.width,56,12).fill(new FillGradient({start:{x:0,y:0},end:{x:1,y:.2},colorStops:[{offset:0,color:0x73452f},{offset:1,color:0x5c2f39}]})).stroke({color:0xc79a5f,width:1});
   const copyWidth=6*(narrow?11:12),giftSize=narrow?18:20,giftGap=narrow?8:10;
   const contentX=-(copyWidth+(small?0:giftSize+giftGap))/2;
@@ -98,9 +98,8 @@ export function updateSlotHud(scene){
   updateBalance(scene);
   if(scene.wallet&&scene.checkinCopy&&!scene.checkinCopy.destroyed){
     const view=scene.wallet.wallet.checkinView,retry=scene.wallet.pending?.action==='checkin';scene.checkinCopy.text=retry?'點此重試簽到':view.claimed?'今日已領取':`領取 ${view.daily.toLocaleString('en-US')} 戲籌`;
-    scene.checkinButton.setName(retry?'重試測試週簽到':'領取測試週簽到');
-    scene.checkinButton.setEnabled(!view.claimed&&!scene.settling&&!scene.rewardPresentation.busy&&(!scene.wallet.pending||retry));
   }
+  scene.checkinButton?.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&scene.phase!=='presenting'&&!scene.changing&&!scene.ending);
   scene.lobbyButton?.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.wallet?.pending&&scene.phase!=='presenting' && !scene.changing && !scene.ending);
   scene.collectionButton?.setEnabled(!scene.rewardPresentation.busy);scene.historyButton?.setEnabled(!scene.rewardPresentation.busy);
   if(scene.screen!=='table' || !scene.confirmButton)return;
