@@ -679,7 +679,7 @@ try {
   entryEvidence.push({covering,revealing,stages:entryStages});
   checks.push('lobby-to-Yakyuken shows its independent logo and real preparation meter before character selection');
 
-  // Both in-game routes are plain fades; inspect their actual middle frames.
+  // The table shows a meter while returning to the lobby retains its plain fade.
   for(const kind of ['table','lobby']){
     const trigger=entry.getByRole('button',{name:kind==='table'?'進入野球拳試玩':'返回遊戲大廳',exact:true});
     await trigger.waitFor();
@@ -688,14 +688,15 @@ try {
     if(kind==='lobby'){await entry.evaluate(()=>window.__yakyukenTest.app.render());await entry.getByRole('button',{name:'確認離開',exact:true}).click();}
     await phase(entry,'entering');
     await tickEntry(entry,ENTRY_TIMING.cover/2);
-    assert.equal((await canvasState(entry)).entryKind,kind);assert.equal(await entry.getByRole('progressbar').count(),0);
-    assert.ok(await entry.evaluate(()=>{const overlay=window.__yakyukenTest.entryOverlay;return overlay.cover.value>0 && overlay.cover.value<1 && overlay.root.children.length===1 && !overlay.content;}),'fade-out contains only its plain cover');
+    assert.equal((await canvasState(entry)).entryKind,kind);assert.equal(await entry.getByRole('progressbar').count(),kind==='table'?1:0);
+    assert.ok(await entry.evaluate(kind=>{const overlay=window.__yakyukenTest.entryOverlay;return overlay.cover.value>0&&overlay.cover.value<1
+      &&(kind==='table'?overlay.content.alpha===overlay.cover.value:overlay.root.children.length===1&&!overlay.content);},kind),'the table loader fades with its cover');
     await entry.keyboard.press('Enter');await entry.keyboard.press('Escape');
     await entry.screenshot({path:`${output}/${kind}-fade-out.png`});
     await tickEntry(entry,ENTRY_TIMING.cover/2);
     await entry.waitForFunction(()=>document.querySelector('canvas')?.dataset.entryStage==='revealing');
     await tickEntry(entry,ENTRY_TIMING.reveal/2);
-    assert.equal(await entry.getByRole('progressbar').count(),0);
+    assert.equal(await entry.getByRole('progressbar').count(),kind==='table'?1:0);
     const fade=await entry.evaluate(()=>{const scene=window.__yakyukenTest;return {alpha:scene.entryOverlay.cover.value,zoom:scene.world.scale.x,cards:scene.playerCards.map(card=>({y:card.y,baseY:card.baseY,alpha:card.alpha}))};});
     assert.ok(fade.alpha>0 && fade.alpha<1);assert.equal(fade.zoom,1);
     for(const card of fade.cards){assert.equal(card.y,card.baseY);assert.equal(card.alpha,1);}
@@ -705,7 +706,7 @@ try {
     await tickEntry(entry,ENTRY_TIMING.reveal/2);await entry.evaluate(()=>window.__yakyukenTest.app.start());await phase(entry,kind==='table'?'selecting':'games');
     assert.equal((await canvasState(entry)).entries,'1');
   }
-  checks.push('Yakyuken selection-to-table and table-to-lobby use only fade-out/fade-in, with no logo, meter, zoom or card choreography');
+  checks.push('Yakyuken selection-to-table keeps its logo and progress visible through the transition; returning to the lobby stays a plain fade');
   await entry.close();
 
   const recoveryContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});

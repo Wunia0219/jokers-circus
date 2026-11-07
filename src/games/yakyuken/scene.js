@@ -235,9 +235,11 @@ export class YakyukenScene {
     const source=this.screen;this.closeModal();this.app.canvas.dataset.entryKind=kind;
     this.entryOverlay?.destroy();this.entering=true;
     this.world.interactiveChildren=false;this.world.accessibleChildren=false;this.updateControls();
-    if(kind==='game')this.entryGradients ??=createYakyukenEntryGradients();
-    const Presentation=kind==='game'?YakyukenEntryLoading:YakyukenScreenFade;
+    const branded=kind==='game'||kind==='table';
+    if(branded)this.entryGradients ??=createYakyukenEntryGradients();
+    const Presentation=branded?YakyukenEntryLoading:YakyukenScreenFade;
     const overlay=this.entryOverlay=new Presentation({app:this.app,logoTexture:this.entryLogoTexture,reduced:this.motion.reduced,gradients:this.entryGradients,covered:kind==='arrival',
+      table:kind==='table',
       onChange:state=>{
         if(this.disposed)return;
         Object.assign(this.app.canvas.dataset,{entryStage:state.stage,entryProgress:String(Math.floor(state.target)),entryDisplayed:String(Math.floor(state.displayed))});
@@ -267,10 +269,13 @@ export class YakyukenScene {
     try{
       await overlay.open();if(this.disposed)return false;
       if(kind==='game' && !await waitForEntryTask(this.prepareEntry(overlay),this.abort.signal))return false;
-      if(this.wallet&&kind==='table')await this.wallet.begin(this.selectedCharacter);
+      if(this.wallet&&kind==='table'){
+        overlay.update(24,'正在確認入場與戲籌…');
+        await this.wallet.begin(this.selectedCharacter);
+      }
       if(this.wallet&&kind==='lobby')await this.wallet.leave(this.matchId);
       if(this.disposed)return false;
-      overlay.update?.(76,'正在準備選角舞台…');
+      overlay.update?.(76,kind==='table'?'正在準備牌桌…':'正在準備選角舞台…');
       this.screen=kind==='table'?'table':kind==='game' || kind==='reselect'?'characters':'games';this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.handTurn=null;
       if(kind==='table'){
         const active=this.wallet?.active();this.selectedCharacter=active?.characterId??this.selectedCharacter;

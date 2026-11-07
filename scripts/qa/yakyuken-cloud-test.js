@@ -95,9 +95,19 @@ try{
     assert.equal(await checkin.locator('.checkin-day.is-complete').count(),1);
     checks.push('seven-day schedule stays viewable after a retry credits the daily claim once');
     const other=await context.newPage();await other.goto('http://127.0.0.1:4201/yakyuken-preview.html?testPlayer=qa-b');await phase(other,'games');assert.equal((await wallet(other)).balance,10000);assert.equal((await wallet(other)).records.length,0);checks.push('test players remain isolated');
+    await other.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(other,'characters');
+    failAction='begin';await other.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();
+    const retryEntry=other.getByRole('button',{name:'重試野球拳轉場',exact:true});
+    await retryEntry.waitFor();
+    assert.equal(await other.getByRole('button',{name:'取消野球拳轉場',exact:true}).count(),0,'an unconfirmed charge requires retrying the original request');
+    const originalEntry=docs.get('qa-b').activeId;
+    assert.equal(docs.get('qa-b').balance,9000);
+    await retryEntry.click();await phase(other,'selecting');
+    assert.equal((await wallet(other)).activeId,originalEntry);assert.equal((await wallet(other)).balance,9000);
+    checks.push('lost entry response retries the original charge from the loader without charging twice');
     await other.goto('http://127.0.0.1:4201/yakyuken-preview.html?testPlayer=qa-low');await phase(other,'games');await other.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(other,'characters');
     await other.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await other.waitForFunction(()=>window.__cloudScene.entryOverlay?.stage==='error');
-    assert.equal((await wallet(other)).balance,50);assert.ok(await other.evaluate(()=>window.__cloudScene.entryOverlay.errorMessage.includes('戲籌不足')));
+    assert.equal((await wallet(other)).balance,50);assert.ok(await other.evaluate(()=>window.__cloudScene.entryOverlay.message.includes('戲籌不足')));
     await other.getByRole('button',{name:'取消野球拳轉場',exact:true}).click();await other.waitForFunction(()=>!window.__cloudScene.entryOverlay);checks.push('insufficient funds show a clear reason and allow returning without a debit');
   }
   assert.deepEqual(errors,[]);writeFileSync(output+'/report.json',JSON.stringify({ok:true,live,player,checks,errors},null,2)+'\n');console.log(JSON.stringify({ok:true,live,checks:checks.length,output}));

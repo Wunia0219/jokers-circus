@@ -121,7 +121,26 @@ try{
     assert.equal(await checkin.isVisible(),false);
     await frame.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase('characters');
     await page.screenshot({path:output+'/'+who+'-identity-selection.png'});
-    await frame.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase('selecting');assert.equal(docs.get(who).balance,9000);
+    let releaseEntry;
+    const entryHeld=new Promise(resolve=>{releaseEntry=resolve;});
+    const holdEntry=async route=>{await entryHeld;await route.continue();};
+    await page.route('**/api/playtest/begin',holdEntry);
+    try{
+      const start=frame.getByRole('button',{name:'進入野球拳試玩',exact:true});
+      await Promise.all([page.waitForRequest('**/api/playtest/begin'),mobile?start.tap():start.click()]);
+      await frame.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).waitFor();
+      const loading=await frame.evaluate(()=>{
+        const {entryOverlay,app,entries}=window.__playerScene;
+        const logo=entryOverlay.content.getChildByLabel('yakyuken-loading-logo');
+        return {stage:app.canvas.dataset.entryStage,progress:entryOverlay.target,visible:entryOverlay.content.visible,
+          logo:logo.width>0&&logo.height>0,status:entryOverlay.status.text,entries};
+      });
+      assert.deepEqual(loading,{stage:'loading',progress:24,visible:true,logo:true,status:'正在確認入場與戲籌…',entries:0});
+      assert.equal(await frame.getByRole('button',{name:'確認出牌',exact:true}).count(),0);
+      await page.screenshot({path:output+'/'+who+'-yakyuken-entry-wait.png'});
+    }finally{releaseEntry();await page.unroute('**/api/playtest/begin',holdEntry);}
+    await phase('selecting');assert.equal(docs.get(who).balance,9000);
+    assert.equal(await frame.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).count(),0);
     assert.equal((await playerView()).balance,'9,000');await page.screenshot({path:output+'/'+who+'-identity-table.png'});
     for(let i=0;i<2;i++){
       if(i){await frame.getByRole('button',{name:'下一局',exact:true}).click();await phase('selecting');}
@@ -137,7 +156,18 @@ try{
     await frame.getByRole('button',{name:'關閉視窗',exact:true}).click();await page.screenshot({path:output+'/'+who+'-yakyuken.png'});
     await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');
     atlasRecovery.push({device:mobile?'mobile':'desktop',...await verifySlotAtlasRecovery(page,async()=>{
-      await frame.getByRole('button',{name:'選擇老虎機',exact:true}).click();await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);
+      let releaseWallet;
+      const walletHeld=new Promise(resolve=>{releaseWallet=resolve;});
+      const holdWallet=async route=>{await walletHeld;await route.continue();};
+      await page.route('**/api/wallet',holdWallet);
+      try{
+        await frame.getByRole('button',{name:'選擇老虎機',exact:true}).click();
+        await frame.locator('#loading-track').waitFor();
+        await frame.waitForFunction(()=>{const image=document.querySelector('.loading-logo img');return image?.complete&&image.naturalWidth>0;});
+        assert.ok(Number(await frame.locator('#loading-track').getAttribute('aria-valuenow'))<100);
+        await page.screenshot({path:output+'/'+who+'-slot-entry-wait.png'});
+      }finally{releaseWallet();await page.unroute('**/api/wallet',holdWallet);}
+      await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);
     })});
     assert.equal(new URL(frame.url()).pathname,'/slot/');assert.equal((await page.evaluate(()=>__commands)).filter(x=>x==='HANDSHAKE').length,1,'persistent shell retains one live SDK connection across games');for(const [key,value] of Object.entries({discord_shim:'1',location_id:'fixture-location',mobile_app_version:'300.0'}))assert.equal(new URL(frame.url()).searchParams.get(key),value);assert.equal(new URL(frame.url()).searchParams.get('channel_id'),TEST_CHANNEL);assert.equal((await frame.locator('#balance').textContent()).replaceAll(',',''),'11500');
     assert.equal(await frame.locator('#player-name').textContent(),identity.name);assert.equal(await frame.locator('#player-id').textContent(),identity.uid);await frame.locator('.player-avatar-image:not([hidden])').waitFor();
