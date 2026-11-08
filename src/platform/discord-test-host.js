@@ -2,8 +2,13 @@ import {authenticateActivity} from './discord-auth.js';
 
 // Only the test shell owns the SDK. Child documents reuse it without sending a
 // second handshake to Discord; OAuth tokens never cross this boundary.
-export function createDiscordTestHost({activity,location,clientId,fetchImpl=globalThis.fetch}){
+export function createDiscordTestHost({activity,location,clientId,music=null,fetchImpl=globalThis.fetch}){
   const scope=['frame_id','instance_id','guild_id','channel_id','platform'];
+  const source=new URL(location.href);
+  const inScope=childLocation=>{
+    const target=new URL(childLocation.href);
+    return target.origin===source.origin&&['/yakyuken-preview.html','/slot/'].includes(target.pathname)&&scope.every(key=>target.searchParams.get(key)===source.searchParams.get(key));
+  };
   let renewal=null;
   const renew=()=>renewal||=(async()=>{
     const next=await authenticateActivity(activity.sdk,clientId,fetchImpl,true);
@@ -12,9 +17,9 @@ export function createDiscordTestHost({activity,location,clientId,fetchImpl=glob
     return next.session;
   })().finally(()=>{renewal=null;});
   return Object.freeze({
+    musicFor(childLocation){return inScope(childLocation)?music:null;},
     async connect(childLocation){
-      const target=new URL(childLocation.href),source=new URL(location.href);
-      if(target.origin!==source.origin||!['/yakyuken-preview.html','/slot/'].includes(target.pathname)||scope.some(key=>target.searchParams.get(key)!==source.searchParams.get(key)))throw new Error('測試活動連線範圍不符。');
+      if(!inScope(childLocation))throw new Error('測試活動連線範圍不符。');
       let response=await fetchImpl('/api/session',{headers:{Authorization:'Bearer '+activity.session.token},cache:'no-store',signal:AbortSignal.timeout(15000)});
       if(response.status===401){await renew();response=await fetchImpl('/api/session',{headers:{Authorization:'Bearer '+activity.session.token},cache:'no-store',signal:AbortSignal.timeout(15000)});}
       if(!response.ok)throw new Error('測試登入驗證失敗，請關閉活動後重新啟動。');

@@ -25,6 +25,7 @@ export function productionBoundary(){
     resolveId(source,importer){if(active&&importer&&testImports.has(resolve(dirname(importer),source)))return productionPlatform;},
     load(id){if(id===productionPlatform)return `
       export const discordTestBuild=false;
+      export const discordTestMusic=()=>null;
       export const slotLobbyPath=()=>null;
       export const canReturnToLobby=()=>false;
       export const testSessionFetch=()=>undefined;

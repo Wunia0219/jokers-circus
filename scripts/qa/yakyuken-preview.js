@@ -26,7 +26,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
       return {code:code.replace('this.host = host;','globalThis.__yakyukenTest=this;this.host = host;')
         .replace('playChallengeRound(this.challenge,this.selected)','playChallengeRound(this.challenge,this.selected,{getRandomValues:values=>{values[0]=globalThis.__duelWeights?.shift() ?? 0;}})'),map:null};
     }
-    if(path.endsWith('/src/games/yakyuken/main.js'))return {code:code.replace('new YakyukenScene({wallet:testWallet})',"new YakyukenScene({wallet:testWallet,playerId:globalThis.__qaPlayer || 'local-guest'})"),map:null};
+    if(path.endsWith('/src/games/yakyuken/main.js'))return {code:code.replace('new YakyukenScene({wallet:testWallet,',"new YakyukenScene({wallet:testWallet,playerId:globalThis.__qaPlayer || 'local-guest',"),map:null};
     if(!path.endsWith('/src/main.js'))return;
     assert.ok(code.includes('startGame();'),'isolated slot ticker hook must match the real entry');
     return {code:code.replace('startGame();','globalThis.__slotNavigationTest={scene,controls};startGame();'),map:null};

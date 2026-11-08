@@ -31,13 +31,13 @@ import {RewardPresentation} from './reward-presentation.js';
 import {createCheckinDialog} from './checkin-dialog.js';
 import {createCheckinButton} from '../../ui/player/checkin-button.js';
 import {checkinClaimFeedback,playerError} from '../../ui/player/player-copy.js';
+import {icon} from '../../ui/shared/icons.js';
 
 // The release entry stays separate; only the explicit test preview uses a wallet.
 export class YakyukenScene {
   app = new Application();
   motion = new Motion();
   rewardPresentation = new RewardPresentation();
-  audio = new PreviewAudio(()=>this.refreshAudioIcons?.());
   abort = new AbortController();
   loaded = new Set();
   screen = 'games';
@@ -65,8 +65,9 @@ export class YakyukenScene {
   historyScroll = 0;
   cgIndex = 0;
 
-  constructor({playerId='local-guest',storage,wallet=null}={}){
+  constructor({playerId='local-guest',storage,wallet=null,music=null}={}){
     this.wallet=wallet;this.archive=wallet?.archive??new PlayerArchive({playerId,...(storage===undefined?{}:{storage})});
+    this.audio=new PreviewAudio(()=>{this.refreshAudioIcons?.();this.updateLobbyMusic();},music);
   }
 
   async init(host) {
@@ -87,7 +88,11 @@ export class YakyukenScene {
     host.replaceChildren(this.app.canvas);
     this.app.renderer.accessibility.div.classList.add('yakyuken-pixi-accessibility');
     this.checkinButton=createCheckinButton(()=>this.showCheckin());
-    host.append(this.checkinButton.element);
+    const music=this.lobbyMusicButton=document.createElement('button');
+    music.type='button';music.className='lobby-music';music.hidden=true;
+    music.setAttribute('aria-label','背景音樂');
+    music.addEventListener('click',()=>void this.audio.toggleMusic(),{signal:this.abort.signal});
+    host.append(this.checkinButton.element,music);
     this.app.canvas.setAttribute('role','application');
     this.app.canvas.setAttribute('aria-label','野球拳：正在準備牌桌');
     this.root = new Container({label:'yakyuken-scene'});this.app.stage.addChild(this.root);
@@ -200,7 +205,6 @@ export class YakyukenScene {
     if(this.settling||this.wallet?.pending||this.rewardPresentation.busy)return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.phase==='presenting' || this.changing || !['games','characters'].includes(screen))return;
     if(screen==='characters' && this.screen!=='games')return;
-    if(screen==='characters')void this.audio.background.setMusicEnabled(true,{retryBlockedPlayback:true});
     return this.beginEntry(screen==='characters'?'game':'lobby');
   }
   openSlot(){
@@ -423,11 +427,23 @@ export class YakyukenScene {
   updateControls() {
     updateSlotHud(this);
     this.syncWorldInput();
+    this.updateLobbyMusic();
     const fronts=this.dealerCards.filter(card=>card.faceUp).length;
     Object.assign(this.app.canvas.dataset,{screen:this.screen,phase:this.entering?'entering':this.screen==='table'?this.phase:this.screen,selected:this.selected || '',pose:String(this.pose),scene:this.screen==='table'?'yakyuken-table':'circus-lobby',dealerStage:this.dealerStage,
       dealerFrontCount:String(fronts),dealerMove:fronts?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds),uiStyle:'theatre-cards',character:this.selectedCharacter,entries:String(this.entries),changing:String(!!this.changing),dialogue:this.dialogue,
       wins:String(this.challenge?.wins || 0),losses:String(this.challenge?.losses || 0),draws:String(this.challenge?.draws || 0),challengeStatus:this.challenge?.status || '',reward:String(this.challenge?.reward || 0),rewardStage:this.rewardPresentation.stage});
     this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。${this.dialogue?'荷官說：'+this.dialogue+'。':''}右側荷官牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':`野球拳角色選擇，共五個角色位置。目前開放命運荷官，${this.wallet?'入場將扣除測試戲籌。':'本機入場暫不扣款。'}`);
+  }
+
+  updateLobbyMusic(){
+    const button=this.lobbyMusicButton;
+    if(!button)return;
+    button.hidden=this.screen!=='games'||this.entering||!!this.entryOverlay;
+    const enabled=!this.audio.musicMuted,pressed=String(enabled);
+    if(button.getAttribute('aria-pressed')===pressed)return;
+    button.setAttribute('aria-pressed',pressed);
+    button.title=enabled?'關閉背景音樂':'開啟背景音樂';
+    button.innerHTML=icon(enabled?'music':'musicMuted');
   }
 
   openModal(type) {
@@ -541,6 +557,7 @@ export class YakyukenScene {
     if(this.rewardReveal){this.app.ticker.remove(this.rewardReveal);this.rewardReveal=null;}
     if(this.disposed)return;this.disposed=true;this.archive.leave(this.matchId);this.matchId=null;this.abort.abort();this.observer?.disconnect();if(this.resizeFrame)cancelAnimationFrame(this.resizeFrame);this.motion.destroy();this.wardrobe?.destroy();this.wardrobe=null;this.entryOverlay?.destroy();this.entryOverlay=null;this.audio.destroy();
     this.checkinDialog?.destroy();
+    this.lobbyMusicButton?.remove();
     if(this.initialized){this.app.stop();this.app.destroy({removeView:true,releaseGlobalResources:true},{children:true});}
     destroyWardrobeBackdrop(this.wardrobeBackdrop);this.wardrobeBackdrop=null;
     this.entryGradients?.forEach(gradient=>gradient.destroy());this.entryGradients=null;

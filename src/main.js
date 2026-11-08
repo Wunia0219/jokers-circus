@@ -9,10 +9,10 @@ import './style.css';
 import { SlotScene } from './ui/reels/scene.js';
 import { Sound } from './ui/audio/audio.js';
 import { MUSIC_SOURCE } from './ui/audio/audio-cues.js';
-import {startDefaultMusic} from './ui/audio/default-music.js';
+import {bindActivityMusic,startDefaultMusic} from './ui/audio/default-music.js';
 import { presentRoundWin } from './ui/wins/round-win.js';
 import { connectActivity } from './platform/discord-activity.js';
-import {connectDiscordTestActivity,discordTestBuild,testSessionFetch} from './platform/discord-test-activity.js';
+import {connectDiscordTestActivity,discordTestBuild,discordTestMusic,testSessionFetch} from './platform/discord-test-activity.js';
 import { connectLocalWallet } from './platform/local-wallet.js';
 import { createLoadingScreen } from './ui/shared/loading.js';
 import { BigWinPresentation } from './ui/wins/big-win.js';
@@ -60,7 +60,8 @@ const KEY='kemet-slot-preview-v2';
 let state, storageAvailable=true;
 try { state=readState(localStorage.getItem(KEY)); } catch { state=freshState();storageAvailable=false; }
 let bet=100, busy=false, presenting=false, ready=false, leavingLobby=false, countAnimation=0, payoutAnimation=0, celebrationTimer=0;
-const scene=new SlotScene(), sound=new Sound({effectsEnabled:true,musicUrl:MUSIC_SOURCE,onStateChange:renderAudio});
+const activityMusic=discordTestBuild?discordTestMusic():null;
+const scene=new SlotScene(), sound=new Sound({effectsEnabled:true,musicUrl:activityMusic?null:MUSIC_SOURCE,onStateChange:renderAudio});
 const bigWin=new BigWinPresentation($('#app'));
 let activityMode='browser', activityUser=null, walletClient=null, claiming=false, historySync=null, checkinPanel=null, checkinRetry=false;
 const controls=new SpinControls({
@@ -83,14 +84,16 @@ function save(next) { if(walletClient){if((next.revision||0)>=(state.revision||0
 const lobbyPath=slotLobbyPath(window.location);
 const playerBar=createPlayerBar({icon,onCheckin:showCheckin,onHistory:showHistory,onRules:showRules,onSound:toggleSound,onMusic:toggleMusic,onLobby:lobbyPath?returnToLobby:undefined});
 $('#player-header').append(playerBar.element);
-function renderAudio(){playerBar.audio(sound.state);}
+function renderAudio(){
+  playerBar.audio(activityMusic?{...sound.state,musicEnabled:activityMusic.enabled,musicAvailable:true}:sound.state);
+}
 renderAudio();
-const stopDefaultMusic=startDefaultMusic(sound);
 const effectsInput=new AbortController();
+const stopMusic=activityMusic?bindActivityMusic(activityMusic,renderAudio,{signal:effectsInput.signal}):startDefaultMusic(sound);
 const unlockEffects=event=>{if(event.isTrusted)void sound.unlockEffects();};
 document.addEventListener('pointerup',unlockEffects,{capture:true,signal:effectsInput.signal});
 document.addEventListener('keydown',unlockEffects,{capture:true,signal:effectsInput.signal});
-addEventListener('pagehide',event=>{if(event.persisted)void sound.setVisible(false);else{effectsInput.abort();stopDefaultMusic();sound.dispose();}});
+addEventListener('pagehide',event=>{if(event.persisted)void sound.setVisible(false);else{effectsInput.abort();stopMusic();sound.dispose();}});
 addEventListener('pageshow',event=>{if(event.persisted){leavingLobby=false;void sound.setVisible(true);}});
 const checkinOptions=()=>({ready:ready&&!!walletClient,busy,claiming,preview:!walletClient,retry:checkinRetry&&!state.claimed});
 function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,checkinPreview:!!lobbyPath&&!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(walletClient?state:{},checkinOptions());updateLobbyButton();}
@@ -305,11 +308,12 @@ async function toggleSound(){
   finally{renderAudio();button.setAttribute('aria-busy','false');}
 }
 async function toggleMusic(){
-  if(!sound.musicAvailable)return;
+  if(!activityMusic&&!sound.musicAvailable)return;
   const button=$('#music');button.disabled=true;button.setAttribute('aria-busy','true');
   try{
-    const enable=!sound.musicEnabled;
-    if(!await sound.setMusicEnabled(enable)&&enable)notifyPlayer('暫時無法播放音樂，請稍後再試。','info');
+    const enable=!(activityMusic?.enabled??sound.musicEnabled);
+    const playing=await (activityMusic?activityMusic.setEnabled(enable):sound.setMusicEnabled(enable));
+    if(!playing&&enable)notifyPlayer('暫時無法播放音樂，請稍後再試。','info');
   }finally{renderAudio();button.setAttribute('aria-busy','false');}
 }
 $('#max-bet').addEventListener('click',()=>{if(!busy)document.querySelector('[data-bet="500"]').click();});

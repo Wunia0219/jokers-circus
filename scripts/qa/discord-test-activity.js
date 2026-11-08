@@ -71,12 +71,74 @@ try{
   assert.deepEqual(financial,[],'launching and viewing the lobby does not begin a paid match or claim rewards');
   for(const mobile of [false,true]){
     const who=mobile?'B':'A',context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:900},isMobile:mobile,hasTouch:mobile,reducedMotion:'reduce'}),page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+    await context.addInitScript(()=>{
+      const NativeAudio=window.Audio;
+      window.__musicPlayers=[];
+      // Playwright evaluation may itself mark the window activated. Model the
+      // block with trusted native input instead of the window's sticky bit.
+      const gesture=event=>{
+        if(!event.isTrusted)return;
+        const owner=['/yakyuken-preview.html','/slot/'].includes(location.pathname)?parent:window;
+        owner.__musicGesture=true;
+      };
+      for(const type of ['pointerup','touchend','keydown'])document.addEventListener(type,gesture,true);
+      window.Audio=function(source){
+        const media=new NativeAudio(source);
+        if(String(source).includes('circus-background-optimized')){
+          const trace={media,pauses:0,blocked:0};
+          __musicPlayers.push(trace);
+          media.addEventListener('pause',()=>trace.pauses++);
+          const play=media.play.bind(media);
+          media.play=()=>{
+            if(!window.__musicGesture){
+              trace.blocked++;
+              return Promise.reject(new DOMException('Fixture requires a real gesture','NotAllowedError'));
+            }
+            return play();
+          };
+        }
+        return media;
+      };
+      window.Audio.prototype=NativeAudio.prototype;
+    });
     await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
     await page.route('https://cdn.discordapp.com/avatars/**',route=>route.fulfill({status:200,contentType:'image/webp',body:readFileSync('images/lobby/yakyuken-cover-v3.webp')}));
     await page.goto(origin+'/__host?who='+who+'&platform='+(mobile?'mobile':'desktop'));
     const element=await page.waitForSelector('iframe'),shell=await element.contentFrame();const game=await shell.waitForSelector('#game:not([hidden])'),frame=await game.contentFrame(),phase=value=>frame.waitForFunction(value=>document.querySelector('canvas')?.dataset.phase===value&&document.querySelector('canvas').dataset.changing!=='true',value);
-    await phase('games');assert.ok((await page.evaluate(()=>__commands)).includes('AUTHENTICATE'));
-    await frame.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase('characters');
+    await phase('games');await shell.waitForSelector('#game:not([inert])');
+    assert.ok((await page.evaluate(()=>__commands)).includes('AUTHENTICATE'));
+    const lobbyMusic=frame.getByRole('button',{name:'背景音樂',exact:true});
+    const musicState=()=>shell.evaluate(()=>{const [{media,pauses,blocked}]=__musicPlayers;return {count:__musicPlayers.length,time:media.currentTime,paused:media.paused,volume:media.volume,pauses,blocked};});
+    const verifyLobbyMusic=async()=>{
+      await lobbyMusic.waitFor();
+      const layout=await lobbyMusic.evaluate(button=>{
+        const b=button.getBoundingClientRect(),host=document.querySelector('#yakyuken-app').getBoundingClientRect();
+        const {logoWidth,games}=__playerScene.lobbyLayout;
+        return {width:b.width,height:b.height,inside:b.x>=host.x&&b.y>=host.y&&b.right<=host.right&&b.bottom<=host.bottom,
+          outsideLogo:b.x>=host.x+(host.width+logoWidth)/2,outsideCards:games.every(card=>b.bottom<=host.y+card.y-card.height/2)};
+      });
+      assert.deepEqual(layout,{width:48,height:48,inside:true,outsideLogo:true,outsideCards:true});
+    };
+    await verifyLobbyMusic();
+    assert.equal(await lobbyMusic.getAttribute('aria-pressed'),'true');
+    assert.deepEqual(await musicState(),{count:1,time:0,paused:true,volume:.16,pauses:0,blocked:1});
+    await page.screenshot({path:output+'/'+who+'-lobby-music.png'});
+    const chooseYakyuken=frame.getByRole('button',{name:'選擇野球拳',exact:true});
+    if(mobile)await chooseYakyuken.tap();else await chooseYakyuken.click();
+    await phase('characters');
+    await shell.waitForFunction(()=>!__musicPlayers[0].media.paused&&__musicPlayers[0].media.currentTime>0);
+    assert.equal(await lobbyMusic.isVisible(),false);
+    assert.equal(await frame.evaluate(()=>__musicPlayers.length),0,'Yakyuken leaves music playback in the shell');
+    const beforeBackground=await musicState();
+    await shell.evaluate(()=>{
+      window.__fixtureHidden=true;
+      Object.defineProperty(document,'hidden',{configurable:true,get:()=>window.__fixtureHidden});
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await shell.waitForFunction(()=>__musicPlayers[0].media.paused);
+    assert.ok((await musicState()).time>=beforeBackground.time);
+    await shell.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
+    await shell.waitForFunction(time=>!__musicPlayers[0].media.paused&&__musicPlayers[0].media.currentTime>time,beforeBackground.time);
     assert.equal(await frame.evaluate(()=>window.__playerScene.layout.ui.width),mobile?390:1440,'mobile fixture uses a real phone viewport');
     if(mobile){
       for(const [width,height,insets] of [
@@ -140,7 +202,7 @@ try{
       await page.screenshot({path:output+'/'+who+'-yakyuken-entry-wait.png'});
     }finally{releaseEntry();await page.unroute('**/api/playtest/begin',holdEntry);}
     await phase('selecting');assert.equal(docs.get(who).balance,9000);
-    assert.equal(await frame.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).count(),0);
+    await frame.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).waitFor({state:'detached'});
     assert.equal((await playerView()).balance,'9,000');await page.screenshot({path:output+'/'+who+'-identity-table.png'});
     for(let i=0;i<2;i++){
       if(i){await frame.getByRole('button',{name:'下一局',exact:true}).click();await phase('selecting');}
@@ -155,6 +217,7 @@ try{
     const downloadEvent=downloadPage.waitForEvent('download');await downloadPage.getByRole('link',{name:'下載圖片',exact:true}).click();assert.equal((await downloadEvent).suggestedFilename(),'Jokers-Circus-Yakyuken-Dealer-finale.png');await downloadPage.close();
     await frame.getByRole('button',{name:'關閉視窗',exact:true}).click();await page.screenshot({path:output+'/'+who+'-yakyuken.png'});
     await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');
+    const beforeSlotMusic=await musicState();
     atlasRecovery.push({device:mobile?'mobile':'desktop',...await verifySlotAtlasRecovery(page,async()=>{
       let releaseWallet;
       const walletHeld=new Promise(resolve=>{releaseWallet=resolve;});
@@ -165,10 +228,16 @@ try{
         await frame.locator('#loading-track').waitFor();
         await frame.waitForFunction(()=>{const image=document.querySelector('.loading-logo img');return image?.complete&&image.naturalWidth>0;});
         assert.ok(Number(await frame.locator('#loading-track').getAttribute('aria-valuenow'))<100);
+        assert.equal((await musicState()).paused,false,'music continues while the slot wallet is still loading');
         await page.screenshot({path:output+'/'+who+'-slot-entry-wait.png'});
       }finally{releaseWallet();await page.unroute('**/api/wallet',holdWallet);}
       await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);
     })});
+    const inSlotMusic=await musicState();
+    assert.equal(inSlotMusic.count,1);assert.equal(inSlotMusic.paused,false);assert.equal(inSlotMusic.pauses,beforeSlotMusic.pauses);
+    assert.ok(inSlotMusic.time>beforeSlotMusic.time,'the original track advances through the child navigation');
+    assert.equal(await frame.evaluate(()=>__musicPlayers.length),0,'slot leaves music playback in the shell');
+    assert.equal(await frame.locator('#music').getAttribute('aria-pressed'),'true');
     assert.equal(new URL(frame.url()).pathname,'/slot/');assert.equal((await page.evaluate(()=>__commands)).filter(x=>x==='HANDSHAKE').length,1,'persistent shell retains one live SDK connection across games');for(const [key,value] of Object.entries({discord_shim:'1',location_id:'fixture-location',mobile_app_version:'300.0'}))assert.equal(new URL(frame.url()).searchParams.get(key),value);assert.equal(new URL(frame.url()).searchParams.get('channel_id'),TEST_CHANNEL);assert.equal((await frame.locator('#balance').textContent()).replaceAll(',',''),'11500');
     assert.equal(await frame.locator('#player-name').textContent(),identity.name);assert.equal(await frame.locator('#player-id').textContent(),identity.uid);await frame.locator('.player-avatar-image:not([hidden])').waitFor();
     const slotHeader=await frame.evaluate(()=>{
@@ -184,7 +253,22 @@ try{
     const settlement=page.waitForResponse(r=>r.url().includes('/api/spin'));await frame.locator('#spin').click();const spin=await (await settlement).json();
     await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false&&document.querySelector('#spin').getAttribute('aria-label')!=='快速停止');
     assert.equal(docs.get(who).balance,spin.state.balance);await page.screenshot({path:output+'/'+who+'-slot.png'});
-    await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');await frame.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase('characters');
+    if(mobile)await frame.locator('#music').tap();else await frame.locator('#music').click();
+    assert.equal(await frame.locator('#music').getAttribute('aria-pressed'),'false');
+    assert.equal(await frame.locator('#sound').getAttribute('aria-pressed'),'true','music is independent of effects');
+    const mutedAt=(await musicState()).time;
+    await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');
+    await verifyLobbyMusic();
+    assert.equal(await lobbyMusic.getAttribute('aria-pressed'),'false');
+    assert.equal((await musicState()).paused,true);
+    await chooseYakyuken.click();await phase('characters');
+    await frame.getByRole('button',{name:'開啟音樂',exact:true}).waitFor();
+    assert.equal((await musicState()).paused,true,'entering Yakyuken cannot override the mute');
+    await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');
+    if(mobile)await lobbyMusic.tap();else{await lobbyMusic.focus();await page.keyboard.press('Enter');}
+    await shell.waitForFunction(time=>!__musicPlayers[0].media.paused&&__musicPlayers[0].media.currentTime>time,mutedAt);
+    await chooseYakyuken.click();await phase('characters');
+    await frame.getByRole('button',{name:'關閉音樂',exact:true}).waitFor();
     assert.equal(docs.get(who).balance,spin.state.balance);assert.equal(docs.get(who).checkin.receipt.cycleDay,1);
     assert.equal(await checkinButton.innerText(),claimedCopy);
     await checkinButton.click();
@@ -221,7 +305,7 @@ try{
     await reloaded.getByRole('button',{name:'選擇野球拳',exact:true}).click();await afterReloadPhase('characters');
     await reloaded.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await afterReloadPhase('selecting');
     assert.equal(docs.get(who).balance,beforeEntry-2000);assert.notEqual(docs.get(who).activeId,active);
-    checks.push((mobile?'mobile touch':'desktop')+': real SDK handshake/OAuth, scoped identity, Yakyuken reward, sandbox-safe CG external link/download/cancel after round trip, shared slot balance/checkin, persistent SDK and child/host reload');await context.close();
+    checks.push((mobile?'mobile touch':'desktop')+': persistent soundtrack and mute across games, real SDK handshake/OAuth, scoped identity, Yakyuken reward, sandbox-safe CG external link/download/cancel after round trip, shared slot balance/checkin, persistent SDK and child/host reload');await context.close();
   }
   assert.deepEqual(errors,[]);assert.notEqual(docs.get('A').player,docs.get('B').player);writeFileSync(output+'/report.json',JSON.stringify({ok:true,checks,launch,atlasRecovery,errors},null,2)+'\n');console.log(JSON.stringify({ok:true,checks:checks.length,launchChecks:launch.length,output}));
 }catch(error){writeFileSync(output+'/failure.json',JSON.stringify({message:error.message,checks,errors,atlasRecovery:error.atlasRecovery||atlasRecovery},null,2)+'\n');throw error;}
