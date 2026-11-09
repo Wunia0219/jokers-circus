@@ -22,6 +22,15 @@ export const CG_ART=Object.freeze({dealer:DEALER_CG,'guest-1':collection('guest-
   {slug:'third-win',name:'收起襯衫'},
   {slug:'fourth-win',name:'輕撥瀏海'},
   {slug:'finale',name:'夏澄終幕'},
+]),'guest-3':collection('guest-3','selo','Selo',[
+  {slug:'invitation',name:'整袖入局'},
+  {slug:'first-win',name:'收起外套'},
+  {slug:'second-win',name:'卸下領帶'},
+  {slug:'third-win',name:'敞開襯衫'},
+  {slug:'fourth-win',name:'收起襯衫'},
+  {slug:'fifth-win',name:'提鞋側望'},
+  {slug:'sixth-win',name:'抱臂相望'},
+  {slug:'finale',name:'瑟洛終幕'},
 ])});
 export const ALL_CG=Object.freeze(Object.values(CG_ART).flat());
 

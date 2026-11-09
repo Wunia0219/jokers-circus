@@ -18,7 +18,7 @@ test('Discord test launch requires signed channel/guild scope; OAuth sessions is
   assert.equal((await rt.call('/api/session',{token:a,body:{}})).status,405);
   assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,10000);
   const preview=(await rt.call('/api/playtest/state',{token:a})).data.wallet;
-  assert.deepEqual(preview.unlocks,{dealer:2,'guest-1':3,'guest-2':5});assert.deepEqual(preview.records,[]);assert.equal(preview.balance,10000);
+  assert.deepEqual(preview.unlocks,{dealer:2,'guest-1':3,'guest-2':5,'guest-3':7});assert.deepEqual(preview.records,[]);assert.equal(preview.balance,10000);
   const newPlayer=(await rt.call('/api/playtest/state',{token:b,headers:{'X-Test-Name':encodeURIComponent(preview.name)}})).data.wallet;
   assert.deepEqual(newPlayer.unlocks,{},'a new Discord account gets no CG even with a forged preview name');
   assert.deepEqual((await rt.call('/api/playtest/state?player=qa-a',{token:rt.token,headers:{'X-Test-Name':'preview'}})).data.wallet.unlocks,{});

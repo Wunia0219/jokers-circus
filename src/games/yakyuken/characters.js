@@ -4,7 +4,7 @@ export const CHARACTERS = Object.freeze([
   {id:'dealer', name:'命運荷官', title:'THE DEALER', winsRequired:2, lossLimit:2, reward:2500, winWeight:3189, lossWeight:4811, clearRate:.35, recoveryRate:.125, enabled:true},
   {id:'guest-1', name:'優然', title:'YOURAN', winsRequired:3, lossLimit:2, reward:5000, winWeight:3135, lossWeight:4865, clearRate:.17, recoveryRate:.15, enabled:true},
   {id:'guest-2', name:'夏澄', title:'XIACHE', winsRequired:5, lossLimit:3, reward:10000, winWeight:3057, lossWeight:4943, clearRate:.08, recoveryRate:.20, enabled:true},
-  {id:'guest-3', name:'第四位來賓', title:'COMING SOON', winsRequired:7, lossLimit:3, reward:25000, winWeight:3299, lossWeight:4701, clearRate:.03, recoveryRate:.25, enabled:false},
+  {id:'guest-3', name:'瑟洛', title:'SELO', winsRequired:7, lossLimit:3, reward:25000, winWeight:3299, lossWeight:4701, clearRate:.03, recoveryRate:.25, enabled:true},
   {id:'guest-4', name:'第五位來賓', title:'COMING SOON', winsRequired:9, lossLimit:4, reward:50000, winWeight:3022, lossWeight:4978, clearRate:.01, recoveryRate:.50, enabled:false},
 ].map(character=>Object.freeze({...character,drawWeight:2000})));
 export const DEALER = CHARACTERS[0];

@@ -36,7 +36,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
 const checks=[],errors=[],requests=[],entryEvidence=[],entryReleases=[];
 let browser;
 const watchEntryBindings=context=>context.on('page',page=>page.on('console',message=>{if(message.type()==='warning' && message.text().includes('[BindGroup]'))errors.push(message.text());}));
-const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===26 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
+const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===27 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => {const d=document.querySelector('canvas')?.dataset;return d?.phase===expected && (!['confirmed','selecting'].includes(expected) || d.changing!=='true');},value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
@@ -786,7 +786,7 @@ try {
   assert.equal(await disposed.evaluate(()=>window.__yakyukenTest.entryGradients),null);
   await disposed.close();checks.push('disposing during entry cancels pending presentation and unloads late assets without resurrecting the renderer');
 
-  for(const [id,key,displayKey] of [['guest-1','youran','Youran'],['guest-2','xiache','Xiache']]){
+  for(const [id,key,displayKey] of [['guest-1','youran','Youran'],['guest-2','xiache','Xiache'],['guest-3','selo','Selo']]){
     const {name,winsRequired,reward}=characterRule(id);
     const guestContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
     watchEntryBindings(guestContext);
@@ -813,10 +813,10 @@ try {
       if(!cleared){await guest.getByRole('button',{name:'下一局',exact:true}).click();await phase(guest,'selecting');}
     }
     await guest.getByRole('button',{name:'CG 收藏',exact:true}).click();
-    if(id==='guest-2'){
+    if(id==='guest-2'||id==='guest-3'){
       await guest.setViewportSize({width:320,height:568});await frame(guest);
       await assertArchiveControls(guest);
-      await guest.screenshot({path:`${output}/xiache-collection-mobile.png`});
+      await guest.screenshot({path:`${output}/${key}-collection-mobile.png`});
     }
     let visible=await guest.getByRole('button',{name:/^回顧.*CG$/}).count();
     const nextPage=guest.getByRole('button',{name:'CG 收藏下一頁',exact:true});
@@ -830,7 +830,7 @@ try {
     const file=await download;
     assert.equal(file.suggestedFilename(),`Jokers-Circus-Yakyuken-${displayKey}-finale.png`);
     assert.deepEqual(readFileSync(await file.path()),readFileSync(`public/downloads/yakyuken/${key}-stage-${winsRequired}.png`));
-    if(id==='guest-2')await guest.screenshot({path:`${output}/xiache-finale.png`});
+    if(id==='guest-2'||id==='guest-3')await guest.screenshot({path:`${output}/${key}-finale.png`});
     await guestContext.close();checks.push(`${displayKey} shows every pose, unlocks the final CG only after ${winsRequired} wins and downloads its original`);
   }
 
