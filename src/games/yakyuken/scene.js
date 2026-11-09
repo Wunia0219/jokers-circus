@@ -65,6 +65,7 @@ export class YakyukenScene {
   matchId = null;
   historyScroll = 0;
   cgIndex = 0;
+  galleryCharacter = null;
 
   get characterTextures(){return this.artTextures?.[this.selectedCharacter];}
   get characterCG(){return CG_ART[this.selectedCharacter];}
@@ -468,13 +469,30 @@ export class YakyukenScene {
   openModal(type) {
     if(this.settling||this.rewardPresentation.busy||this.wallet?.pending)return;
     if(!['menu','collection','cg','history','settings','leave'].includes(type))return;
-    if(type==='cg' && !this.archive.isUnlocked(this.selectedCharacter,this.cgIndex))return;
+    if(type==='cg' && !this.archive.isUnlocked(this.galleryCharacter,this.cgIndex))return;
     if(this.disposed || this.entering || this.entryOverlay || this.ending || this.phase === 'presenting' || this.changing)return;
     this.closeModal();this.modal=type;this.buildModal(type);this.syncCheckinButton();
   }
-  openCG(index){
-    if(!this.archive.isUnlocked(this.selectedCharacter,index) || !this.characterTextures[index])return false;
-    this.cgIndex=index;this.openModal('cg');return this.modal==='cg';
+  selectGalleryCharacter(character,restoreFocus=false){
+    if(this.modal!=='collection'||!canEnterCharacter(character)||character===this.galleryCharacter)return;
+    this.galleryCharacter=character;this.openModal('collection');
+    if(restoreFocus)this.focusArchiveControl(`gallery-tab:${character}`);
+  }
+  focusArchiveControl(control){
+    this.app.render();
+    this.modalRoot?.getChildByLabel(control,true)?._accessibleDiv?.focus();
+  }
+  openCG(index,character=this.galleryCharacter??this.selectedCharacter){
+    if(!canEnterCharacter(character)||!Number.isInteger(index)||!this.archive.isUnlocked(character,index)||!this.artTextures?.[character]?.[index])return false;
+    this.galleryCharacter=character;this.cgIndex=index;this.openModal('cg');return this.modal==='cg';
+  }
+  stepCG(direction,restoreFocus=false){
+    const unlocked=CG_ART[this.galleryCharacter].map((_,i)=>i).filter(i=>this.archive.isUnlocked(this.galleryCharacter,i));
+    const at=unlocked.indexOf(this.cgIndex)+direction,index=unlocked[at];
+    if(index!==undefined&&this.openCG(index)&&restoreFocus){
+      const control=unlocked[at+direction]!==undefined?`gallery-step:${direction}`:'gallery-back';
+      this.focusArchiveControl(control);
+    }
   }
   closeModal() {
     this.scrollHistory=null;
@@ -559,6 +577,9 @@ export class YakyukenScene {
     if(this.checkinDialog?.open)return;
     if(event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || this.disposed || this.entering || this.entryOverlay || this.ending || this.rewardPresentation.busy || document.hidden)return;
     if(event.key==='Escape'){event.preventDefault();if(this.modal)this.closeModal();else if(!this.changing && this.screen!=='games')this.openModal('menu');return;}
+    if(this.modal==='cg' && ['ArrowLeft','ArrowRight'].includes(event.key)){
+      event.preventDefault();this.stepCG(event.key==='ArrowLeft'?-1:1,true);return;
+    }
     if(this.modal==='history' && ['ArrowDown','ArrowUp','PageDown','PageUp','Home','End'].includes(event.key)){
       event.preventDefault();this.scrollHistory?.(({ArrowDown:60,ArrowUp:-60,PageDown:300,PageUp:-300}[event.key] || 0),event.key==='Home'?'start':event.key==='End'?'end':undefined);return;
     }

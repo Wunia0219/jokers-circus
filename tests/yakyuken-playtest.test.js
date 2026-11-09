@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PLAYTEST_IDENTITY,assertPlaytestIdentity,PlaytestService} from '../cloud/yakyuken-playtest-core.js';
+import {PLAYTEST_IDENTITY,assertPlaytestIdentity,PlaytestService,discordTestPlayer,newPlaytestWallet} from '../cloud/yakyuken-playtest-core.js';
+import {testCGUnlocks} from '../cloud/yakyuken-playtest-worker.js';
+import {TEST_GUILD} from '../cloud/discord-test-auth.js';
 import {PlayerArchive} from '../src/games/yakyuken/player-archive.js';
 import {TestWalletClient} from '../src/games/yakyuken/test-wallet-client.js';
 import {playtestGateway} from '../scripts/game/yakyuken-test-gateway.js';
@@ -20,6 +22,18 @@ const hand=(s,matchId,requestId=id(),move='rock')=>s.execute('hand',{matchId,mov
 test('test cloud guard rejects production identities and unknown test namespaces',()=>{
   const env={APP_ENV:'test',FIRESTORE_PROJECT_ID:PLAYTEST_IDENTITY.projectId,FIRESTORE_NAMESPACE:PLAYTEST_IDENTITY.namespace};assert.doesNotThrow(()=>assertPlaytestIdentity(env));
   for(const bad of [{APP_ENV:'production'},{FIRESTORE_PROJECT_ID:'jokers-circus-production'},{FIRESTORE_NAMESPACE:'jokers-circus-v2-20261024-test'}])assert.throws(()=>assertPlaytestIdentity({...env,...bad}));
+});
+test('CG preview opens only the configured Discord test account without mutating earned unlocks',()=>{
+  const user='123456789012345678',owner=discordTestPlayer(TEST_GUILD,user),wallet=newPlaytestWallet(owner);
+  assert.deepEqual(testCGUnlocks(wallet,owner,user),{...wallet,unlocks:{dealer:2,'guest-1':3,'guest-2':5}});
+  assert.deepEqual(wallet.unlocks,{});
+  for(const player of [discordTestPlayer(TEST_GUILD,'223456789012345678'),discordTestPlayer('323456789012345678',user),'qa-a']){
+    const other=newPlaytestWallet(player);
+    assert.equal(testCGUnlocks(other,player,user),other);
+    assert.equal(testCGUnlocks(other,owner,user),other);
+    assert.deepEqual(other.unlocks,{});
+  }
+  assert.equal(testCGUnlocks(wallet,owner,''),wallet);
 });
 test('local gateway only accepts the dedicated test Worker and a private token',()=>{
   const token='a'.repeat(64);assert.equal(typeof playtestGateway({origin:'https://jokers-circus-yakyuken-test.example.workers.dev',token}),'function');

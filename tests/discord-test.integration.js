@@ -4,7 +4,7 @@ import {createDiscordTestRuntime} from '../scripts/qa/helpers/discord-test-runti
 import {TEST_GUILD,TEST_CHANNEL} from '../cloud/discord-test-auth.js';
 
 test('Discord test launch requires signed channel/guild scope; OAuth sessions isolate real players and share both games',async t=>{
-  const rt=await createDiscordTestRuntime();t.after(()=>rt.dispose());
+  const rt=await createDiscordTestRuntime({cgPreview:true});t.after(()=>rt.dispose());
   assert.equal((await rt.launch('A',{forged:true})).status,401);
   assert.equal((await rt.launch('A',{channel:'100000000000000999'})).data.type,4);
   assert.equal((await rt.launch('A',{guild:'100000000000000999'})).data.type,4);
@@ -17,10 +17,16 @@ test('Discord test launch requires signed channel/guild scope; OAuth sessions is
   assert.equal((await rt.call('/api/session')).status,401);assert.equal((await rt.call('/api/session',{token:a,headers:{Origin:'https://untrusted.invalid'}})).status,403);
   assert.equal((await rt.call('/api/session',{token:a,body:{}})).status,405);
   assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,10000);
+  const preview=(await rt.call('/api/playtest/state',{token:a})).data.wallet;
+  assert.deepEqual(preview.unlocks,{dealer:2,'guest-1':3,'guest-2':5});assert.deepEqual(preview.records,[]);assert.equal(preview.balance,10000);
+  const newPlayer=(await rt.call('/api/playtest/state',{token:b,headers:{'X-Test-Name':encodeURIComponent(preview.name)}})).data.wallet;
+  assert.deepEqual(newPlayer.unlocks,{},'a new Discord account gets no CG even with a forged preview name');
+  assert.deepEqual((await rt.call('/api/playtest/state?player=qa-a',{token:rt.token,headers:{'X-Test-Name':'preview'}})).data.wallet.unlocks,{});
   assert.equal((await rt.call('/api/playtest/state?player=qa-b',{token:a})).status,403);
   assert.equal((await rt.call('/api/playtest/state',{token:'x'.repeat(43)})).status,401);
   assert.equal((await rt.call('/api/wallet',{token:a,headers:{Origin:'https://untrusted.invalid'}})).status,403);
   const entry=await rt.call('/api/playtest/begin',{token:a,body:{requestId:'discord-entry-00000001',characterId:'dealer'}});assert.equal(entry.status,200);assert.equal(entry.data.wallet.balance,9000);assert.equal(entry.data.wallet.name,'測試者 A');
+  assert.deepEqual(entry.data.wallet.unlocks,preview.unlocks,'the designated account keeps gallery access across gameplay responses');
   assert.equal((await rt.call('/api/wallet',{token:a})).data.state.balance,9000);
   const claim=(await rt.call('/api/checkin',{token:a,body:{}})).data;
   assert.equal(claim.state.balance,9500);assert.deepEqual(claim.entry,{delta:500});assert.equal(claim.duplicate,false);

@@ -7,7 +7,7 @@ import {Miniflare,convertV4MiniflareOptions,Response as MFResponse} from 'minifl
 import {PLAYTEST_IDENTITY} from '../../../cloud/yakyuken-playtest-core.js';
 import {TEST_GUILD,TEST_CHANNEL} from '../../../cloud/discord-test-auth.js';
 
-export async function createDiscordTestRuntime({assetService,output='test-results/discord-test-runtime',commands=false}={}){
+export async function createDiscordTestRuntime({assetService,output='test-results/discord-test-runtime',commands=false,cgPreview=false}={}){
   assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:8787','This helper cannot use a live Firestore project');
   mkdirSync(output,{recursive:true});const dir=mkdtempSync(join(resolve(output),'case-')),scriptPath=join(dir,'worker.js');
   const isolatedNamespace=commands?PLAYTEST_IDENTITY.namespace+'-'+dir.split(/[\\/]/).at(-1):PLAYTEST_IDENTITY.namespace;
@@ -20,7 +20,7 @@ export async function createDiscordTestRuntime({assetService,output='test-result
   const config={modules:true,scriptPath,compatibilityDate:'2026-07-30',compatibilityFlags:['nodejs_compat'],durableObjects:{YAKYUKEN_TEST:{className:'YakyukenTestPlayer',useSQLite:true},DISCORD_TEST_AUTH:{className:'DiscordTestAuth',useSQLite:true}},resourcePersistencePath:join(dir,'durable'),bindings:{
     APP_ENV:'test',FIRESTORE_PROJECT_ID:PLAYTEST_IDENTITY.projectId,FIRESTORE_NAMESPACE:PLAYTEST_IDENTITY.namespace,PLAYTEST_TOKEN:token,
     GOOGLE_SERVICE_ACCOUNT_JSON:JSON.stringify({type:'service_account',project_id:PLAYTEST_IDENTITY.projectId,client_email:'fixture@example.invalid',private_key:rsa.privateKey.export({format:'pem',type:'pkcs8'})}),
-    DISCORD_TEST_ENABLED:'true',...(commands?{DISCORD_TEST_COMMANDS_ENABLED:'true'}:{}),DISCORD_CLIENT_ID:clientId,DISCORD_PUBLIC_KEY:publicKey,DISCORD_CLIENT_SECRET:'isolated-fixture-secret',DISCORD_TEST_GUILD_ID:TEST_GUILD,DISCORD_TEST_CHANNEL_ID:TEST_CHANNEL,CLOUD_ENCRYPTION_KEY:'b'.repeat(64),
+    DISCORD_TEST_ENABLED:'true',...(commands?{DISCORD_TEST_COMMANDS_ENABLED:'true'}:{}),...(cgPreview?{DISCORD_TEST_CG_PREVIEW_USER_ID:users.A}:{}),DISCORD_CLIENT_ID:clientId,DISCORD_PUBLIC_KEY:publicKey,DISCORD_CLIENT_SECRET:'isolated-fixture-secret',DISCORD_TEST_GUILD_ID:TEST_GUILD,DISCORD_TEST_CHANNEL_ID:TEST_CHANNEL,CLOUD_ENCRYPTION_KEY:'b'.repeat(64),
   },...(assetService?{serviceBindings:{ASSETS:assetService}}:{}),outboundService:async request=>{
     const u=new URL(request.url),auth=request.headers.get('authorization')||'';
     if(u.hostname==='oauth2.googleapis.com')return MFResponse.json({access_token:'emulator-only',expires_in:3600});

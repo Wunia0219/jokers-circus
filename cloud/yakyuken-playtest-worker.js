@@ -1,14 +1,20 @@
 import {timingSafeEqual} from 'node:crypto';
 import {FirestoreRest} from './firestore-rest.js';
 import {cloudFetch} from './fetch.js';
-import {assertPlaytestIdentity,PlaytestService,PLAYTEST_IDENTITY,PLAYTEST_PLAYERS,validTestPlayer,slotTestState,slotTestCheckinResult} from './yakyuken-playtest-core.js';
-import {assertDiscordTestApp} from './discord-test-auth.js';
+import {assertPlaytestIdentity,PlaytestService,PLAYTEST_IDENTITY,PLAYTEST_PLAYERS,validTestPlayer,slotTestState,slotTestCheckinResult,discordTestPlayer} from './yakyuken-playtest-core.js';
+import {assertDiscordTestApp,TEST_GUILD} from './discord-test-auth.js';
+import {CHARACTERS} from '../src/games/yakyuken/characters.js';
 import {secureResponse} from '../server/http/security-headers.js';
 import {audioAsset} from './audio-asset.js';
 import {testWalletRepository} from './test-wallet-repository.js';
 export {DiscordTestAuth} from './discord-test-auth.js';
 
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+const allCG=Object.freeze(Object.fromEntries(CHARACTERS.filter(c=>c.enabled).map(c=>[c.id,c.winsRequired])));
+export function testCGUnlocks(wallet,player,previewUserId){
+  if(wallet?.player!==player||typeof previewUserId!=='string'||!/^\d{17,20}$/.test(previewUserId)||player!==discordTestPlayer(TEST_GUILD,previewUserId))return wallet;
+  return {...wallet,unlocks:{...wallet.unlocks,...allCG}};
+}
 function authorized(request,env){
   const actual=Buffer.from(request.headers.get('authorization')||''),expected=Buffer.from('Bearer '+(env.PLAYTEST_TOKEN||''));
   return /^[a-f0-9]{64}$/.test(env.PLAYTEST_TOKEN||'')&&actual.length===expected.length&&timingSafeEqual(actual,expected);
@@ -85,7 +91,12 @@ export class YakyukenTestPlayer{
         return json(await this.service.execute(action,body));
       }
       if(await this.ctx.storage.get('admin-freeze'))return json({error:'測試錢包重設中，請稍後。'},503);
-      const decorate=data=>{const name=request.headers.get('X-Test-Name');if(name&&data.wallet)data.wallet.name=decodeURIComponent(name);return data;};
+      const decorate=data=>{
+        const name=request.headers.get('X-Test-Name');
+        if(!name||!data.wallet)return data;
+        const wallet=testCGUnlocks(data.wallet,player,this.env.DISCORD_TEST_CG_PREVIEW_USER_ID);
+        return {...data,wallet:{...wallet,name:decodeURIComponent(name)}};
+      };
       if((action==='state'||path==='/api/wallet')&&request.method==='GET'){
         const data=decorate(await this.service.stateView());return json(path==='/api/wallet'?{state:slotTestState(data.wallet)}:data);
       }

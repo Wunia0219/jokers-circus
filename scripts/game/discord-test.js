@@ -14,9 +14,11 @@ const [command,...args]=process.argv.slice(2);if(!['build','deploy','check','con
 const app=JSON.parse(readFileSync(args[1]||'.tools/discord-test-app.json','utf8'));
 if(app.purpose!=='discord-test'||!/^\d{17,20}$/.test(app.clientId||'')||app.clientId===LIVE_APP)throw new Error('A new, separate Discord test App is required');
 if(app.guildId!==TEST_GUILD||app.channelId!==TEST_CHANNEL)throw new Error('Test guild/channel identity mismatch');
+if(app.cgPreviewUserId!==undefined&&(typeof app.cgPreviewUserId!=='string'||!/^\d{17,20}$/.test(app.cgPreviewUserId)))throw new Error('Invalid private CG preview user ID');
 const worker=JSON.parse(readFileSync('wrangler.yakyuken-test.jsonc','utf8'));assertPlaytestIdentity(worker.vars);
 if(worker.name!==PLAYTEST_IDENTITY.worker||worker.main!=='cloud/yakyuken-playtest-worker.js'||worker.assets||worker.routes||worker.env||worker.triggers)throw new Error('Unexpected test Worker identity');
 worker.vars={...worker.vars,DISCORD_TEST_ENABLED:'true',DISCORD_TEST_COMMANDS_ENABLED:'true',DISCORD_CLIENT_ID:app.clientId,DISCORD_TEST_GUILD_ID:TEST_GUILD,DISCORD_TEST_CHANNEL_ID:TEST_CHANNEL,DISCORD_PUBLIC_KEY:app.publicKey||'',DISCORD_TESTER_IDS:(app.testerIds||[]).join(',')};
+worker.vars.DISCORD_TEST_CG_PREVIEW_USER_ID=app.cgPreviewUserId??'';
 assertDiscordTestApp(worker.vars);
 const out=resolve('test-results/discord-test-dist'),localConfig=resolve('wrangler.discord-test.local.jsonc');
 worker.assets={directory:out,binding:'ASSETS',run_worker_first:true,html_handling:'none'};

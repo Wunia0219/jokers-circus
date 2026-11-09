@@ -389,7 +389,36 @@ try {
   const archiveB=await playerPage('archive-B');await archiveB.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(archiveB,'characters');
   assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.archive.records().length),0);
   await archiveB.getByRole('button',{name:'CG 收藏',exact:true}).click();
-  assert.equal(await archiveB.getByRole('button',{name:/^回顧.*CG$/}).count(),0,"another player cannot review A's unlocks");
+  const galleryTiles=page=>page.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children
+    .filter(n=>n.label?.startsWith('gallery-tile:')).map(n=>{const {x,y,width,height}=n.getBounds();return {enabled:n.enabled!==false,thumb:!!n.getChildByLabel('cg-thumbnail'),bounds:{x,y,width,height}};}));
+  for(const [name,count] of [['命運荷官',3],['優然',4],['夏澄',6]]){
+    await archiveB.getByRole('button',{name:new RegExp(`^${name}收藏，已解鎖 0 / ${count}`)}).click();
+    assert.equal(await archiveB.getByRole('button',{name:/^回顧.*CG$/}).count(),0);
+    assert.deepEqual((await galleryTiles(archiveB)).map(({enabled,thumb})=>[enabled,thumb]),Array.from({length:count},()=>[false,false]));
+  }
+  await archiveB.screenshot({path:`${output}/cg-xiache-fresh-locked.png`});
+  await archiveB.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  await archiveB.getByRole('button',{name:'選擇夏澄',exact:true}).click();
+  await archiveB.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(archiveB,'selecting');
+  await archiveB.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  assert.deepEqual((await galleryTiles(archiveB)).map(({enabled})=>enabled),[true,false,false,false,false,false]);
+  await archiveB.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  await archivePlay(archiveB,'win');
+  await archiveB.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  assert.deepEqual((await galleryTiles(archiveB)).map(({enabled})=>enabled),[true,true,false,false,false,false]);
+  await archiveB.getByRole('button',{name:'回顧整理袖口 CG',exact:true}).click();
+  await archiveB.keyboard.press('ArrowRight');assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.cgIndex),1);
+  await archiveB.keyboard.press('ArrowRight');assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.cgIndex),1,'viewer skips locked stages');
+  await archiveB.getByRole('button',{name:'返回 CG 收藏',exact:true}).click();
+  assert.equal(await archiveB.getByRole('button',{name:/^夏澄收藏，已解鎖 2 \/ 6，目前顯示$/}).count(),1);
+  await archiveB.getByRole('button',{name:/^優然收藏，已解鎖 0 \/ 4/}).click();
+  assert.equal((await canvasState(archiveB)).character,'guest-2','browsing CG never changes the active opponent');
+  await archiveB.getByRole('button',{name:/^夏澄收藏，已解鎖 2 \/ 6/}).click();
+  for(const [width,height] of [[320,568],[390,844],[844,390],[1600,900]]){
+    await archiveB.setViewportSize({width,height});await frame(archiveB);await assertArchiveControls(archiveB);
+    assert.ok((await galleryTiles(archiveB)).every(({bounds:b})=>b.x>=0&&b.y>=0&&b.x+b.width<=width&&b.y+b.height<=height&&b.height>=44));
+    await archiveB.screenshot({path:`${output}/cg-xiache-gallery-${width}.png`});
+  }
   await archiveB.getByRole('button',{name:'關閉視窗',exact:true}).click();
   await archiveB.evaluate(()=>{const a=window.__yakyukenTest.archive;for(let i=0;i<14;i++)a.leave(a.begin('dealer'));});
   await archiveB.setViewportSize({width:320,height:568});await frame(archiveB);
