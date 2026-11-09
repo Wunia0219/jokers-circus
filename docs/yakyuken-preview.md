@@ -46,7 +46,7 @@
 
 入場解鎖當前角色的初始 CG，每勝一次解鎖下一張，命運荷官共三張，優然共四張，夏澄共六張。收藏回顧不更改牌桌進度。歷史使用可捲動、可展開的單場清單。普通本機重載不續玩原場；測試雲端可由伺服器恢復未完成場次。
 
-牌桌使用 `images/yakyuken/{dealer,youran,xiache}/` 的 WebP。三位角色共十三張 1024×1536 透明 PNG 位於 `public/downloads/yakyuken/`，供玩家下載，不納入牌桌預載。荷官的下載 PNG 可由 `scripts/assets/export-yakyuken-cg.py` 重建，優然與夏澄的下載 PNG 即核定原圖。
+牌桌使用 `images/yakyuken/{dealer,youran,xiache}/` 的 WebP。荷官與優然的各階段採用同一個 1024×1536 畫布，上身對齊中央，鞋底共用同一基準；只平移圖像，不裁切或單獨縮放。三位角色共十三張 1024×1536 透明 PNG 位於 `public/downloads/yakyuken/`，供玩家下載，不納入牌桌預載。下載版保留核定原圖的構圖；荷官的 PNG 也可由 `scripts/assets/export-yakyuken-cg.py` 以相同像素重建。
 
 `cg-catalog.js` 統一圖片名稱、檔名與公開路徑。本機下載先核對解鎖；Discord 透過官方外部連結開啟 [CG 下載站](https://jokers-circus-gallery.pages.dev)，玩家可取消。該站是公開靜態圖片服務，沒有錢包或授權資料。
 

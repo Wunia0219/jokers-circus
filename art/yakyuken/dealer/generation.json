@@ -1,6 +1,6 @@
 {
   "tool": "built-in image_gen.imagegen",
-  "revision": "yakyuken-outfit-pose-natural-hair-v3",
+  "revision": "yakyuken-natural-poses-approved-v4",
   "identityReference": "images/dealer/dealer-standin.webp",
   "canvas": {
     "width": 1024,
@@ -19,67 +19,63 @@
     "full body entirely in canvas",
     "same original hairline, side part, fringe and crown silhouette"
   ],
-  "variableElements": [
-    "wardrobe",
-    "long hair placement at shoulders or nape",
-    "pose",
-    "expression"
-  ],
   "framing": {
-    "facing": "toward viewer, slight turns permitted",
-    "visualCenterX": 0.5,
-    "baseline": "same fixed image canvas; figure remains entirely visible",
-    "runtimeFit": "object-fit: contain",
-    "maximumBounds": "hair, hands, shoes and clothing stay within 1024x1536",
-    "requestedSafePadding": "5% minimum",
-    "observedSolidPixelBoundsAlphaAbove200": [
-      [
-        223,
-        30,
-        762,
-        1502
-      ],
-      [
-        209,
-        21,
-        818,
-        1516
-      ],
-      [
-        202,
-        25,
-        793,
-        1516
-      ]
-    ],
-    "qaNote": "Actual top/bottom padding is narrower than requested. Figures are complete with no visible clipping; image container adds surrounding space. These are review assets, not a validated animation spritesheet."
+    "runtimeAnchor": "upper torso aligned to x=512; shoe baseline y=1520 (exclusive, alpha >= 180)",
+    "runtimeFit": "identical canvas and uniform sprite scaling; no individual crop or resize",
+    "approvedPng": "original unshifted PNG"
   },
   "assets": [
     {
       "stage": 0,
       "master": "art/yakyuken/dealer/stage-0-master.webp",
+      "original": "public/downloads/yakyuken/dealer-stage-0.png",
       "runtime": "images/yakyuken/dealer/stage-0.webp",
-      "generatedFile": "exec-fe941e53-203e-4dd9-9f6f-dbf9ad5065cd.png",
-      "prompt": "Create ONE full-body transparent PNG fantasy game character asset, 1024x1536 portrait, a NEW outfit and NEW natural pose for the same ADULT 28-year-old male circus dealer in the input identity reference. Use reference ONLY for face, very long half-black half-silver hair, red eyes, jewellery, painterly anime illustration style and black/burgundy/gold palette. Redesign costume entirely: elegant fitted black waistcoat with restrained thin gold piping and three small gold buttons over a deep burgundy satin open-collar shirt, sleeves rolled to forearms; black tailored trousers with a simple gold belt clasp and polished black ankle boots. NO cape, NO long coat, NO tie, NO white shirt, NO dice, NO chains draping across the body. A clear youthful ADULT man with natural athletic proportions. NEW POSE: relaxed upright stance ready for rock paper scissors, weight naturally on one leg, feet comfortably separated, shoulders relaxed, one open palm extended toward the player at waist level as an invitation, other hand resting casually near hip. Friendly confident slightly playful smile, direct eye contact, relaxed head position. Fashion character concept art, sophisticated theatre mood, nonsexual. Entire head, long hair, both hands, trousers and boots visible without cropping, character height about 87% of canvas, minimum 6% transparent safe padding, feet baseline at y94%, centered. Warm upper-left key light and subtle cool rim light. Genuine transparent alpha background, no backdrop, no glow haze around silhouette, no text, no watermark. Conventional opaque trousers with natural ordinary fit and no genital emphasis."
+      "generatedFile": "exec-84a51fe6-bd6b-4b13-bfd5-d87ac08e9c52.png",
+      "translation": [
+        37,
+        3
+      ],
+      "bounds": [
+        232,
+        24,
+        808,
+        1520
+      ]
     },
     {
       "stage": 1,
       "master": "art/yakyuken/dealer/stage-1-master.webp",
+      "original": "public/downloads/yakyuken/dealer-stage-1.png",
       "runtime": "images/yakyuken/dealer/stage-1.webp",
-      "generatedFile": "exec-fc7945be-2870-427d-9872-1c539dd47cb0.png",
-      "previousGeneratedFile": "exec-d67d7816-bc9c-402a-aec7-af2e6ee95fef.png",
-      "initialPrompt": "ONE full-body transparent PNG 1024x1536, stage 1 costume-and-pose variant of the same unequivocally ADULT 28-year-old male fantasy circus dealer in input identity master. Keep the exact recognizable face, split black/silver hair color, red eyes, red tassel earring, natural athletic body proportions, black tailored trousers, gold belt clasp and black polished ankle boots, and painterly anime game art style. Change wardrobe: remove the black waistcoat, keep the deep burgundy satin shirt with open collar and sleeves loosely rolled to elbows. Keep shirt covering torso and naturally tucked into trousers, just a little more relaxed than reference. NEW natural playful rock-paper-scissors pose: one hand raised near chest making a clear two-finger scissors gesture, the other hand casually sweeping hair back near the temple, torso turned a little to viewer's right, relaxed stance with one knee softly bent and both feet grounded. Hairstyle changes to a loose HALF-UP knot, black/silver long lower lengths drape naturally behind shoulders and move with head turn, face unobstructed. Confident amused friendly smile, direct eye contact. Fashion game character art, nonsexual tone. Full-length figure with all hair, fingers, both boots inside canvas. Same approximate body scale as reference, crown at y6%, soles baseline y94%, at least 5% padding. Warm upper-left light. Genuine transparent alpha background, no backdrop, no glow haze, no text, no props, no extra characters. Natural ordinary opaque trouser fit, no genital emphasis.",
-      "prompt": "Precise hairstyle correction ONLY. Image 1 is the EDIT TARGET, image 2 is the strict SCALP, FRINGE and hairline reference. Produce ONE transparent 1024x1536 PNG. Keep image 1 face, expression, adult male identity, red shirt, scissors hand, other hand at temple, full body pose, all clothing, trousers, boots, jewellery, rendering, colors and framing unchanged. Remove the newly invented top-of-head bun / topknot / extra hair mass from image 1 entirely. Restore the SAME natural crown silhouette, side part, black/silver color boundary, front fringe direction, scalp hair volume and hairline visible in image 2. His hair is the SAME haircut throughout the series, not a new haircut. The only natural styling difference is that the existing LONG hair lengths are brushed behind the shoulder by his raised hand; the long ends still flow downward behind the body. No knot above crown, no new tuft, no added head height, no new volume on top. If any hair is gathered, gathering point is behind the nape, invisible from this frontal view. Preserve long black/silver lengths and red tassel earring, complete fingers, full figure and same transparent canvas. Do not change any non-hair detail. No background, no text."
+      "generatedFile": "exec-9cc8621b-f7f6-46ba-8318-0de85e1a319d.png",
+      "translation": [
+        22,
+        0
+      ],
+      "bounds": [
+        211,
+        16,
+        896,
+        1520
+      ]
     },
     {
       "stage": 2,
       "master": "art/yakyuken/dealer/stage-2-master.webp",
+      "original": "public/downloads/yakyuken/dealer-stage-2.png",
       "runtime": "images/yakyuken/dealer/stage-2.webp",
-      "generatedFile": "exec-61036546-4e25-4107-be4c-4d4ce339c911.png",
-      "previousGeneratedFile": "exec-637dea3d-4c3a-48ab-b7e9-62fa3de45cb8.png",
-      "initialPrompt": "Create ONE transparent full-body PNG 1024x1536, final stage game character variant. Images 1 and 2 are identity/style references of the SAME unequivocally ADULT 28-year-old male fantasy circus performer. Preserve his recognizable face, red eyes, half-black half-silver long hair color, red tassel earring, black tailored trousers with gold clasp, rings, wrist jewellery and polished black ankle boots. NEW wardrobe state: bare upper torso, naturally athletic chest and shoulders with normal anatomical proportions; black trousers remain opaque, at natural waist, conventionally tailored and unchanged in coverage. NEW HAIRSTYLE: gather the long black/silver hair into a neat HIGH PONYTAIL that flows behind one shoulder, with a few loose front strands and the same split-color fringe. NEW POSE: stand upright with both feet comfortably planted, shoulders relaxed, one hand resting naturally on hip and other hand raised near chest as a loose rock-paper-scissors fist, elbow lowered, a confident friendly slightly amused smile. Relaxed sportsmanlike game character concept art; no erotic pose or sexual expression. Maintain elegant painterly anime fantasy game style, warm upper-left light. Same approximate scale as references, crown at y6%, boot soles at y94%, full body with all ponytail and hands inside canvas and minimum 5% padding. Genuine transparent alpha background, no backdrop or surrounding glow haze, no text, no props, no tattoos, no genital detail or emphasis.",
-      "prompt": "Precise hairstyle correction ONLY. Image 1 is the EDIT TARGET, image 2 is the strict hairline, fringe and crown reference of the SAME adult 28-year-old male fantasy performer. ONE transparent PNG 1024x1536. Keep image 1 face, expression, adult identity, bare athletic upper torso, fist and other hand pose, black opaque tailored trousers, boots, jewellery, body proportions, rendering, lighting and framing unchanged. Remove image 1's high ponytail bump / topknot and any extra hair shape above the crown. Restore exactly image 2's natural scalp silhouette, original side part, front fringe flow, black/silver division and crown hair volume. This is the SAME haircut as image 2; only long lengths are rearranged. Gather the existing long hair at the NAPE into a loose LOW PONYTAIL behind the neck, secured by a small understated black tie, below the ear line and mostly hidden behind shoulder. Long black/silver strands flow naturally downward behind one shoulder rather than originating at top of head. No bun, no topknot, no added crown tuft, no extra head height, no change of haircut or bangs. Keep red tassel earring. Full body inside same transparent canvas, no text, no backdrop. Normal nonsexual fashion character concept art with ordinary covered lower body and no genital detail."
+      "generatedFile": "exec-69bce6f2-afdc-44ba-96df-ea3575b58957.png",
+      "translation": [
+        -18,
+        4
+      ],
+      "bounds": [
+        288,
+        21,
+        748,
+        1520
+      ]
     }
   ],
-  "encoding": "Built-in generated PNG converted to lossless WebP masters with every RGBA byte verified unchanged; runtime WebP quality 93; alpha preserved, no crop or retouch"
+  "encoding": "Approved PNGs preserved byte-for-byte; masters are RGBA-exact lossless WebP. Runtime WebP quality 91, integer translation and removal of alpha 1\u20133 artifacts."
 }
