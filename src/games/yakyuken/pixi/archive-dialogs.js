@@ -76,20 +76,24 @@ export function buildArchiveDialog(scene,type){
     const artCount=scene.characterCG.length,count=scene.characterCG.filter((_,i)=>scene.archive.isUnlocked(scene.selectedCharacter,i)).length;
     text(`${characterRule(scene.selectedCharacter).name} · 已解鎖 ${count} / ${artCount}`,12,0,-mh/2+(compact?99:145),body,PALETTE.muted);
     const vertical=width<600 && height>width,top=-mh/2+(compact?121:170),available=mh-(compact?260:309),gap=12;
-    const spacing=(artCount-1)*gap;
-    const tileWidth=vertical?mw-44:(mw-44-spacing)/artCount,tileHeight=vertical?(available-spacing)/artCount:Math.min(330,available);
+    const twoColumns=vertical&&artCount>4,columns=vertical?(twoColumns?2:1):artCount,rows=Math.ceil(artCount/columns);
+    const tileWidth=(mw-44-(columns-1)*gap)/columns;
+    const tileHeight=vertical?(available-(rows-1)*gap)/rows:Math.min(330,available);
     scene.characterCG.forEach((art,index)=>{
-      const unlocked=scene.archive.isUnlocked(scene.selectedCharacter,index),cx=vertical?0:(index-(artCount-1)/2)*(tileWidth+gap),cy=vertical?top+tileHeight/2+index*(tileHeight+gap):top+available/2;
+      const unlocked=scene.archive.isUnlocked(scene.selectedCharacter,index);
+      const cx=(index%columns-(columns-1)/2)*(tileWidth+gap);
+      const cy=vertical?top+tileHeight/2+Math.floor(index/columns)*(tileHeight+gap):top+available/2;
       const tile=place(new PixiButton({name:unlocked?`回顧${art.name} CG`:`${art.name} CG 尚未解鎖`,variant:'gallery',width:tileWidth,height:tileHeight,onPress:()=>scene.openCG(index)}),cx,cy,body);
+      const thumbX=-tileWidth/2+(twoColumns?25:47);
       if(unlocked){
-        thumbnail(scene.characterTextures[index],tile,vertical?{x:-tileWidth/2+47,y:0,width:82,height:tileHeight-10}:{x:0,y:-27,width:tileWidth-12,height:tileHeight-64});
+        thumbnail(scene.characterTextures[index],tile,vertical?{x:thumbX,y:0,width:twoColumns?38:82,height:tileHeight-10}:{x:0,y:-27,width:tileWidth-12,height:tileHeight-64});
       }else{
-        const glyph=slotIcon(lock,vertical?27:36,0x9b8796);place(glyph,vertical?-tileWidth/2+34:-18,vertical?-13:-40,tile);
+        const glyph=slotIcon(lock,vertical?27:36,0x9b8796);place(glyph,vertical?thumbX-13:-18,vertical?-13:-40,tile);
       }
-      const tx=vertical?26:0;
-      text(art.name,vertical?15:17,tx,vertical?-15:tileHeight/2-38,tile,unlocked?PALETTE.cream:PALETTE.muted,{fontWeight:'500'});
-      const condition=index?`累積 ${index} 勝解鎖`:'開始對局解鎖';
-      text(unlocked?'已解鎖':condition,12,tx,vertical?14:tileHeight/2-15,tile,unlocked?PALETTE.gold:PALETTE.muted);
+      const tx=vertical?(twoColumns?20:26):0;
+      text(art.name,twoColumns?13:vertical?15:17,tx,vertical?-15:tileHeight/2-38,tile,unlocked?PALETTE.cream:PALETTE.muted,{fontWeight:'500'});
+      const condition=index?`${twoColumns?'':'累積 '}${index} 勝解鎖`:twoColumns?'入場解鎖':'開始對局解鎖';
+      text(unlocked?'已解鎖':condition,twoColumns?11:12,tx,vertical?14:tileHeight/2-15,tile,unlocked?PALETTE.gold:PALETTE.muted);
       if(!unlocked){tile.setEnabled(false);tile.alpha=1;}
     });
     collectionFooter(scene,body,mw,mh);

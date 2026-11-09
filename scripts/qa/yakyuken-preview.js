@@ -5,7 +5,7 @@ import {launchBrowser} from './helpers/browser.js';
 import {ENTRY_TIMING} from '../../src/games/yakyuken/pixi/entry-state.js';
 import {slotHeaderLayout,yakyukenHeaderLayout} from '../../src/games/yakyuken/pixi/header-layout.js';
 import {tableLayout,TABLE_MOVES} from '../../src/games/yakyuken/pixi/layout.js';
-import {DEALER} from '../../src/games/yakyuken/characters.js';
+import {DEALER,characterRule} from '../../src/games/yakyuken/characters.js';
 import {APP_VERSION} from '../../src/version.js';
 
 const port=4196,origin=`http://127.0.0.1:${port}`,output='test-results/yakyuken-pixi';
@@ -36,7 +36,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
 const checks=[],errors=[],requests=[],entryEvidence=[],entryReleases=[];
 let browser;
 const watchEntryBindings=context=>context.on('page',page=>page.on('console',message=>{if(message.type()==='warning' && message.text().includes('[BindGroup]'))errors.push(message.text());}));
-const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===25 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
+const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===26 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => {const d=document.querySelector('canvas')?.dataset;return d?.phase===expected && (!['confirmed','selecting'].includes(expected) || d.changing!=='true');},value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
@@ -758,35 +758,48 @@ try {
   assert.equal(await disposed.evaluate(()=>window.__yakyukenTest.entryGradients),null);
   await disposed.close();checks.push('disposing during entry cancels pending presentation and unloads late assets without resurrecting the renderer');
 
-  const youranContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
-  watchEntryBindings(youranContext);
-  const youran=await youranContext.newPage();youran.on('pageerror',error=>errors.push(error.message));
-  await youran.goto(`${origin}/yakyuken-preview.html`);await phase(youran,'games');
-  await youran.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(youran,'characters');
-  await youran.getByRole('button',{name:'選擇優然',exact:true}).click();
-  assert.equal((await canvasState(youran)).character,'guest-1');
-  await youran.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(youran,'selecting');
-  for(let wins=1;wins<=3;wins++){
-    await youran.getByRole('button',{name:'選擇拳頭',exact:true}).click();
-    await youran.getByRole('button',{name:'確認出牌',exact:true}).click();
-    await youran.waitForFunction(expected=>{
+  for(const [id,key,displayKey] of [['guest-1','youran','Youran'],['guest-2','xiache','Xiache']]){
+    const {name,winsRequired,reward}=characterRule(id);
+    const guestContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
+    watchEntryBindings(guestContext);
+    const guest=await guestContext.newPage();guest.on('pageerror',error=>errors.push(error.message));
+    await guest.goto(`${origin}/yakyuken-preview.html`);await phase(guest,'games');
+    await guest.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(guest,'characters');
+    await guest.getByRole('button',{name:'選擇'+name,exact:true}).click();
+    assert.equal((await canvasState(guest)).character,id);
+    await guest.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(guest,'selecting');
+    assert.equal(await guest.evaluate(character=>{
       const scene=window.__yakyukenTest;
-      return scene.phase==='confirmed'&&!scene.changing&&scene.pose===expected&&scene.dealer.texture===scene.artTextures['guest-1'][expected];
-    },wins);
-    const state=await canvasState(youran);
-    assert.deepEqual([state.wins,state.challengeStatus,state.reward],[String(wins),wins===3?'won':'playing',wins===3?'5000':'0']);
-    assert.equal(await youran.evaluate(()=>window.__yakyukenTest.archive.isUnlocked('guest-1',3)),wins===3);
-    if(wins<3){await youran.getByRole('button',{name:'下一局',exact:true}).click();await phase(youran,'selecting');}
+      return scene.pose===0&&scene.dealer.texture===scene.artTextures[character][0]&&scene.archive.isUnlocked(character,0);
+    },id),true);
+    for(let wins=1;wins<=winsRequired;wins++){
+      await guest.getByRole('button',{name:'選擇拳頭',exact:true}).click();
+      await guest.getByRole('button',{name:'確認出牌',exact:true}).click();
+      await guest.waitForFunction(({id,wins})=>{
+        const scene=window.__yakyukenTest;
+        return scene.phase==='confirmed'&&!scene.changing&&scene.pose===wins&&scene.dealer.texture===scene.artTextures[id][wins];
+      },{id,wins});
+      const cleared=wins===winsRequired,state=await canvasState(guest);
+      assert.deepEqual([state.wins,state.challengeStatus,state.reward],[String(wins),cleared?'won':'playing',cleared?String(reward):'0']);
+      assert.equal(await guest.evaluate(({id,winsRequired})=>window.__yakyukenTest.archive.isUnlocked(id,winsRequired),{id,winsRequired}),cleared);
+      if(!cleared){await guest.getByRole('button',{name:'下一局',exact:true}).click();await phase(guest,'selecting');}
+    }
+    await guest.getByRole('button',{name:'CG 收藏',exact:true}).click();
+    if(id==='guest-2'){
+      await guest.setViewportSize({width:320,height:568});await frame(guest);
+      await assertArchiveControls(guest);
+      await guest.screenshot({path:`${output}/xiache-collection-mobile.png`});
+    }
+    assert.equal(await guest.getByRole('button',{name:/^回顧.*CG$/}).count(),winsRequired+1);
+    await guest.getByRole('button',{name:`回顧${name}終幕 CG`,exact:true}).click();
+    const download=guest.waitForEvent('download');
+    await guest.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).click();
+    const file=await download;
+    assert.equal(file.suggestedFilename(),`Jokers-Circus-Yakyuken-${displayKey}-finale.png`);
+    assert.deepEqual(readFileSync(await file.path()),readFileSync(`public/downloads/yakyuken/${key}-stage-${winsRequired}.png`));
+    if(id==='guest-2')await guest.screenshot({path:`${output}/xiache-finale.png`});
+    await guestContext.close();checks.push(`${displayKey} shows every pose, unlocks the final CG only after ${winsRequired} wins and downloads its original`);
   }
-  await youran.getByRole('button',{name:'CG 收藏',exact:true}).click();
-  assert.equal(await youran.getByRole('button',{name:/^回顧.*CG$/}).count(),4);
-  await youran.getByRole('button',{name:'回顧優然終幕 CG',exact:true}).click();
-  const youranDownload=youran.waitForEvent('download');
-  await youran.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).click();
-  const youranFile=await youranDownload;
-  assert.equal(youranFile.suggestedFilename(),'Jokers-Circus-Yakyuken-Youran-finale.png');
-  assert.deepEqual(readFileSync(await youranFile.path()),readFileSync('public/downloads/yakyuken/youran-stage-3.png'));
-  await youranContext.close();checks.push('Youran selects the correct art and unlocks a fourth downloadable CG only after three wins');
 
   const failure=await context.newPage();failure.on('pageerror',error => errors.push(error.message));
   await failure.route('**/images/yakyuken/**/stage-0.webp',route => route.abort());

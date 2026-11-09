@@ -6,6 +6,7 @@ import {inflateSync} from 'node:zlib';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {dealerFrameSequence} from '../src/ui/dealer/dealer-motion.js';
+import {ALL_CG} from '../src/games/yakyuken/cg-catalog.js';
 import {webpSize} from './helpers/webp.js';
 const root=new URL('../',import.meta.url);
 const manifest=JSON.parse(readFileSync(new URL('images/dealer/v4/dealer.json',root),'utf8'));
@@ -34,11 +35,10 @@ test('shipping dealer atlas contains complete authored idle/win sequences and ac
   }
 });
 
-const downloadPNGs=[...([0,1,2].map(i=>`public/downloads/yakyuken/dealer-stage-${i}.png`)),
-  ...[0,1,2,3].map(i=>`public/downloads/yakyuken/youran-stage-${i}.png`)];
+const downloadPNGs=ALL_CG.map(art=>'public'+art.download);
 const reviewPNGs=JSON.parse(readFileSync(new URL('art/launch-screen/review-sources.json',root),'utf8')).images;
 const assertPNGInventory=files=>assert.deepEqual([...files].sort(),[...downloadPNGs,...reviewPNGs.map(r=>r.file)].sort());
-test('PNG inventory allows seven CG downloads and recorded offline review originals with exact provenance',()=>{
+test('PNG inventory allows catalogued CG downloads and recorded offline review originals with exact provenance',()=>{
   const files=[];
   function scan(path){for(const entry of readdirSync(path,{withFileTypes:true})){
     const file=join(path,entry.name);

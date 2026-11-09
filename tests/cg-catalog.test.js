@@ -19,10 +19,19 @@ test('public CG links distinguish all three artworks without player or hosting a
 test('Youran has four distinct public CGs while old numeric links still belong to the Dealer',()=>{
   const art=CG_ART['guest-1'];
   assert.equal(art.length,4);
-  assert.equal(new Set(ALL_CG.map(item=>item.path)).size,7);
   for(const [index,item] of art.entries()){
     assert.equal(cgFromLocation({pathname:item.path}),item);
     assert.equal(item.download,`/downloads/yakyuken/youran-stage-${index}.png`);
   }
   assert.equal(cgFromLocation({pathname:'/cg-download.html',search:'?stage=2'}),DEALER_CG[2]);
+});
+
+test('Xiache has six distinct CGs, one per pose, with no collisions in the gallery',()=>{
+  const art=CG_ART['guest-2'];
+  assert.equal(art.length,6);
+  assert.equal(new Set(ALL_CG.map(item=>item.path)).size,ALL_CG.length);
+  for(const [index,item] of art.entries()){
+    assert.equal(cgFromLocation({pathname:item.path}),item);
+    assert.equal(item.download,`/downloads/yakyuken/xiache-stage-${index}.png`);
+  }
 });

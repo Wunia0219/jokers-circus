@@ -48,17 +48,20 @@ test('paid entry locks the entire sequence privately and each response exposes o
   }
   assert.equal(response.wallet.balance,11500);assert.equal(response.nextHand,null);assert.ok(!f.docs.get('qa-a').duelPlan);
 });
-test('Youran unlocks all four poses and pays exactly once on the third win',async()=>{
-  const f=fixture();f.plan(['win','win','win']);const s=f.service();
-  const {matchId,wallet}=await s.execute('begin',{characterId:'guest-1',requestId:id()});
-  assert.equal(wallet.unlocks['guest-1'],0);
-  for(let wins=1;wins<=3;wins++){
-    const requestId=id(),result=await hand(s,matchId,requestId),record=result.wallet.records[0];
-    assert.deepEqual([record.wins,result.wallet.unlocks['guest-1'],record.reward,result.wallet.balance],
-      [wins,wins,wins===3?5000:0,wins===3?14000:9000]);
-    if(wins===3)assert.deepEqual(await hand(f.service(),matchId,requestId),result);
-  }
-});
+for(const [characterId,requiredWins,reward] of [['guest-1',3,5000],['guest-2',5,10000]]){
+  test(`${characterId} unlocks each pose and pays exactly once after ${requiredWins} wins`,async()=>{
+    const f=fixture();f.plan(Array(requiredWins).fill('win'));const s=f.service();
+    const {matchId,wallet}=await s.execute('begin',{characterId,requestId:id()});
+    assert.equal(wallet.unlocks[characterId],0);
+    for(let wins=1;wins<=requiredWins;wins++){
+      const requestId=id(),result=await hand(s,matchId,requestId),record=result.wallet.records[0];
+      const payout=wins===requiredWins?reward:0;
+      assert.deepEqual([record.wins,result.wallet.unlocks[characterId],record.reward,result.wallet.balance],
+        [wins,wins,payout,9000+payout]);
+      if(payout)assert.deepEqual(await hand(f.service(),matchId,requestId),result);
+    }
+  });
+}
 test('draw cursor and receipt commit together; reloads, stale tickets and old receipts cannot consume another hand',async()=>{
   const f=fixture();f.plan(['draw','draw','win','win']);let s=f.service();const entry=await begin(s),requestId=id();
   const body={matchId:entry.matchId,move:'rock',handIndex:0,requestId};f.loseReceipt();
@@ -116,7 +119,7 @@ test('unknown commits recover the original debit and prize across service restar
 test('insufficient funds, client supplied payouts and disabled characters cannot mutate test balances',async()=>{
   const f=fixture(),s=f.service('qa-low');await assert.rejects(()=>begin(s),/戲籌不足/);assert.equal(f.writes,0);
   await assert.rejects(()=>s.execute('begin',{characterId:'dealer',requestId:id(),reward:2500}),/欄位/);
-  await assert.rejects(()=>s.execute('begin',{characterId:'guest-2',requestId:id()}),/尚未開放/);assert.equal(f.writes,0);
+  await assert.rejects(()=>s.execute('begin',{characterId:'guest-3',requestId:id()}),/尚未開放/);assert.equal(f.writes,0);
 });
 
 test('request and match identifiers require strings before any storage or randomness',async()=>{
