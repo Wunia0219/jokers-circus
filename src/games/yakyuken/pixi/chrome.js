@@ -15,7 +15,7 @@ function buildProgress(scene,hud){
   const frame=new Sprite(scene.cardTextures.progress);frame.anchor.set(.5);frame.width=w;frame.height=h;score.addChild(frame);
   const titleSize=Math.max(12,w*.08),titleY=y-h/2-15;
   at(label('本場進度',titleSize,PALETTE.gold,{letterSpacing:1}),x,titleY,hud);
-  at(label('荷官出牌',titleSize,PALETTE.gold,{letterSpacing:1}),dealerCard.x*scale,titleY,hud);
+  at(label(`${rule.id==='dealer'?'荷官':rule.name}出牌`,titleSize,PALETTE.gold,{letterSpacing:1}),dealerCard.x*scale,titleY,hud);
   for(const [index,[name,target,color]] of [['勝',rule.winsRequired,PALETTE.win],['敗',rule.lossLimit,PALETTE.loss]].entries()){
     const rowY=(index?1:-1)*h*.22;
     at(label(name,Math.max(12,w*.095),color),-w*.28,rowY,score);
@@ -95,7 +95,7 @@ export function updateSlotHud(scene){
   scene.collectionButton?.setEnabled(!scene.rewardPresentation.busy);scene.historyButton?.setEnabled(!scene.rewardPresentation.busy);
   if(scene.screen!=='table' || !scene.confirmButton)return;
   const {phase,selected,duel}=scene,confirmed=phase==='confirmed',retrying=phase==='retrying';
-  const rule=characterRule(scene.selectedCharacter),challenge=scene.challenge,finished=challenge?.status!=='playing';
+  const rule=characterRule(scene.selectedCharacter),opponent=rule.id==='dealer'?'荷官':rule.name,challenge=scene.challenge,finished=challenge?.status!=='playing';
   const pending=phase==='presenting'?duel?.outcome:null;
   const wins=(challenge?.wins || 0)-Number(pending==='win'),losses=(challenge?.losses || 0)-Number(pending==='loss');
   scene.scoreWins.text=String(wins);scene.scoreLosses.text=String(losses);
@@ -110,15 +110,15 @@ export function updateSlotHud(scene){
   scene.returnButton.setEnabled(results&&!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing&&!scene.entering&&!scene.wallet?.pending);
   const next=finished?'再次挑戰':'下一局';
   const retryName=scene.wallet?.pending?'重試上一拳':'重新同步';
-  scene.confirmButton.setText(scene.rewardPresentation.busy?'領獎中…':confirmed?next:retrying?retryName:phase==='confirming'?'正在確認紀錄…':phase==='requesting'?'正在確認出牌…':phase==='presenting'?'荷官出牌中…':'確認出牌');
+  scene.confirmButton.setText(scene.rewardPresentation.busy?'領獎中…':confirmed?next:retrying?retryName:phase==='confirming'?'正在確認紀錄…':phase==='requesting'?'正在確認出牌…':phase==='presenting'?`${opponent}出牌中…`:'確認出牌');
   scene.confirmButton.caption.scale.set(1);
   scene.confirmButton.caption.scale.set(Math.min(1,(scene.confirmButton.buttonWidth-24)/scene.confirmButton.caption.width));
   scene.confirmButton.setName(confirmed?next:retrying?retryName:'確認出牌');
   scene.confirmButton.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing && !scene.ending && (confirmed || retrying || phase==='selecting' && !!selected));
-  scene.status.text=confirmed?{win:'你贏了',loss:'荷官獲勝',draw:'平手，再來一拳'}[duel.outcome]:phase==='presenting'?'荷官即將揭牌':selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
-  scene.statusDetail.text=confirmed?'你出'+TABLE_MOVE_NAMES[selected]+' · 荷官出'+TABLE_MOVE_NAMES[duel.dealer]:phase==='presenting'?'好戲，即將揭曉':selected?'準備好了，就出這一張':'選擇手牌，與命運一決勝負';
+  scene.status.text=confirmed?{win:'你贏了',loss:`${opponent}獲勝`,draw:'平手，再來一拳'}[duel.outcome]:phase==='presenting'?`${opponent}即將揭牌`:selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
+  scene.statusDetail.text=confirmed?`你出${TABLE_MOVE_NAMES[selected]} · ${opponent}出${TABLE_MOVE_NAMES[duel.dealer]}`:phase==='presenting'?'好戲，即將揭曉':selected?'準備好了，就出這一張':'選擇手牌，與命運一決勝負';
   if(phase==='confirming'){
-    scene.status.text=duel?{win:'你贏了',loss:'荷官獲勝',draw:'平手，再來一拳'}[duel.outcome]:'正在確認出牌';
+    scene.status.text=duel?{win:'你贏了',loss:`${opponent}獲勝`,draw:'平手，再來一拳'}[duel.outcome]:'正在確認出牌';
     scene.statusDetail.text='正在確認紀錄…';
   }
   if(retrying){scene.status.text='出牌尚未確認';scene.statusDetail.text=scene.handTurn?.error||'請重試原操作。';}

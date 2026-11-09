@@ -136,9 +136,10 @@ test('Pixi lobby: two game choices and five character positions fit desktop and 
     assert.ok(l.character.art.height>0);
     assert.ok(l.character.enterY+22<=height);
   }
-  assert.equal(CHARACTERS.length,5);assert.equal(CHARACTERS.filter(c=>c.enabled).length,1);
+  assert.equal(CHARACTERS.length,5);assert.equal(CHARACTERS.filter(c=>c.enabled).length,2);
   assert.equal(canEnterCharacter('dealer'),true);
-  for(const id of ['guest-1','guest-4','unknown',null])assert.equal(canEnterCharacter(id),false);
+  assert.equal(canEnterCharacter('guest-1'),true);
+  for(const id of ['guest-2','guest-4','unknown',null])assert.equal(canEnterCharacter(id),false);
 });
 
 test('Pixi card flip: back stays visible until edge-on, then only the selected face is revealed',async()=>{

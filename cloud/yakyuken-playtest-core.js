@@ -48,7 +48,7 @@ function apply(state,intent){
     if(!MOVES.includes(body.move)||!duel)throw fail(400,'不支援的出拳。');
     if(duel.outcome==='draw')return {next,changed:false};
     Object.assign(record,challengeProgress(record,duel.outcome),{updatedAt:now});
-    next.unlocks[record.characterId]=Math.max(next.unlocks[record.characterId]??0,Math.min(record.wins,2));
+    next.unlocks[record.characterId]=Math.max(next.unlocks[record.characterId]??0,record.wins);
     next.balance+=record.reward;
     record.net=record.reward-record.fee;
     if(record.status!=='playing')delete next.duelPlan;

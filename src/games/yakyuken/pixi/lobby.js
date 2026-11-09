@@ -4,6 +4,7 @@ import {label,PALETTE,PixiButton} from './ui.js';
 import {lobbyLayout} from './lobby-layout.js';
 import {createGameCover} from './game-cover.js';
 import {LOBBY_COVERS} from '../lobby-art.js';
+import {CHARACTER_INTROS} from '../assets.js';
 
 const at=(node,x,y,parent)=>{node.position.set(x,y);parent.addChild(node);return node;};
 function portrait(texture,parent,area,fullHeight){
@@ -31,7 +32,7 @@ export function buildLobby(scene){
 
   }else{
     const c=l.character,s=c.contentScale,rule=characterRule(scene.selectedCharacter);
-    portrait(scene.dealerTextures[0],root,c.art,c.art.height/.58);
+    portrait(scene.characterTextures[0],root,c.art,c.art.height/.58);
     if(!c.vertical){
       const p=c.panel,frame=new Graphics({label:'character-selection-frame',eventMode:'none'});
       frame.roundRect(p.x-p.width/2,p.y-p.height/2,p.width,p.height,18*s).fill({color:0x171525,alpha:.55}).stroke({color:PALETTE.gold,alpha:.35,width:s});
@@ -40,24 +41,25 @@ export function buildLobby(scene){
     }
     title('野球拳・選擇對手',c.infoX,c.headingY,root,c.vertical?17:20*s);
     title(rule.name,c.infoX,c.nameY,root,c.vertical?19:30*s,PALETTE.cream,{fontWeight:'500'});
-    if(!c.vertical)title('酒紅襯衫、黑色背心，邀你入局。',c.infoX,c.descriptionY,root,14*s,PALETTE.muted);
+    if(!c.vertical)title(CHARACTER_INTROS[rule.id],c.infoX,c.descriptionY,root,14*s,PALETTE.muted);
     title(`${rule.winsRequired} 勝通關 · ${rule.lossLimit} 敗結束 · 獎金 ${rule.reward.toLocaleString('en-US')}`,c.infoX,c.rulesY,root,c.vertical?Math.min(13,(width-24)/25):15*s,PALETTE.gold);
     scene.portraitGradient ??=new FillGradient({start:{x:0,y:0},end:{x:1,y:1},colorStops:[{offset:0,color:0x493037},{offset:.5,color:0x111729},{offset:1,color:0x251725}]});
     CHARACTERS.forEach((character,index)=>{
       const r=c.slots[index],button=new PixiButton({name:`選擇${character.name}`,width:r.width,height:r.height,onPress:()=>scene.selectCharacter(character.id)});
+      const selected=character.id===rule.id;
       button.position.set(r.x,r.y);root.addChild(button);
       button.background.context.batchMode='batch';
       button.background.clear().roundRect(-r.width/2,-r.height/2,r.width,r.height,9*s)
         .fill(scene.portraitGradient)
-        .stroke({color:index?0x6a5259:PALETTE.gold,width:(index?1:2)*s});
+        .stroke({color:selected?PALETTE.gold:0x6a5259,width:(selected?2:1)*s});
       const stage=new Graphics({label:'portrait-stage',eventMode:'none'});
-      stage.poly([-r.width*.34,-r.height*.46,0,r.height*.34,r.width*.34,-r.height*.46]).fill({color:0xe6c488,alpha:index?.025:.10});
+      stage.poly([-r.width*.34,-r.height*.46,0,r.height*.34,r.width*.34,-r.height*.46]).fill({color:0xe6c488,alpha:selected?.10:.025});
       stage.moveTo(-r.width*.43,r.height*.32).lineTo(r.width*.43,r.height*.32).stroke({color:PALETTE.gold,width:s,alpha:.18});
       button.addChild(stage);
-      if(!index){portrait(scene.dealerTextures[0],button,{x:-r.width/2+3,y:-r.height/2+3,width:r.width-6,height:r.height-6},r.height*2.4);}
+      if(character.enabled){portrait(scene.artTextures[character.id][0],button,{x:-r.width/2+3,y:-r.height/2+3,width:r.width-6,height:r.height-6},r.height*2.4);}
       else title(['','II','III','IV','V'][index],0,-8*s,button,22*s,0x887783,{fontFamily:['Georgia','serif']});
       button.addChild(new Graphics().rect(-r.width/2+3,r.height/2-24*s,r.width-6,21*s).fill({color:0x201522,alpha:.92}));
-      title(index?'準備中':'荷官',0,r.height/2-13*s,button,Math.max(11,11*s),index?0xa493a0:PALETTE.gold);
+      title(character.enabled?(index?character.name:'荷官'):'準備中',0,r.height/2-13*s,button,Math.max(11,11*s),selected?PALETTE.gold:0xa493a0);
       if(!character.enabled)button.setEnabled(false);
     });
     title(scene.wallet?'入場費不予退還':'本機試玩暫不扣款',c.infoX,c.feeY,root,Math.max(12,12*s),PALETTE.muted);

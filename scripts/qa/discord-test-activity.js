@@ -126,6 +126,7 @@ try{
     const chooseYakyuken=frame.getByRole('button',{name:'選擇野球拳',exact:true});
     if(mobile)await chooseYakyuken.tap();else await chooseYakyuken.click();
     await phase('characters');
+    await frame.waitForFunction(()=>window.__playerScene.audio.background.context?.state==='running');
     await shell.waitForFunction(()=>!__musicPlayers[0].media.paused&&__musicPlayers[0].media.currentTime>0);
     assert.equal(await lobbyMusic.isVisible(),false);
     assert.equal(await frame.evaluate(()=>__musicPlayers.length),0,'Yakyuken leaves music playback in the shell');
@@ -204,10 +205,21 @@ try{
     await phase('selecting');assert.equal(docs.get(who).balance,9000);
     await frame.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).waitFor({state:'detached'});
     assert.equal((await playerView()).balance,'9,000');await page.screenshot({path:output+'/'+who+'-identity-table.png'});
+    await frame.evaluate(()=>{
+      const context=window.__playerScene.audio.background.context;
+      const createSample=context.createBufferSource.bind(context),createTone=context.createOscillator.bind(context);
+      window.__tableSounds={samples:0,tones:0};
+      context.createBufferSource=()=>{window.__tableSounds.samples++;return createSample();};
+      context.createOscillator=()=>{window.__tableSounds.tones++;return createTone();};
+    });
     for(let i=0;i<2;i++){
       if(i){await frame.getByRole('button',{name:'下一局',exact:true}).click();await phase('selecting');}
       const hand=frame.getByRole('button',{name:'選擇拳頭',exact:true}),confirm=frame.getByRole('button',{name:'確認出牌',exact:true});
-      if(mobile){await hand.tap();await confirm.tap();}else{await hand.click();await confirm.click();}await phase('confirmed');
+      if(mobile)await hand.tap();else await hand.click();
+      assert.deepEqual(await frame.evaluate(()=>window.__tableSounds),{samples:i,tones:0},'selection leaves the background track alone');
+      if(mobile)await confirm.tap();else await confirm.click();
+      await phase('confirmed');
+      assert.deepEqual(await frame.evaluate(()=>window.__tableSounds),{samples:i+1,tones:0},'each hand plays only one paper flip');
     }
     assert.equal(docs.get(who).balance,11500);await frame.getByRole('button',{name:'CG 收藏',exact:true}).click();await frame.getByRole('button',{name:'回顧終幕 CG',exact:true}).click();
     await frame.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).click();

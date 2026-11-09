@@ -34,10 +34,11 @@ test('shipping dealer atlas contains complete authored idle/win sequences and ac
   }
 });
 
-const downloadPNGs=[0,1,2].map(i=>`public/downloads/yakyuken/dealer-stage-${i}.png`);
+const downloadPNGs=[...([0,1,2].map(i=>`public/downloads/yakyuken/dealer-stage-${i}.png`)),
+  ...[0,1,2,3].map(i=>`public/downloads/yakyuken/youran-stage-${i}.png`)];
 const reviewPNGs=JSON.parse(readFileSync(new URL('art/launch-screen/review-sources.json',root),'utf8')).images;
 const assertPNGInventory=files=>assert.deepEqual([...files].sort(),[...downloadPNGs,...reviewPNGs.map(r=>r.file)].sort());
-test('runtime PNGs are limited to three CG downloads; recorded offline review originals retain exact provenance',()=>{
+test('PNG inventory allows seven CG downloads and recorded offline review originals with exact provenance',()=>{
   const files=[];
   function scan(path){for(const entry of readdirSync(path,{withFileTypes:true})){
     const file=join(path,entry.name);

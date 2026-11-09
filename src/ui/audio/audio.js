@@ -86,15 +86,19 @@ export class Sound {
     const context=this.context;
     for(const voice of voices){
       while(this.voices.size>=96)this.voices.values().next().value.stop();
-      const oscillator=context.createOscillator(),gain=context.createGain(),start=context.currentTime+voice.at;
-      oscillator.type='sine';oscillator.frequency.setValueAtTime(voice.frequency,start);
-      oscillator.frequency.exponentialRampToValueAtTime(voice.frequencyEnd,start+voice.duration);
+      const source=voice.buffer?context.createBufferSource():context.createOscillator();
+      const gain=context.createGain(),start=context.currentTime+voice.at;
+      if(voice.buffer)source.buffer=voice.buffer;
+      else{
+        source.type='sine';source.frequency.setValueAtTime(voice.frequency,start);
+        source.frequency.exponentialRampToValueAtTime(voice.frequencyEnd,start+voice.duration);
+      }
       gain.gain.setValueAtTime(0,start);
       gain.gain.linearRampToValueAtTime(voice.volume,start+voice.attack);
       gain.gain.setValueAtTime(voice.volume,start+voice.attack+voice.hold);
       gain.gain.exponentialRampToValueAtTime(.00001,start+voice.duration);
       const panner=context.createStereoPanner?.();
-      oscillator.connect(gain);
+      source.connect(gain);
       if(panner){panner.pan.setValueAtTime(voice.pan,start);gain.connect(panner);panner.connect(this.effectsGain);}
       else gain.connect(this.effectsGain);
       let stopped=false;
@@ -102,11 +106,11 @@ export class Sound {
         if(stopped)return;stopped=true;this.voices.delete(handle);
         gain.gain.cancelScheduledValues(context.currentTime);
         gain.gain.setTargetAtTime(0,context.currentTime,.004);
-        try{oscillator.stop(context.currentTime+(this.suspended?0:.015));}catch{ /* An ended voice is already silent. */ }
+        try{source.stop(context.currentTime+(this.suspended?0:.015));}catch{ /* An ended voice is already silent. */ }
       }};
-      oscillator.onended=()=>{this.voices.delete(handle);oscillator.disconnect();gain.disconnect();panner?.disconnect();};
+      source.onended=()=>{this.voices.delete(handle);source.disconnect();gain.disconnect();panner?.disconnect();};
       this.voices.add(handle);
-      oscillator.start(start);oscillator.stop(start+voice.duration+.005);
+      source.start(start);source.stop(start+voice.duration+.005);
     }
   }
   spin(){

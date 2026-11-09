@@ -1,4 +1,5 @@
 import {duelForOutcome} from './challenge.js';
+import {canUnlockPose} from './characters.js';
 
 const profiles=new Set(['qa-a','qa-b','qa-low','qa-zero']);
 const sessionStorage=()=>{try{return globalThis.sessionStorage;}catch{return null;}};
@@ -9,7 +10,7 @@ export class TestWalletClient{
     Object.assign(this,{player,fetchImpl,storage,session,reauthorize});this.key='jokers-circus:yakyuken:cloud-test:pending:'+player;
     try{const pending=JSON.parse(storage?.getItem(this.key)||'null');if(pending&&['begin','hand','leave','checkin'].includes(pending.action)&&typeof pending.body?.requestId==='string'&&/^[-a-zA-Z0-9]{16,80}$/.test(pending.body.requestId))this.pending=pending;}catch{}
     this.archive={cloud:true,persistent:true,owns:()=>false,records:()=>this.wallet?.records||[],
-      isUnlocked:(character,pose)=>Number.isInteger(pose)&&pose>=0&&pose<=2&&(this.wallet?.unlocks[character]??-1)>=pose,
+      isUnlocked:(character,pose)=>canUnlockPose(character,pose)&&(this.wallet?.unlocks[character]??-1)>=pose,
       begin:()=>this.wallet?.activeId,update:()=>{},leave:()=>{}};
   }
   persist(){try{if(this.pending)this.storage?.setItem(this.key,JSON.stringify(this.pending));else this.storage?.removeItem(this.key);}catch{}}

@@ -42,14 +42,23 @@ try{
   const tick=ms=>page.evaluate(ms=>{const s=window.__rewardScene;s.tickReward(ms);s.app.render();},ms);
   const play=async()=>{await page.getByRole('button',{name:'選擇拳頭',exact:true}).click();await page.getByRole('button',{name:'確認出牌',exact:true}).click();};
   await page.goto(origin+'/yakyuken-preview.html');await page.getByRole('button',{name:'選擇野球拳',exact:true}).click();await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase('selecting');
-  await page.waitForFunction(()=>window.__rewardScene.audio.background.enabled);
-  await page.evaluate(()=>{window.__rewardSounds=[];const s=window.__rewardScene,sound=s.audio.background,play=sound.playVoices.bind(sound);sound.playVoices=voices=>{if(sound.enabled&&!sound.suspended)window.__rewardSounds.push({stage:s.rewardPresentation.stage,elapsed:s.rewardPresentation.elapsed,amount:s.rewardPresentation.frame(s.wallet.wallet.balance).amount,voices:voices.length});play(voices);};});
+  await page.waitForFunction(()=>window.__rewardScene.audio.background.context?.state==='running');
+  await page.evaluate(()=>{
+    window.__gameSounds=[];
+    const s=window.__rewardScene,sound=s.audio.background,play=sound.playVoices.bind(sound);
+    sound.playVoices=voices=>{
+      window.__gameSounds.push({samples:voices.length===1&&!!voices[0].buffer,faceUp:s.dealerCards[0]?.faceUp,phase:s.phase});
+      play(voices);
+    };
+  });
   await play();await phase('confirmed');await page.getByRole('button',{name:'下一局',exact:true}).click();await phase('selecting');
   await page.emulateMedia({reducedMotion:'no-preference'});await play();
   await page.waitForFunction(()=>{const s=window.__rewardScene;if(!s?.wardrobe||s.rewardPresentation.stage!=='holding')return false;s.app.stop();return true;});
+  const gameSounds=()=>page.evaluate(()=>window.__gameSounds);
+  assert.deepEqual(await gameSounds(),Array.from({length:2},()=>({samples:true,faceUp:true,phase:'presenting'})),'only one paper sound per revealed card');
   assert.equal(ledger.balance,11500);assert.equal((await snapshot()).balance,'9,000');assert.equal((await snapshot()).visible,false);
-  assert.equal(await page.evaluate(()=>window.__rewardSounds.length),0,'no coin sound during the outfit reveal');
   await page.evaluate(()=>{const s=window.__rewardScene;s.wardrobe.tick(900);s.app.render();});
+  assert.equal((await gameSounds()).length,2,'outfit reveal adds no effect');
   assert.equal((await snapshot()).pose,2);assert.equal((await snapshot()).balance,'9,000');
   await page.screenshot({path:output+'/outfit-before-credit.png'});
   await page.setViewportSize({width:1255,height:550});await page.waitForFunction(()=>window.__rewardScene.layout.ui.height===550);
@@ -64,10 +73,12 @@ try{
   await page.evaluate(()=>{const s=window.__rewardScene;void s.confirm();s.visitScreen('games');void s.claimDaily();});assert.equal(calls.length,settledCalls);
   await tick(1);assert.equal((await snapshot()).payout,'+0');await tick(400);
   const mid=await snapshot(),earned=Number(mid.payout.replace(/[^\d]/g,''));assert.ok(earned>0&&earned<2500);assert.equal(Number(mid.balance.replaceAll(',','')),9000+earned);
-  const soundEvents=await page.evaluate(()=>window.__rewardSounds);assert.ok(soundEvents.length>=2);assert.ok(soundEvents.every(e=>e.stage==='counting'));assert.equal(soundEvents.at(-1).amount,earned);
+  assert.equal((await gameSounds()).length,2,'the visible award count adds no sound');
   await page.getByRole('button',{name:'關閉音效',exact:true}).click();assert.equal(await page.evaluate(()=>window.__rewardScene.audio.background.voices.size),0);
+  await page.evaluate(()=>window.__rewardScene.audio.flipCard());
+  assert.equal((await gameSounds()).length,2,'muting suppresses the paper flip');
   assert.equal(await page.evaluate(()=>window.__rewardScene.audio.background.musicEnabled),true,'muting effects keeps music enabled');
-  await page.getByRole('button',{name:'開啟音效',exact:true}).click();await tick(0);assert.equal(await page.evaluate(()=>window.__rewardSounds.length),soundEvents.length,'unmuting does not replay earlier count beats');
+  await page.getByRole('button',{name:'開啟音效',exact:true}).click();await tick(0);assert.equal((await gameSounds()).length,2,'unmuting does not replay a flip');
   await page.screenshot({path:output+'/counting-desktop.png'});
   for(const [width,height] of [[390,844],[320,568],[844,390]]){
     await page.setViewportSize({width,height});await page.waitForFunction(w=>window.__rewardScene.layout.ui.width===w,width);
@@ -77,8 +88,9 @@ try{
   await page.evaluate(()=>{const s=window.__rewardScene;s.pause();s.resume();s.app.stop();s.tickReward(100000);});
   assert.equal((await snapshot()).elapsed,400,'returning from a hidden/stopped view cannot consume the whole celebration');
   await tick(REWARD_COUNT_MS-400);const final=await snapshot();assert.equal(final.balance,'11,500');assert.equal(final.payout,'+2,500');assert.equal(final.busy,false);assert.equal(final.enabled,true);assert.equal(calls.length,settledCalls);assert.equal(ledger.balance,11500);
+  assert.equal((await gameSounds()).length,2,'final credit adds no chime');
   await page.screenshot({path:output+'/exact-award.png'});await tick(REWARD_FADE_MS);assert.equal((await snapshot()).visible,false);
-  checks.push('authoritative prize held until final outfit; staged count, resize, background recovery, exact +2500 and no extra financial calls');
+  checks.push('one paper sound per flip; outfit and award effects remain silent; visual award follows the final outfit and preserves exact +2500 through resize and background recovery');
   await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>window.__rewardScene.app.start());
   await page.evaluate(()=>{const s=window.__rewardScene,original=s.rewardPresentation.reveal.bind(s.rewardPresentation);s.rewardPresentation.reveal=()=>{const result=original();if(result)s.app.stop();return result;};});
   await page.getByRole('button',{name:'再次挑戰',exact:true}).click();await phase('selecting');assert.equal(ledger.balance,10500);
@@ -105,7 +117,7 @@ try{
   await play();await phase('confirmed');await page.getByRole('button',{name:'下一局',exact:true}).click();await phase('selecting');await play();await phase('confirmed');
   const beforeReturn=calls.length;await page.getByRole('button',{name:'返回',exact:true}).click();await page.waitForFunction(()=>window.__rewardScene.screen==='characters'&&!window.__rewardScene.entering);
   assert.equal(calls.length,beforeReturn,'returning from a finished match does not charge, refund or settle again');assert.equal(ledger.balance,12500);
-  checks.push('slot reward tones follow visible amounts, mute independently, and both endings offer explicit retry/return with exactly one fee per new match');
+  checks.push('paper effects mute independently of music, and both endings offer explicit retry/return with exactly one fee per new match');
   outcome=0;
   checks.push(await verifyYakyukenPrefetch({page,holdHand,dropHandResponse:()=>{dropHand=true;},handRequests,serverWallet:()=>ledger,
     otherHand:ticket=>service.execute('hand',{requestId:'other-device-hand-0001',matchId:ticket.matchId,move:'paper',handIndex:ticket.index}),output}));

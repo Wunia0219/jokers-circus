@@ -4,7 +4,8 @@ import 'pixi.js/prepare';
 import backgroundUrl from '../../../images/jokers-circus/circus-background.webp';
 import mainUrl from '../../../images/main.webp';
 import mainAtlas from '../../../images/main.json';
-import {DEALER_ART} from './assets.js';
+import {CHARACTER_ART} from './assets.js';
+import {CG_ART} from './cg-catalog.js';
 import {CARD_ART,CARD_CANVAS} from './card-assets.js';
 import {LOBBY_COVERS} from './lobby-art.js';
 import {PreviewAudio} from './audio.js';
@@ -20,7 +21,7 @@ import {label,PALETTE,PixiButton} from './pixi/ui.js';
 import {buildSlotHud,updateSlotHud} from './pixi/chrome.js';
 import {buildSlotDialog} from './pixi/dialogs.js';
 import {buildLobby} from './pixi/lobby.js';
-import {canEnterCharacter} from './characters.js';
+import {canEnterCharacter,characterRule} from './characters.js';
 import {installPointerFeedback} from './pixi/pointer-feedback.js';
 import {YakyukenEntryLoading,createYakyukenEntryGradients} from './pixi/entry-loading.js';
 import {YakyukenScreenFade} from './pixi/screen-fade.js';
@@ -65,6 +66,9 @@ export class YakyukenScene {
   historyScroll = 0;
   cgIndex = 0;
 
+  get characterTextures(){return this.artTextures?.[this.selectedCharacter];}
+  get characterCG(){return CG_ART[this.selectedCharacter];}
+
   constructor({playerId='local-guest',storage,wallet=null,music=null}={}){
     this.wallet=wallet;this.archive=wallet?.archive??new PlayerArchive({playerId,...(storage===undefined?{}:{storage})});
     this.audio=new PreviewAudio(()=>{this.refreshAudioIcons?.();this.updateLobbyMusic();},music);
@@ -99,7 +103,7 @@ export class YakyukenScene {
     const loading = label('正在準備舞台…',13,PALETTE.gold);
     loading.visible=!lobbyArrival;
     loading.position.set(this.app.screen.width/2,this.app.screen.height/2);this.app.stage.addChild(loading);this.app.render();
-    const resources = await Promise.allSettled([backgroundUrl,DEALER_ART[0].url,mainUrl,...LOBBY_COVERS.map(art=>art.url)].map(async url => {
+    const resources = await Promise.allSettled([backgroundUrl,CHARACTER_ART.dealer[0],mainUrl,...LOBBY_COVERS.map(art=>art.url)].map(async url => {
       const texture = await Assets.load(url);this.loaded.add(url);return texture;
     }));
     if(this.disposed){await this.unload();return;}
@@ -113,7 +117,8 @@ export class YakyukenScene {
       this.app.stage.addChild(message,retry);this.app.canvas.dataset.phase = 'error';this.app.render();return;
     }
     this.backgroundTexture = resources[0].value;
-    this.dealerTextures = [resources[1].value];
+    this.artTextures=Object.fromEntries(Object.keys(CHARACTER_ART).map(id=>[id,[]]));
+    this.artTextures.dealer[0]=resources[1].value;
     this.lobbyTextures = resources.slice(3).map(value=>value.value);
     const f=mainAtlas.frames['logo-long.png'].frame;
     this.logoTexture=new Texture({source:resources[2].value.source,frame:new Rectangle(f.x,f.y,f.w,f.h)});
@@ -144,7 +149,7 @@ export class YakyukenScene {
   }
 
   resize() {
-    if(this.disposed || !this.dealerTextures)return;
+    if(this.disposed || !this.artTextures)return;
     const width=Math.max(this.host.clientWidth,1),height=Math.max(this.host.clientHeight,1);
     this.app.renderer.resize(width,height);this.layout = tableLayout(width,height,{touch:matchMedia('(hover: none) and (pointer: coarse)').matches});
     if(this.screen==='games')this.layout.ui.headerHeight=0;
@@ -166,7 +171,10 @@ export class YakyukenScene {
     this.syncWorldInput();
     this.entryOverlay?.resize(width,height);this.wardrobe?.resize(width,height);
     this.app.render();
-    if(wasPresenting&&this.phase==='confirmed')void this.presentResult();
+    if(wasPresenting){
+      this.playReveal(this.handTurn);
+      if(this.phase==='confirmed')void this.presentResult();
+    }
   }
 
   buildBackdrop() {
@@ -178,7 +186,7 @@ export class YakyukenScene {
   buildRoom() {
     const l=this.layout,{w}=l;this.buildBackdrop();
     if(l.logo.width){const logo=new Sprite(this.logoTexture);logo.anchor.set(.5,0);logo.width=l.logo.width;logo.scale.y=logo.scale.x;logo.position.set(l.logo.x,l.logo.y);logo.eventMode='none';this.world.addChild(logo);}
-    this.dealer = new Sprite(this.dealerTextures[this.pose]);this.dealer.anchor.set(.5,0);
+    this.dealer = new Sprite(this.characterTextures[this.pose]);this.dealer.anchor.set(.5,0);
     this.dealer.height=l.dealer.height;this.dealer.scale.x=this.dealer.scale.y;
     this.dealer.position.set(l.dealer.x,l.dealer.y);this.dealer.eventMode='none';
     this.world.addChild(this.dealer,createTable(l));
@@ -213,8 +221,9 @@ export class YakyukenScene {
     location.assign(slotEntryPath(location));
   }
   selectCharacter(id){
-    if(this.disposed || this.entering || this.entryOverlay || this.screen!=='characters' || !canEnterCharacter(id))return;
-    this.selectedCharacter=id;this.updateControls();
+    if(this.disposed || this.entering || this.entryOverlay || this.modal || this.screen!=='characters' || !canEnterCharacter(id))return;
+    if(id===this.selectedCharacter)return;
+    this.selectedCharacter=id;this.resize();
   }
   enterCharacter(){
     if(this.entering)return this.entryPromise;
@@ -254,18 +263,19 @@ export class YakyukenScene {
   }
   async prepareEntry(overlay){
     let completed=0;
-    const artwork=[...DEALER_ART.map((art,index)=>({...art,index})),...Object.entries(CARD_ART).map(([key,url])=>({key,url}))];
+    const portraits=Object.entries(CHARACTER_ART).flatMap(([id,urls])=>urls.map((url,index)=>({id,url,index})));
+    const artwork=[...portraits,...Object.entries(CARD_ART).map(([key,url])=>({key,url}))];
     const results=await Promise.allSettled(artwork.map(async art=>{
-      if(!(art.key?this.cardTextures[art.key]:this.dealerTextures[art.index])){
+      if(!(art.key?this.cardTextures[art.key]:this.artTextures[art.id][art.index])){
         const texture=await Assets.load(art.url);this.loaded.add(art.url);
         if(this.disposed){this.loaded.delete(art.url);await Assets.unload(art.url);return;}
         if(art.key){
           const {width,height}=CARD_CANVAS;
           this.cardTextures[art.key]=new Texture({source:texture.source,frame:texture.frame,
             orig:new Rectangle(0,0,width,height),trim:new Rectangle((width-texture.width)/2,(height-texture.height)/2,texture.width,texture.height)});
-        }else this.dealerTextures[art.index]=texture;
+        }else this.artTextures[art.id][art.index]=texture;
       }
-      completed++;overlay.update(15+completed/artwork.length*55,'正在準備荷官與典藏牌組…');
+      completed++;overlay.update(15+completed/artwork.length*55,'正在準備角色與典藏牌組…');
     }));
     if(results.some(result=>result.status==='rejected'))throw new Error('Yakyuken entry resources unavailable');
   }
@@ -285,10 +295,11 @@ export class YakyukenScene {
         const active=this.wallet?.active();this.selectedCharacter=active?.characterId??this.selectedCharacter;
         const rounds=this.wallet?.nextHand&&this.wallet.nextHand.matchId===active?.id?this.wallet.nextHand.index:active?active.wins+active.losses:0;
         this.challenge=active?{...active,rounds,draws:rounds-active.wins-active.losses,last:null}:createChallenge(this.selectedCharacter);
-        this.completedRounds=this.challenge.rounds;this.pose=active?Math.min(active.wins,2):0;this.presentedRound=this.challenge.rounds;this.dialogue='';
+        this.completedRounds=this.challenge.rounds;this.pose=earnedPose(this.challenge.wins,this.characterTextures.length);this.presentedRound=this.challenge.rounds;this.dialogue='';
       }
       this.resize();
-      if(!await waitForEntryTask(this.app.renderer.prepare.upload([this.backgroundTexture,...this.dealerTextures,...Object.values(this.cardTextures),this.logoTexture]),this.abort.signal))return false;
+      const portraits=kind==='game'?Object.values(this.artTextures).flat():this.characterTextures;
+      if(!await waitForEntryTask(this.app.renderer.prepare.upload([this.backgroundTexture,...portraits,...Object.values(this.cardTextures),this.logoTexture]),this.abort.signal))return false;
       if(this.disposed)return false;
       overlay.update?.(95,'正在佈置舞台…');
       // Compile the current table behind the opaque cover, without retaining
@@ -375,10 +386,16 @@ export class YakyukenScene {
     dealerCard.setMove(this.duel.dealer,TABLE_MOVES.indexOf(this.duel.dealer));
     dealerCard.selected=true;dealerCard.highlight.visible=true;
     this.updateControls();
-    await Promise.all([this.motion.to(card,{y:card.baseY-this.layout.confirmedLift,rotation:0},240),this.motion.to(dealerCard,{y:dealerCard.baseY-this.layout.dealerLift,rotation:0},280),dealerCard.reveal(()=>this.updateControls())]);
+    await Promise.all([this.motion.to(card,{y:card.baseY-this.layout.confirmedLift,rotation:0},240),this.motion.to(dealerCard,{y:dealerCard.baseY-this.layout.dealerLift,rotation:0},280),dealerCard.reveal(()=>{
+      this.updateControls();this.playReveal(turn);
+    })]);
     if(this.disposed||this.handTurn!==turn)return;
     turn.presented=true;this.dealerStage='shown';
     this.phase=turn.settled?'confirmed':turn.error?'retrying':'confirming';this.updateControls();
+  }
+  playReveal(turn){
+    if(this.disposed||!turn||this.handTurn!==turn||turn.revealSoundPlayed)return;
+    turn.revealSoundPlayed=true;this.audio.flipCard();
   }
   async finishHandTurn(turn){
     if(this.disposed||this.handTurn!==turn)return;
@@ -400,7 +417,8 @@ export class YakyukenScene {
       const active=this.wallet.active(),rounds=this.wallet.nextHand?.index??(active?.wins||0)+(active?.losses||0);
       this.handTurn=null;this.selected=null;this.duel=null;this.dealerStage='idle';this.phase='selecting';this.dialogue='';
       if(active?.status==='playing'){
-        this.challenge={...active,rounds,draws:rounds-active.wins-active.losses,last:null};this.matchId=active.id;this.pose=Math.min(active.wins,2);this.completedRounds=rounds;this.presentedRound=rounds;
+        this.selectedCharacter=active.characterId;
+        this.challenge={...active,rounds,draws:rounds-active.wins-active.losses,last:null};this.matchId=active.id;this.pose=earnedPose(active.wins,this.characterTextures.length);this.completedRounds=rounds;this.presentedRound=rounds;
       }else{this.screen='characters';this.challenge=null;this.matchId=null;}
       this.resize();
     }catch(error){turn.error=error.message;}
@@ -412,7 +430,7 @@ export class YakyukenScene {
     this.dialogue=resultDialogue({outcome:this.duel.outcome,round:this.challenge.rounds,status:this.challenge.status});
     this.updateControls();
     if(this.duel.outcome==='win'){
-      await this.changePose(earnedPose(this.challenge.wins,DEALER_ART.length));
+      await this.changePose(earnedPose(this.challenge.wins,this.characterTextures.length));
       if(!this.disposed&&this.rewardPresentation.stage==='holding'){
         // Start the reading/count timeline only after an actual frame of the
         // final outfit has rendered, including the reduced-motion path.
@@ -432,7 +450,8 @@ export class YakyukenScene {
     Object.assign(this.app.canvas.dataset,{screen:this.screen,phase:this.entering?'entering':this.screen==='table'?this.phase:this.screen,selected:this.selected || '',pose:String(this.pose),scene:this.screen==='table'?'yakyuken-table':'circus-lobby',dealerStage:this.dealerStage,
       dealerFrontCount:String(fronts),dealerMove:fronts?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds),uiStyle:'theatre-cards',character:this.selectedCharacter,entries:String(this.entries),changing:String(!!this.changing),dialogue:this.dialogue,
       wins:String(this.challenge?.wins || 0),losses:String(this.challenge?.losses || 0),draws:String(this.challenge?.draws || 0),challengeStatus:this.challenge?.status || '',reward:String(this.challenge?.reward || 0),rewardStage:this.rewardPresentation.stage});
-    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。${this.dialogue?'荷官說：'+this.dialogue+'。':''}右側荷官牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':`野球拳角色選擇，共五個角色位置。目前開放命運荷官，${this.wallet?'入場將扣除測試戲籌。':'本機入場暫不扣款。'}`);
+    const opponent=this.selectedCharacter==='dealer'?'荷官':characterRule(this.selectedCharacter).name;
+    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。${this.dialogue?opponent+'說：'+this.dialogue+'。':''}右側${opponent}牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':`野球拳角色選擇，共五個角色位置。目前開放命運荷官與優然，${this.wallet?'入場將扣除測試戲籌。':'本機入場暫不扣款。'}`);
   }
 
   updateLobbyMusic(){
@@ -454,7 +473,7 @@ export class YakyukenScene {
     this.closeModal();this.modal=type;this.buildModal(type);this.syncCheckinButton();
   }
   openCG(index){
-    if(!this.archive.isUnlocked(this.selectedCharacter,index) || !this.dealerTextures[index])return false;
+    if(!this.archive.isUnlocked(this.selectedCharacter,index) || !this.characterTextures[index])return false;
     this.cgIndex=index;this.openModal('cg');return this.modal==='cg';
   }
   closeModal() {
@@ -506,17 +525,17 @@ export class YakyukenScene {
   }
 
   async changePose(index) {
-    if(this.changing || this.disposed || this.entering || this.entryOverlay || this.screen!=='table' || !this.dealerTextures[index])return;
+    if(this.changing || this.disposed || this.entering || this.entryOverlay || this.screen!=='table' || !this.characterTextures[index])return;
     this.closeModal();if(index===this.pose)return;
     this.changing=true;this.world.interactiveChildren=false;this.world.accessibleChildren=false;this.updateControls();
     this.wardrobeGradients ??=createWardrobeGradients();
     this.wardrobeBackdrop ??=createWardrobeBackdrop();
     const transition=this.wardrobe=new WardrobeTransition({app:this.app,background:this.root,
-      to:this.dealerTextures[index],name:DEALER_ART[index].name,backdrop:this.wardrobeBackdrop,
+      to:this.characterTextures[index],name:this.characterCG[index].name,backdrop:this.wardrobeBackdrop,
       subject:()=>this.dealer,
       dialogue:this.dialogue || '準備好了？那就再來一拳。',reduced:this.motion.reduced || this.motion.suspended,
       gradients:this.wardrobeGradients,
-      onCommit:()=>{if(!this.disposed){this.pose=index;this.dealer.texture=this.dealerTextures[index];this.updateControls();}},
+      onCommit:()=>{if(!this.disposed){this.pose=index;this.dealer.texture=this.characterTextures[index];this.updateControls();}},
       onChange:frame=>{if(!this.disposed){Object.assign(this.app.canvas.dataset,{wardrobeStage:frame.complete?'complete':frame.committed?'revealing':'focusing',wardrobeElapsed:String(Math.round(frame.elapsed))});}},
     });
     await transition.play();
@@ -533,7 +552,6 @@ export class YakyukenScene {
     const stage=this.rewardPresentation.stage;
     const ms=this.rewardSkipElapsed?0:elapsed;this.rewardSkipElapsed=false;
     const changed=this.rewardPresentation.tick(ms,{reduced:this.motion.reduced});
-    this.audio.syncReward(this.rewardPresentation);
     if(!changed)return;
     if(stage!==this.rewardPresentation.stage)this.updateControls();else updateBalance(this);
   }
@@ -550,7 +568,7 @@ export class YakyukenScene {
     else if(event.key==='Enter' && (event.target===document.body || event.target===this.app.canvas || this.selected && event.target?.getAttribute('aria-label')?.startsWith('選擇'))){event.preventDefault();void this.confirm();}
   }
   pause() {if(this.disposed || !this.initialized)return;this.motion.suspended=true;this.motion.finish();this.wardrobe?.finish();if(this.entryOverlay){this.entryOverlay.motion.suspended=true;this.entryOverlay.motion.finish();}this.audio.pauseMusic();this.app.stop();}
-  resume() {if(!this.disposed && this.dealerTextures && !document.hidden){this.rewardSkipElapsed=true;this.motion.suspended=false;if(this.entryOverlay)this.entryOverlay.motion.suspended=false;this.audio.resumeMusic();this.app.start();}}
+  resume() {if(!this.disposed && this.artTextures && !document.hidden){this.rewardSkipElapsed=true;this.motion.suspended=false;if(this.entryOverlay)this.entryOverlay.motion.suspended=false;this.audio.resumeMusic();this.app.start();}}
   async unload() {const urls=[...this.loaded];this.loaded.clear();await Promise.allSettled(urls.map(url => Assets.unload(url)));}
   async destroy() {
     this.rewardPresentation.clear();

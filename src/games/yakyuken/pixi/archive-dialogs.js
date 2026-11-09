@@ -1,5 +1,4 @@
 import {Container,Graphics,Rectangle,Sprite} from 'pixi.js';
-import {DEALER_ART} from '../assets.js';
 import {characterRule} from '../characters.js';
 import {icon} from '../../../ui/shared/icons.js';
 import {APP_VERSION} from '../../../version.js';
@@ -54,8 +53,8 @@ export function buildArchiveDialog(scene,type){
   const close=place(new PixiButton({name:'關閉視窗',icon:icon('close'),iconSize:21,variant:'close',width:44,height:44,onPress:()=>scene.closeModal()}),mw/2-(width<=700?16:24)-22,-mh/2+(type==='history'?(width<=700?32:36):34),body);
   if(type==='cg'){
     place(navigation('返回收藏','返回 CG 收藏',-1,()=>scene.openModal('collection')),-mw/2+62,-mh/2+34,body);
-    text(`${characterRule(scene.selectedCharacter).name} · ${DEALER_ART[scene.cgIndex].name}`,width<450?16:20,0,-mh/2+78,body,PALETTE.gold);
-    const image=new Sprite(scene.dealerTextures[scene.cgIndex]);image.label='unlocked-cg-art';image.anchor.set(.5);
+    text(`${characterRule(scene.selectedCharacter).name} · ${scene.characterCG[scene.cgIndex].name}`,width<450?16:20,0,-mh/2+78,body,PALETTE.gold);
+    const image=new Sprite(scene.characterTextures[scene.cgIndex]);image.label='unlocked-cg-art';image.anchor.set(.5);
     const availableH=mh-218;image.height=Math.min(availableH,(mw-44)*image.texture.height/image.texture.width);image.scale.x=image.scale.y;image.y=-mh/2+105+availableH/2;body.addChild(image);
     const downloadStatus=text('',11,0,mh/2-55,body,PALETTE.muted);
     const download=place(new PixiButton({name:'下載高畫質去背 PNG',icon:downloadGlyph,iconSize:26,variant:'quiet',width:52,height:44,onPress:async()=>{
@@ -64,7 +63,7 @@ export function buildArchiveDialog(scene,type){
       catch{if(!body.destroyed)downloadStatus.text='暫時無法開啟下載，請稍後再試';}
       finally{if(!body.destroyed)download.setEnabled(true);}
     }}),0,mh/2-82,body);
-    const unlocked=DEALER_ART.map((_,i)=>i).filter(i=>scene.archive.isUnlocked(scene.selectedCharacter,i)),at=unlocked.indexOf(scene.cgIndex);
+    const unlocked=scene.characterCG.map((_,i)=>i).filter(i=>scene.archive.isUnlocked(scene.selectedCharacter,i)),at=unlocked.indexOf(scene.cgIndex);
     const prev=place(navigation('上一張','上一張已解鎖 CG',-1,()=>scene.openCG(unlocked[at-1])),-mw/2+64,mh/2-29,body);prev.setEnabled(at>0);
     const next=place(navigation('下一張','下一張已解鎖 CG',1,()=>scene.openCG(unlocked[at+1])),mw/2-64,mh/2-29,body);next.setEnabled(at<unlocked.length-1);
     text(`${at+1} / ${unlocked.length}`,12,0,mh/2-29,body,PALETTE.muted);
@@ -74,15 +73,16 @@ export function buildArchiveDialog(scene,type){
     const compact=height<500;
     const logo=place(new Sprite(scene.logoTexture),0,-mh/2+(compact?12:22),body);logo.label='collection-brand-logo';logo.anchor.set(.5,0);logo.width=Math.min(compact?150:250,mw-128);logo.scale.y=logo.scale.x;logo.eventMode='none';
     text('CG 收藏',compact?18:21,0,-mh/2+(compact?75:117),body,PALETTE.bright,{letterSpacing:2});
-    const count=DEALER_ART.filter((_,i)=>scene.archive.isUnlocked(scene.selectedCharacter,i)).length;
-    text(`${characterRule(scene.selectedCharacter).name} · 已解鎖 ${count} / ${DEALER_ART.length}`,12,0,-mh/2+(compact?99:145),body,PALETTE.muted);
+    const artCount=scene.characterCG.length,count=scene.characterCG.filter((_,i)=>scene.archive.isUnlocked(scene.selectedCharacter,i)).length;
+    text(`${characterRule(scene.selectedCharacter).name} · 已解鎖 ${count} / ${artCount}`,12,0,-mh/2+(compact?99:145),body,PALETTE.muted);
     const vertical=width<600 && height>width,top=-mh/2+(compact?121:170),available=mh-(compact?260:309),gap=12;
-    const tileWidth=vertical?mw-44:(mw-44-2*gap)/3,tileHeight=vertical?(available-2*gap)/3:Math.min(330,available);
-    DEALER_ART.forEach((art,index)=>{
-      const unlocked=scene.archive.isUnlocked(scene.selectedCharacter,index),cx=vertical?0:(index-1)*(tileWidth+gap),cy=vertical?top+tileHeight/2+index*(tileHeight+gap):top+available/2;
+    const spacing=(artCount-1)*gap;
+    const tileWidth=vertical?mw-44:(mw-44-spacing)/artCount,tileHeight=vertical?(available-spacing)/artCount:Math.min(330,available);
+    scene.characterCG.forEach((art,index)=>{
+      const unlocked=scene.archive.isUnlocked(scene.selectedCharacter,index),cx=vertical?0:(index-(artCount-1)/2)*(tileWidth+gap),cy=vertical?top+tileHeight/2+index*(tileHeight+gap):top+available/2;
       const tile=place(new PixiButton({name:unlocked?`回顧${art.name} CG`:`${art.name} CG 尚未解鎖`,variant:'gallery',width:tileWidth,height:tileHeight,onPress:()=>scene.openCG(index)}),cx,cy,body);
       if(unlocked){
-        thumbnail(scene.dealerTextures[index],tile,vertical?{x:-tileWidth/2+47,y:0,width:82,height:tileHeight-10}:{x:0,y:-27,width:tileWidth-12,height:tileHeight-64});
+        thumbnail(scene.characterTextures[index],tile,vertical?{x:-tileWidth/2+47,y:0,width:82,height:tileHeight-10}:{x:0,y:-27,width:tileWidth-12,height:tileHeight-64});
       }else{
         const glyph=slotIcon(lock,vertical?27:36,0x9b8796);place(glyph,vertical?-tileWidth/2+34:-18,vertical?-13:-40,tile);
       }
