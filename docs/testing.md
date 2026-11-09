@@ -25,7 +25,7 @@
 | `npm run test:monitor` | scheduled handler、持久去重、故障與恢復通知 |
 | `node --test tests/yakyuken*.test.js` | 野球拳規則、紀錄、測試錢包邊界、原請求恢復與去重 |
 | `node scripts/qa/yakyuken-cloud-test.js` | 隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道 |
-| `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸、選牌／請求中／同步中／重試／勝敗的文字與雙按鈕間距、COINS、收藏／單圖相同外框與 6 次 PNG 原檔下載 |
+| `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸及 3 組短視窗／安全區的規則與 CG 外框對照、跨角色等尺寸縮圖、全畫面檢視與下載鈕間距、手機觸控翻頁與 6 次 PNG 原檔下載 |
 | `node scripts/qa/yakyuken-reward.js` | 隔離錢包：造型先於領獎、金額與音效同步、獨立靜音、縮放／背景恢復、重載不重播、勝敗再次挑戰／返回、新場只扣一次費，以及預取後 330ms 翻牌規劃、暫扣結算、原拳重試、缺票券與跨裝置進度衝突 |
 | `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：三位角色共十三張原圖下載、位元組比對、CSP 與僅同源請求；不呼叫錢包 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
@@ -60,6 +60,7 @@ CSP 注入測試等待非同步違規通知，確認 `script-src-elem` 對 `inli
 `node scripts/qa/verify.js --full --list` 或 `--ci --list` 只列出步驟。檢查清單與依賴集中在 `scripts/qa/helpers/verification-plan.js`；一般驗證第一個失敗即停止，CI 模式則繼續獨立檢查。建置失敗時，依賴它的 CSP／Worker／整合測試標為受阻，絕不當成通過。每一步結束都更新 `test-results/verification.json`；任何失敗／受阻都保留非零結束碼。Windows ARM 的 workerd 步驟使用 `.tools/node-x64/` 中與 `.node-version` 一致的 Node；其他步驟使用啟動驗證的 Node。
 
 手動 `yakyuken-preview.js` 與 `dealer-resources.js` 共用 4196 埠；先結束前者，再執行後者或完整 CI，不要與 CI 同時啟動。
+`cg-responsive.js` 與數字繪製像素檢查共用 4198 埠，也應循序執行。
 
 GitHub Actions 使用三個獨立 runner 並行驗證，各組內仍循序執行：
 

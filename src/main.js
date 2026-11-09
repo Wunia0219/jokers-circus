@@ -17,6 +17,7 @@ import { connectLocalWallet } from './platform/local-wallet.js';
 import { createLoadingScreen } from './ui/shared/loading.js';
 import { BigWinPresentation } from './ui/wins/big-win.js';
 import { createGameRules } from './ui/dialogs/game-rules.js';
+import { applyProgrammeTheme } from './ui/shared/dialog-spec.js';
 import { SpinControls } from './ui/reels/spin-controls.js';
 import { bindSpinButton } from './ui/reels/spin-button.js';
 import { installSpinShortcut } from './ui/reels/spin-shortcut.js';
@@ -233,6 +234,7 @@ async function spin() {
 function openDialog(title,body,variant='notice') {
   controls.stopAuto();
   $('#dialog').className=`${variant}-dialog`;
+  if(variant==='rules')applyProgrammeTheme($('#dialog'));
   $('#dialog-title').textContent=title;
   $('#dialog-body').replaceChildren();
   if(typeof body==='string')$('#dialog-body').innerHTML=body;

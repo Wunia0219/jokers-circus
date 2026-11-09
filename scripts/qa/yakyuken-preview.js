@@ -48,7 +48,7 @@ const assertArchiveControls=async(page,viewer=false)=>{
   });
   const close=controls.find(n=>n.name==='關閉視窗');assert.equal(close.variant,'close');assert.equal(close.iconSize,21);assert.equal(close.width,44);assert.equal(close.height,44);
   for(const control of controls){assert.ok(control.x>=0 && control.y>=0 && control.x+control.width<=width+1 && control.y+control.height<=height+1,`${control.name} fits ${width}×${height}`);assert.ok(control.height>=44);}
-  if(viewer){const download=controls.find(n=>n.name==='下載高畫質去背 PNG');assert.equal(download.caption,'','download has an icon and accessible name, without visible text');assert.equal(download.variant,'quiet');assert.ok(download.iconSize>=24);assert.equal(download.width,52);}
+  if(viewer){const download=controls.find(n=>n.name==='下載高畫質去背 PNG');assert.equal(download.caption,'下載原圖');assert.equal(download.variant,'tool');assert.ok(download.width>=108);assert.ok(close.x-download.x-download.width>=15.99);}
 };
 const assertTableWings=async page=>{
   const geometry=await page.evaluate(()=>{
@@ -350,10 +350,9 @@ try {
     await archiveA.screenshot({path:`${output}/cg-refined-${width}.png`});
   }
   await archiveA.setViewportSize({width:390,height:844});await frame(archiveA);
-  const downloadButton=archiveA.getByRole('button',{name:'下載高畫質去背 PNG',exact:true});await downloadButton.hover();
-  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children.find(n=>n.accessibleTitle==='下載高畫質去背 PNG').outline.visible),false,'subtle hover does not draw a heavy button border');
+  const downloadButton=archiveA.getByRole('button',{name:'下載高畫質去背 PNG',exact:true});
   await archiveA.keyboard.press('Tab');await downloadButton.focus();
-  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children.find(n=>n.accessibleTitle==='下載高畫質去背 PNG').outline.visible),true,'icon-only download retains visible keyboard focus');
+  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children.find(n=>n.accessibleTitle==='下載高畫質去背 PNG').outline.visible),true,'download retains visible keyboard focus');
   await archiveA.screenshot({path:`${output}/archive-mobile-cg.png`});await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   assert.equal(pngRequests.length,0,'neither entry, gallery nor full CG loads download PNGs');assert.equal(downloadRequests.length,0,'server receives no download request until activation');
   assert.equal(await archiveA.evaluate(async()=>{const {downloadCG}=await import('/src/games/yakyuken/cg-download.js');return downloadCG(window.__yakyukenTest.archive,'dealer',2);}),false,'locked CG cannot initiate a download');
@@ -819,7 +818,12 @@ try {
       await assertArchiveControls(guest);
       await guest.screenshot({path:`${output}/xiache-collection-mobile.png`});
     }
-    assert.equal(await guest.getByRole('button',{name:/^回顧.*CG$/}).count(),winsRequired+1);
+    let visible=await guest.getByRole('button',{name:/^回顧.*CG$/}).count();
+    const nextPage=guest.getByRole('button',{name:'CG 收藏下一頁',exact:true});
+    while(await nextPage.count()){
+      await nextPage.click();await frame(guest);visible+=await guest.getByRole('button',{name:/^回顧.*CG$/}).count();
+    }
+    assert.equal(visible,winsRequired+1);
     await guest.getByRole('button',{name:`回顧${name}終幕 CG`,exact:true}).click();
     const download=guest.waitForEvent('download');
     await guest.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).click();

@@ -1,32 +1,41 @@
 /* A velvet-and-gold programme, using the same cast and artwork as the reels. */
 dialog.rules-dialog {
-  --rules-gold: #f5d28c;
+  --rules-gold: var(--programme-gold);
   --rules-text: #f9eddb;
   --rules-muted: #dfcbd0;
-  --rules-edge: #b58b56;
+  --rules-edge: var(--programme-edge);
   --rules-surface: #281b30;
-  width: min(960px, calc(100% - 32px));
-  height: min(880px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 32px));
-  max-width: 960px;
+  --programme-frame-margin: var(--programme-margin);
+  --programme-frame-y: var(--programme-margin);
+  --programme-frame-height: var(--programme-max-height);
+  --programme-frame-radius: var(--programme-radius);
+  --programme-frame-header: var(--programme-header);
+  --programme-frame-inset: var(--programme-inset);
+  --programme-frame-title: var(--programme-title);
+  inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  width: min(var(--programme-max-width), calc(100% - var(--safe-left) - var(--safe-right) - 2 * var(--programme-frame-margin)));
+  height: min(var(--programme-frame-height), calc(100dvh - var(--safe-top) - var(--safe-bottom) - 2 * var(--programme-frame-y)));
+  max-width: var(--programme-max-width);
+  max-height: none;
   padding: 0;
-  border: 1px solid var(--rules-edge);
-  border-radius: 20px;
+  border: var(--programme-border) solid var(--rules-edge);
+  border-radius: var(--programme-frame-radius);
   color: var(--rules-text);
-  background: radial-gradient(ellipse at 50% -20%, #57324988, transparent 64%), #201626;
+  background: radial-gradient(ellipse at 50% -20%, var(--programme-glow-tint), transparent 64%), var(--programme-surface);
   box-shadow: 0 24px 90px #09040ed9, inset 0 0 0 5px #f5d28c0b;
 }
 .rules-dialog::backdrop { background: #100818d9; backdrop-filter: blur(8px); }
-.rules-dialog .dialog-head { min-height: 60px; margin: 0; padding: 7px 24px; border-bottom: 1px solid #d7ae6538; background: linear-gradient(110deg, #542234, #2a192c 70%); }
-.rules-dialog .dialog-head h2 { font-size: 20px; letter-spacing: 3px; font-weight: 600; }
-.rules-dialog .dialog-head .icon-button { width: 44px; height: 44px; color: var(--rules-gold); border-color: #d7ae6570; }
+.rules-dialog .dialog-head { height: var(--programme-frame-header); margin: 0; padding: 0 var(--programme-frame-inset); border-bottom: var(--programme-border) solid #d7ae6538; background: linear-gradient(110deg, var(--programme-head-start), var(--programme-head-end) 70%); }
+.rules-dialog .dialog-head h2 { font-size: var(--programme-frame-title); letter-spacing: 3px; font-weight: 600; }
+.rules-dialog .dialog-head .icon-button { width: var(--programme-close); height: var(--programme-close); color: var(--rules-gold); border-color: #d7ae6570; }
 .rules-dialog #dialog-body { padding: 0; scroll-padding-top: 72px; scrollbar-gutter: stable; scrollbar-color: #b58b56 #24172c; }
 .game-rules { font-size: 15px; line-height: 1.8; }
-.rules-masthead { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 32px; background: radial-gradient(ellipse at 20% 15%, #e7af4c12, transparent 65%); }
-.rules-logo { flex: none; width: 200px; filter: drop-shadow(0 5px 4px #10071888); }
+.rules-masthead { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: var(--programme-masthead-pad) var(--programme-masthead-inset); background: radial-gradient(ellipse at 20% 15%, #e7af4c12, transparent 65%); }
+.rules-logo { flex: none; width: var(--programme-logo); filter: drop-shadow(0 5px 4px #10071888); }
 .rules-masthead > span { color: var(--rules-gold); font-size: 13px; letter-spacing: 1px; text-align: right; }
 .rules-masthead i { font-style: normal; font-size: 8px; padding: 0 8px; color: #c78d4c; }
-.rules-tabs { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px 32px; background: #24182cf5; border-block: 1px solid #e4b8662e; backdrop-filter: blur(12px); }
-.rules-tabs button { position: relative; min-height: 48px; padding: 8px 4px; border-radius: 8px; border: 1px solid #e5ba6a32; background: #160f1c66; color: var(--rules-muted); font-size: 14px; white-space: nowrap; }
+.rules-tabs { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--programme-tab-gap); padding: var(--programme-tab-pad) var(--programme-tab-inset); background: #24182cf5; border-block: 1px solid #e4b8662e; backdrop-filter: blur(12px); }
+.rules-tabs button { position: relative; min-height: var(--programme-tab); padding: 8px 4px; border-radius: 8px; border: 1px solid #e5ba6a32; background: #160f1c66; color: var(--rules-muted); font-size: 14px; white-space: nowrap; }
 .rules-tabs button:hover { border-color: var(--rules-edge); color: var(--rules-text); }
 .rules-tabs button[aria-selected=true] { color: #fff0cb; background: linear-gradient(115deg, #793d38, #4d2834); border-color: var(--rules-edge); box-shadow: inset 0 1px 0 #ffdf9e22, 0 2px 8px #0b061b44; }
 .rules-tabs button[aria-selected=true]::after { content: ''; position: absolute; bottom: -2px; width: 24px; height: 3px; left: calc(50% - 12px); background: var(--rules-gold); border-radius: 2px; }
@@ -116,14 +125,12 @@ dialog.rules-dialog {
 .rules-basics .rules-facts { margin: 0 0 16px; }
 
 @media (max-width: 600px) {
-  dialog.rules-dialog { width: calc(100% - 16px); height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px); max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px); border-radius: 16px; }
-  .rules-dialog .dialog-head { min-height: 60px; padding: 8px 16px; }
-  .rules-dialog .dialog-head h2 { font-size: 18px; }
-  .rules-masthead { justify-content: center; flex-direction: column; gap: 12px; padding: 20px 16px; }
-  .rules-logo { width: min(220px, 80%); }
+  dialog.rules-dialog { --programme-frame-margin: var(--programme-small-margin); --programme-frame-y: var(--programme-small-margin); --programme-frame-height: 100dvh; --programme-frame-radius: var(--programme-small-radius); --programme-frame-header: var(--programme-small-header); --programme-frame-inset: var(--programme-small-inset); --programme-frame-title: var(--programme-small-title); }
+  .rules-masthead { justify-content: center; flex-direction: column; gap: 12px; padding: var(--programme-small-masthead-pad) var(--programme-small-masthead-inset); }
+  .rules-logo { width: min(var(--programme-small-logo), 80%); }
   .rules-masthead > span { font-size: 12px; text-align: center; }
-  .rules-tabs { gap: 8px; padding: 8px 12px; }
-  .rules-tabs button { min-height: 48px; font-size: 12px; }
+  .rules-tabs { padding-inline: var(--programme-small-tab-inset); }
+  .rules-tabs button { font-size: 12px; }
   .rules-panel { padding: 24px 16px; }
   .rules-dialog #dialog-body h3 { font-size: 21px; }
   .rules-dialog #dialog-body p { font-size: 15px; }
@@ -172,10 +179,8 @@ dialog.rules-dialog {
 .rules-legal a { display: inline-flex; align-items: center; min-height: 44px; color: #f7d490; font-size: 13px; text-underline-offset: .25em; }
 .rules-legal a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; border-radius: 2px; }
 @media (max-height: 500px) and (min-width: 601px) {
-  dialog.rules-dialog { height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px); max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px); }
-  .rules-dialog .dialog-head { min-height: 56px; padding-block: 5px; }
-  .rules-masthead { padding-block: 12px; }
-  .rules-logo { width: 180px; }
-  .rules-tabs { padding-block: 8px; }
+  dialog.rules-dialog { --programme-frame-y: var(--programme-small-margin); --programme-frame-height: 100dvh; --programme-frame-header: var(--programme-short-header); }
+  .rules-masthead { padding-block: var(--programme-short-masthead-pad); }
+  .rules-logo { width: var(--programme-short-logo); }
   .rules-panel { padding-top: 20px; }
 }

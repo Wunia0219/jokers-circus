@@ -66,6 +66,7 @@ export class YakyukenScene {
   historyScroll = 0;
   cgIndex = 0;
   galleryCharacter = null;
+  galleryAnchor = 0;
 
   get characterTextures(){return this.artTextures?.[this.selectedCharacter];}
   get characterCG(){return CG_ART[this.selectedCharacter];}
@@ -475,8 +476,12 @@ export class YakyukenScene {
   }
   selectGalleryCharacter(character,restoreFocus=false){
     if(this.modal!=='collection'||!canEnterCharacter(character)||character===this.galleryCharacter)return;
-    this.galleryCharacter=character;this.openModal('collection');
+    this.galleryCharacter=character;this.galleryAnchor=0;this.openModal('collection');
     if(restoreFocus)this.focusArchiveControl(`gallery-tab:${character}`);
+  }
+  showGalleryPage(index,focus){
+    this.galleryAnchor=index;this.openModal('collection');
+    if(focus)this.focusArchiveControl(focus);
   }
   focusArchiveControl(control){
     this.app.render();
@@ -484,7 +489,7 @@ export class YakyukenScene {
   }
   openCG(index,character=this.galleryCharacter??this.selectedCharacter){
     if(!canEnterCharacter(character)||!Number.isInteger(index)||!this.archive.isUnlocked(character,index)||!this.artTextures?.[character]?.[index])return false;
-    this.galleryCharacter=character;this.cgIndex=index;this.openModal('cg');return this.modal==='cg';
+    this.galleryCharacter=character;this.galleryAnchor=this.cgIndex=index;this.openModal('cg');return this.modal==='cg';
   }
   stepCG(direction,restoreFocus=false){
     const unlocked=CG_ART[this.galleryCharacter].map((_,i)=>i).filter(i=>this.archive.isUnlocked(this.galleryCharacter,i));
@@ -576,7 +581,7 @@ export class YakyukenScene {
   keydown(event) {
     if(this.checkinDialog?.open)return;
     if(event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || this.disposed || this.entering || this.entryOverlay || this.ending || this.rewardPresentation.busy || document.hidden)return;
-    if(event.key==='Escape'){event.preventDefault();if(this.modal)this.closeModal();else if(!this.changing && this.screen!=='games')this.openModal('menu');return;}
+    if(event.key==='Escape'){event.preventDefault();if(this.modal==='cg')this.showGalleryPage(this.cgIndex,`gallery-tile:${this.cgIndex}`);else if(this.modal)this.closeModal();else if(!this.changing && this.screen!=='games')this.openModal('menu');return;}
     if(this.modal==='cg' && ['ArrowLeft','ArrowRight'].includes(event.key)){
       event.preventDefault();this.stepCG(event.key==='ArrowLeft'?-1:1,true);return;
     }
