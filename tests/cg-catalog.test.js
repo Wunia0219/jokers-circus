@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ALL_CG,CG_ART,CG_ORIGIN,DEALER_CG,cgFromLocation} from '../src/games/yakyuken/cg-catalog.js';
+import {CHARACTERS} from '../src/games/yakyuken/characters.js';
 
 test('public CG links distinguish all three artworks without player or hosting account identifiers',()=>{
   assert.equal(new URL(CG_ORIGIN).hostname,'jokers-circus-gallery.pages.dev');
@@ -33,5 +34,15 @@ test('Xiache has six distinct CGs, one per pose, with no collisions in the galle
   for(const [index,item] of art.entries()){
     assert.equal(cgFromLocation({pathname:item.path}),item);
     assert.equal(item.download,`/downloads/yakyuken/xiache-stage-${index}.png`);
+  }
+});
+
+test('each playable character has a gallery entry for arrival and every win',()=>{
+  for(const {id,winsRequired} of CHARACTERS.filter(character=>character.enabled)){
+    assert.equal(CG_ART[id].length,winsRequired+1,id);
+    for(const [index,art] of CG_ART[id].entries()){
+      assert.equal(art.index,index);
+      assert.equal(cgFromLocation({pathname:art.path}),art);
+    }
   }
 });

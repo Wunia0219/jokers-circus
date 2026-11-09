@@ -84,7 +84,7 @@ function buildCollection(scene,body,{frame,panelWidth:mw,panelHeight:mh,mini,inl
     if(active)style.roundRect(-12,PROGRAMME.tab/2-1.5,24,3,1.5).fill(PROGRAMME.gold);
     tab.addChildAt(style,0);
     place(tab,contentX-contentWidth/2+tabWidth/2+i*(tabWidth+gap),tabTop+tabPad+1+PROGRAMME.tab/2,body);
-    text(name,14,0,-7,tab,id===character?PALETTE.bright:PALETTE.cream,{fontWeight:'600'});
+    text(id==='dealer'&&tabWidth<62?'荷官':name,14,0,-7,tab,id===character?PALETTE.bright:PALETTE.cream,{fontWeight:'600'});
     text(`${count} / ${states.length}`,12,0,11,tab,id===character?PALETTE.gold:PALETTE.muted);
   });
   const items=art.slice(first,first+capacity),start=top+gridTop;

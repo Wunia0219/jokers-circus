@@ -32,6 +32,7 @@ export function buildLobby(scene){
 
   }else{
     const c=l.character,s=c.contentScale,rule=characterRule(scene.selectedCharacter);
+    const mobileIntro=c.vertical&&rule.id==='guest-4';
     portrait(scene.characterTextures[0],root,c.art,c.art.height/.58);
     if(!c.vertical){
       const p=c.panel,frame=new Graphics({label:'character-selection-frame',eventMode:'none'});
@@ -40,8 +41,8 @@ export function buildLobby(scene){
       root.addChild(frame);
     }
     title('野球拳・選擇對手',c.infoX,c.headingY,root,c.vertical?17:20*s);
-    title(rule.name,c.infoX,c.nameY,root,c.vertical?19:30*s,PALETTE.cream,{fontWeight:'500'});
-    if(!c.vertical)title(CHARACTER_INTROS[rule.id],c.infoX,c.descriptionY,root,14*s,PALETTE.muted);
+    title(rule.name,c.infoX,c.nameY-(mobileIntro?20:0),root,c.vertical?19:30*s,PALETTE.cream,{fontWeight:'500'});
+    if(!c.vertical||mobileIntro)title(CHARACTER_INTROS[rule.id],c.infoX,mobileIntro?c.nameY:c.descriptionY,root,c.vertical?12:14*s,PALETTE.muted);
     title(`${rule.winsRequired} 勝通關 · ${rule.lossLimit} 敗結束 · 獎金 ${rule.reward.toLocaleString('en-US')}`,c.infoX,c.rulesY,root,c.vertical?Math.min(13,(width-24)/25):15*s,PALETTE.gold);
     scene.portraitGradient ??=new FillGradient({start:{x:0,y:0},end:{x:1,y:1},colorStops:[{offset:0,color:0x493037},{offset:.5,color:0x111729},{offset:1,color:0x251725}]});
     CHARACTERS.forEach((character,index)=>{

@@ -25,7 +25,7 @@ test('test cloud guard rejects production identities and unknown test namespaces
 });
 test('CG preview opens only the configured Discord test account without mutating earned unlocks',()=>{
   const user='123456789012345678',owner=discordTestPlayer(TEST_GUILD,user),wallet=newPlaytestWallet(owner);
-  assert.deepEqual(testCGUnlocks(wallet,owner,user),{...wallet,unlocks:{dealer:2,'guest-1':3,'guest-2':5,'guest-3':7}});
+  assert.deepEqual(testCGUnlocks(wallet,owner,user),{...wallet,unlocks:{dealer:2,'guest-1':3,'guest-2':5,'guest-3':7,'guest-4':9}});
   assert.deepEqual(wallet.unlocks,{});
   for(const player of [discordTestPlayer(TEST_GUILD,'223456789012345678'),discordTestPlayer('323456789012345678',user),'qa-a']){
     const other=newPlaytestWallet(player);
@@ -62,7 +62,7 @@ test('paid entry locks the entire sequence privately and each response exposes o
   }
   assert.equal(response.wallet.balance,11500);assert.equal(response.nextHand,null);assert.ok(!f.docs.get('qa-a').duelPlan);
 });
-for(const [characterId,requiredWins,reward] of [['guest-1',3,5000],['guest-2',5,10000],['guest-3',7,25000]]){
+for(const [characterId,requiredWins,reward] of [['guest-1',3,5000],['guest-2',5,10000],['guest-3',7,25000],['guest-4',9,50000]]){
   test(`${characterId} unlocks each pose and pays exactly once after ${requiredWins} wins`,async()=>{
     const f=fixture();f.plan(Array(requiredWins).fill('win'));const s=f.service();
     const {matchId,wallet}=await s.execute('begin',{characterId,requestId:id()});
@@ -130,10 +130,10 @@ test('unknown commits recover the original debit and prize across service restar
   await hand(s,entry.matchId);f.loseCommit();const winId=id();await assert.rejects(()=>hand(s,entry.matchId,winId),/lost/);
   const recovered=await hand(f.service(),entry.matchId,winId);assert.equal(recovered.wallet.balance,11500);assert.equal(recovered.wallet.records.length,1);
 });
-test('insufficient funds, client supplied payouts and disabled characters cannot mutate test balances',async()=>{
+test('insufficient funds, client supplied payouts and unknown characters cannot mutate test balances',async()=>{
   const f=fixture(),s=f.service('qa-low');await assert.rejects(()=>begin(s),/戲籌不足/);assert.equal(f.writes,0);
   await assert.rejects(()=>s.execute('begin',{characterId:'dealer',requestId:id(),reward:2500}),/欄位/);
-  await assert.rejects(()=>s.execute('begin',{characterId:'guest-4',requestId:id()}),/尚未開放/);assert.equal(f.writes,0);
+  await assert.rejects(()=>s.execute('begin',{characterId:'unknown',requestId:id()}),/尚未開放/);assert.equal(f.writes,0);
 });
 
 test('request and match identifiers require strings before any storage or randomness',async()=>{

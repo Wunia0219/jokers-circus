@@ -4,7 +4,7 @@ import 'pixi.js/prepare';
 import backgroundUrl from '../../../images/jokers-circus/circus-background.webp';
 import mainUrl from '../../../images/main.webp';
 import mainAtlas from '../../../images/main.json';
-import {CHARACTER_ART} from './assets.js';
+import {CHARACTER_ART,CHARACTER_INTROS} from './assets.js';
 import {CG_ART} from './cg-catalog.js';
 import {CARD_ART,CARD_CANVAS} from './card-assets.js';
 import {LOBBY_COVERS} from './lobby-art.js';
@@ -452,8 +452,10 @@ export class YakyukenScene {
     Object.assign(this.app.canvas.dataset,{screen:this.screen,phase:this.entering?'entering':this.screen==='table'?this.phase:this.screen,selected:this.selected || '',pose:String(this.pose),scene:this.screen==='table'?'yakyuken-table':'circus-lobby',dealerStage:this.dealerStage,
       dealerFrontCount:String(fronts),dealerMove:fronts?this.duel?.dealer || '':'',outcome:this.phase==='confirmed'?this.duel?.outcome || '':'',round:String(this.completedRounds),uiStyle:'theatre-cards',character:this.selectedCharacter,entries:String(this.entries),changing:String(!!this.changing),dialogue:this.dialogue,
       wins:String(this.challenge?.wins || 0),losses:String(this.challenge?.losses || 0),draws:String(this.challenge?.draws || 0),challengeStatus:this.challenge?.status || '',reward:String(this.challenge?.reward || 0),rewardStage:this.rewardPresentation.stage});
-    const opponent=this.selectedCharacter==='dealer'?'荷官':characterRule(this.selectedCharacter).name;
-    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。${this.dialogue?opponent+'說：'+this.dialogue+'。':''}右側${opponent}牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':`野球拳角色選擇，共五個角色位置。目前開放${CHARACTERS.filter(character=>character.enabled).map(character=>character.name).join('、')}。${this.wallet?'入場將扣除測試戲籌。':'本機入場暫不扣款。'}`);
+    const selectedCharacter=characterRule(this.selectedCharacter);
+    const opponent=this.selectedCharacter==='dealer'?'荷官':selectedCharacter.name;
+    const selectionDescription=`目前選擇${selectedCharacter.name}。${CHARACTER_INTROS[this.selectedCharacter]}`;
+    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。${this.dialogue?opponent+'說：'+this.dialogue+'。':''}右側${opponent}牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':`野球拳角色選擇，共五個角色位置。目前開放${CHARACTERS.filter(character=>character.enabled).map(character=>character.name).join('、')}。${selectionDescription}${this.wallet?'入場將扣除測試戲籌。':'本機入場暫不扣款。'}`);
   }
 
   updateLobbyMusic(){

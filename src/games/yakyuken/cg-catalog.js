@@ -31,6 +31,17 @@ export const CG_ART=Object.freeze({dealer:DEALER_CG,'guest-1':collection('guest-
   {slug:'fifth-win',name:'提鞋側望'},
   {slug:'sixth-win',name:'抱臂相望'},
   {slug:'finale',name:'瑟洛終幕'},
+]),'guest-4':collection('guest-4','wanshi','Wanshi',[
+  {slug:'invitation',name:'藍蝶赴約'},
+  {slug:'sapphire-pin',name:'取下藍蝶領針'},
+  {slug:'leather-gloves',name:'收起皮手套'},
+  {slug:'fur-cape',name:'卸下毛領披肩'},
+  {slug:'tuxedo-jacket',name:'褪下西裝外套'},
+  {slug:'waistcoat',name:'卸下訂製背心'},
+  {slug:'open-collar',name:'解開絲質襯衫'},
+  {slug:'sapphire-earrings',name:'摘下藍寶石耳飾'},
+  {slug:'dress-shoes',name:'褪去晚宴皮鞋'},
+  {slug:'finale',name:'萬世終幕'},
 ])});
 export const ALL_CG=Object.freeze(Object.values(CG_ART).flat());
 

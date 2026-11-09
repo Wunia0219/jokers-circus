@@ -36,7 +36,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
 const checks=[],errors=[],requests=[],entryEvidence=[],entryReleases=[];
 let browser;
 const watchEntryBindings=context=>context.on('page',page=>page.on('console',message=>{if(message.type()==='warning' && message.text().includes('[BindGroup]'))errors.push(message.text());}));
-const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===27 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
+const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===28 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => {const d=document.querySelector('canvas')?.dataset;return d?.phase===expected && (!['confirmed','selecting'].includes(expected) || d.changing!=='true');},value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
@@ -126,8 +126,8 @@ const startTable=async(page,screenshots)=>{
   await assertHeader(page,'characters');
   if(screenshots)await page.screenshot({path:`${output}/${screenshots}-characters.png`});
   assert.equal(await page.getByRole('button',{name:'選擇難度',exact:true}).count(),0);
-  await page.evaluate(()=>window.__yakyukenTest.selectCharacter('guest-4'));
-  assert.equal((await canvasState(page)).character,'dealer','unavailable characters cannot change the selected rules');
+  await page.evaluate(()=>window.__yakyukenTest.selectCharacter('unknown'));
+  assert.equal((await canvasState(page)).character,'dealer','unknown characters cannot change the selected rules');
   await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(page,'selecting');
   await assertTableWings(page);
   await assertHeader(page,'table');
@@ -409,7 +409,7 @@ try {
   await archiveB.keyboard.press('ArrowRight');assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.cgIndex),1);
   await archiveB.keyboard.press('ArrowRight');assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.cgIndex),1,'viewer skips locked stages');
   await archiveB.getByRole('button',{name:'返回 CG 收藏',exact:true}).click();
-  assert.equal(await archiveB.getByRole('button',{name:/^夏澄收藏，已解鎖 2 \/ 6，目前顯示$/}).count(),1);
+  await archiveB.getByRole('button',{name:'夏澄收藏，已解鎖 2 / 6，目前顯示',exact:true}).waitFor();
   await archiveB.getByRole('button',{name:/^優然收藏，已解鎖 0 \/ 4/}).click();
   assert.equal((await canvasState(archiveB)).character,'guest-2','browsing CG never changes the active opponent');
   await archiveB.getByRole('button',{name:/^夏澄收藏，已解鎖 2 \/ 6/}).click();
@@ -769,7 +769,7 @@ try {
   assert.ok(Number((await canvasState(reduced)).entryProgress)<100);await reduced.screenshot({path:`${output}/entry-reduced-motion.png`});
   releaseReduced();await phase(reduced,'characters');assert.equal((await canvasState(reduced)).entries,'0');
   await reduced.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(reduced,'selecting');assert.equal((await canvasState(reduced)).entries,'1');
-  assert.equal(await reduced.getByRole('progressbar').count(),0);
+  await reduced.getByRole('progressbar').waitFor({state:'hidden'});
   await reducedContext.close();checks.push('reduced-motion entry still waits for real assets, while decorative transition motion is skipped');
 
   const disposed=await context.newPage();disposed.on('pageerror',error=>errors.push(error.message));let releaseDisposed;
@@ -786,7 +786,7 @@ try {
   assert.equal(await disposed.evaluate(()=>window.__yakyukenTest.entryGradients),null);
   await disposed.close();checks.push('disposing during entry cancels pending presentation and unloads late assets without resurrecting the renderer');
 
-  for(const [id,key,displayKey] of [['guest-1','youran','Youran'],['guest-2','xiache','Xiache'],['guest-3','selo','Selo']]){
+  for(const [id,key,displayKey] of [['guest-1','youran','Youran'],['guest-2','xiache','Xiache'],['guest-3','selo','Selo'],['guest-4','wanshi','Wanshi']]){
     const {name,winsRequired,reward}=characterRule(id);
     const guestContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
     watchEntryBindings(guestContext);
@@ -795,6 +795,10 @@ try {
     await guest.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(guest,'characters');
     await guest.getByRole('button',{name:'選擇'+name,exact:true}).click();
     assert.equal((await canvasState(guest)).character,id);
+    if(id==='guest-4'){
+      assert.match(await guest.locator('canvas').getAttribute('aria-label'),/目前選擇萬世。家財萬貫的名門少爺/);
+      await guest.screenshot({path:`${output}/${key}-selection-mobile.png`});
+    }
     await guest.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(guest,'selecting');
     assert.equal(await guest.evaluate(character=>{
       const scene=window.__yakyukenTest;
@@ -812,8 +816,10 @@ try {
       assert.equal(await guest.evaluate(({id,winsRequired})=>window.__yakyukenTest.archive.isUnlocked(id,winsRequired),{id,winsRequired}),cleared);
       if(!cleared){await guest.getByRole('button',{name:'下一局',exact:true}).click();await phase(guest,'selecting');}
     }
+    if(id==='guest-4')await guest.screenshot({path:`${output}/${key}-table-mobile.png`});
     await guest.getByRole('button',{name:'CG 收藏',exact:true}).click();
-    if(id==='guest-2'||id==='guest-3'){
+    await guest.getByRole('button',{name:`${name}收藏，已解鎖 ${winsRequired+1} / ${winsRequired+1}，目前顯示`,exact:true}).waitFor();
+    if(id!=='guest-1'){
       await guest.setViewportSize({width:320,height:568});await frame(guest);
       await assertArchiveControls(guest);
       await guest.screenshot({path:`${output}/${key}-collection-mobile.png`});
@@ -830,7 +836,7 @@ try {
     const file=await download;
     assert.equal(file.suggestedFilename(),`Jokers-Circus-Yakyuken-${displayKey}-finale.png`);
     assert.deepEqual(readFileSync(await file.path()),readFileSync(`public/downloads/yakyuken/${key}-stage-${winsRequired}.png`));
-    if(id==='guest-2'||id==='guest-3')await guest.screenshot({path:`${output}/${key}-finale.png`});
+    if(id!=='guest-1')await guest.screenshot({path:`${output}/${key}-finale.png`});
     await guestContext.close();checks.push(`${displayKey} shows every pose, unlocks the final CG only after ${winsRequired} wins and downloads its original`);
   }
 
