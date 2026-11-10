@@ -1,8 +1,7 @@
 {
-  "status": "background 02 chip addition for user review only; not integrated or deployed",
+  "status": "approved source retained; superseded reference drafts are available in Git history",
   "date": "2026-11-06",
   "tool": "built-in image_gen.imagegen",
-  "source": "art/launch-screen/review-v5/background-02-last-spin.png",
   "deliverable": "background-02-last-spin.png",
   "prompt": "Perform ONE SMALL, localized prop addition to this exact finished casino illustration. Preserve everything else as faithfully as possible: same adult male face and expression, hair, pose, both hands and fingers, ivory ball, embroidered outfit, roulette geometry/size/position, tabletop perspective, lamp, lighting, framing and colors.\n\nADD only a restrained grouping of casino chips on the empty tabletop immediately to the RIGHT of the roulette wheel, in the lower-middle/right area, but clearly to the LEFT of and BELOW the dealer's planted hand so no fingers or arm are obscured. Suggested location: approximately x=53–63% and y=73–79% of the full canvas, above the dark reserved loading-space band. Make exactly TWO SMALL SHORT STACKS of chips of slightly different heights (around 4–6 chips per stack): one black with antique-gold edge accents, one deep wine-red with antique-gold edge accents. Beside the stacks, add just ONE or TWO loose chips lying naturally flat, slightly separated or partially overlapping. Each chip is a believable small casino chip, all stacks modest, lower in height and smaller in visual weight than the dealer's hand. No oversized coins. Elegant engraved non-lettered motif, no readable values or numerals.\n\nMatch the table's perspective accurately: chips sit firmly on the same flat tabletop plane, with subtle contact shadows, warm amber glints from the left lamp and gentle cool reflections. The small grouping should feel casually present during a roulette duel, not arranged as a product showcase. Preserve generous breathing room around the wheel, hand and chips. No other new objects.\n\nCRITICAL: Do not cover or alter the roulette wheel, do not warp its concentric ellipses, do not move or redraw the character or hands. Keep the ENTIRE lower 16–18% quiet dark near-black burgundy/plum loading-space band untouched and empty, exactly as in the source; no chips, bright reflections or shadows intrude into that band. Keep the original wide 16:9 canvas and full hair framing. No text, UI, borders, logos or watermark. The only visible change is two short chip stacks and one or two loose chips in the empty table space.",
   "changes": [
@@ -16,5 +15,7 @@
     "empty lower dark loading-space band"
   ],
   "inspection": "actual generated image inspected; chip grouping fits between wheel and planted hand without obscuring fingers; contact shadows and highlights follow the scene; bottom band remains clear",
-  "existingGameFilesChanged": false
+  "existingGameFilesChanged": false,
+  "historicalSourceRevision": "f1f369928d961e95ba27f2e739fdfef5a8d90c90",
+  "historicalSource": "art/launch-screen/review-v5/background-02-last-spin.png"
 }

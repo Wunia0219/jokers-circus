@@ -1,6 +1,6 @@
 # 野球拳：流程、資料與開發入口
 
-本文件描述目前實作；逐次畫面調整、舊原型與歷史測試日誌可從 Git 歷史追溯。角色機率見[機率規則](yakyuken-probability.md)，Discord 設定見[獨立測試活動](discord-test-activity.md)，完整驗證見[測試文件](testing.md)。產品版本維持 1.0.3。
+本文件描述目前實作；逐次畫面調整、舊原型與歷史測試日誌可從 Git 歷史追溯。角色機率見[機率規則](yakyuken-probability.md)，Discord 設定見[獨立測試活動](discord-test-activity.md)，完整驗證見[測試文件](testing.md)。產品版本以 `package.json` 為準。
 
 ## 執行模式
 
@@ -18,8 +18,7 @@
 
 1. 大廳選野球拳，以獨立 Logo／讀條等待素材與 GPU 準備完成，進入選角。可挑戰命運荷官、優然、夏澄、瑟洛與萬世。
 2. 選角進牌桌採純淡出淡入。雲端先送 `begin`，以原每拳權重預抽整場勝敗平手到終局，和扣 1,000 於同一提交確認後進場；若已有進行中的場次，恢復該場，不再扣款或重抽。無錢包預覽只建立本機紀錄。
-3. `begin`／`state`／上一拳 `hand` 回應附帶下一拳固定結果，沒有額外預取請求。選拳頭／剪刀／布後確認，雲端先送附 `handIndex` 的原 `hand`，同時以已備妥結果展示出牌與翻牌，規劃 330ms 完成。尚未確認結算時顯示確認紀錄、鎖住下一拳與派彩；斷線可用原手勢／順序／request ID 重試，過期票券須重新同步，不能另送新拳。沒有預取結果的舊場次先等權威回覆再翻牌。本機使用相同角色權重與勝敗推進函式。命運荷官累積 2 勝通關、獎金 2,500，優然累積 3 勝通關、獎金 5,000，兩位皆於第 2 敗結束。夏澄累積 5 勝通關、獎金 10,000；瑟洛累積 7 勝通關、獎金 25,000。兩位皆於第 3 敗結束。輸一拳不清除勝數。平手不收費、不改寫場次摘要。
-   萬世累積 9 勝通關、獎金 50,000，第 4 敗結束。
+3. `begin`／`state`／上一拳 `hand` 回應附帶下一拳固定結果，沒有額外預取請求。選拳頭／剪刀／布後確認，雲端先送附 `handIndex` 的原 `hand`，同時以已備妥結果展示出牌與翻牌，規劃 330ms 完成。尚未確認結算時顯示確認紀錄、鎖住下一拳與派彩；斷線可用原手勢／順序／request ID 重試，過期票券須重新同步，不能另送新拳。沒有預取結果的舊場次先等權威回覆再翻牌。本機使用相同角色權重與勝敗推進函式；各角色勝敗門檻及獎金見[角色規則](yakyuken-probability.md)。輸一拳不清除勝數，平手不收費、不改寫場次摘要。
 4. 勝利先揭牌、對話與新造型；通關先實際繪製最後造型一幀，再展示 350ms、於 1,200ms 累加獎金，最後停留並淡出 650ms。COINS 與音效跟隨顯示進度，伺服器已一次發獎，演出不再呼叫結算。
 5. 勝敗結束均保留結果，由玩家選「再次挑戰」或「返回」選角。再次挑戰才開始新場並扣一次入場費；返回不扣款、不退費。進行中返回大廳需確認，成功 `leave` 後將該場標為離場。
 6. 未知網路／提交結果保留原 request ID 與操作內容，鎖住其他財務操作，重試同一筆。重整會先恢復待確認操作，再讀最新錢包；舊 revision 不覆蓋新餘額。已結束場次重載不重播領獎。
@@ -65,15 +64,13 @@ CG 收藏外框與老虎機「遊戲規則」使用同一套尺寸、圓角、�
 | `characters.js`、`rules.js`、`challenge.js` | 角色資料、手勢勝負、加權抽樣、共用勝敗推進與機率驗算 |
 | `test-wallet-client.js` | 測試身分、原請求保存與單一送出鎖、授權恢復、revision 防倒退 |
 | `player-archive.js` | 本機玩家分區紀錄、相容讀取與 CG 解鎖 |
-| `reward-presentation.js`、`reward-audio.js`、`audio.js` | 領獎時序與聲音，不處理財務結算 |
+| `reward-presentation.js`、`audio.js` | 領獎時序與聲音，不處理財務結算 |
 | `pixi/lobby*`、`layout.js`、`chrome.js`、`dialogs.js` | 大廳、選角、牌桌排版與介面 |
 | `pixi/card*`、`motion.js`、`wardrobe-transition.js` | 卡牌、實際 elapsedMS 動畫與換裝資源 |
 | `pixi/entry-loading.js`、`entry-state.js`、`screen-fade.js` | 入場準備、錯誤恢復與純轉場 |
 | `pixi/archive-dialogs.js`、`match-history.js`、`cg-*.js` | 收藏、紀錄與圖片下載 |
 | `cloud/yakyuken-playtest-core.js` | 權威錢包、交易意圖、去重及恢復 |
 | `cloud/yakyuken-playtest-worker.js` | HTTP、授權路由、DO 序列化與 Firestore adapter |
-
-舊 `state.js`／`controller.js`、固定輪替的 `pixi/demo-duel.js`、HTML 原型的 `presentation.js`／`icons.js`／圖片預載函式與公平猜拳試算已移除；現行角色引擎及其獨立機率驗算保留。
 
 ## 驗證
 

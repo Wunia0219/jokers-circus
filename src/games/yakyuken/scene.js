@@ -34,7 +34,7 @@ import {createCheckinButton} from '../../ui/player/checkin-button.js';
 import {checkinClaimFeedback,playerError} from '../../ui/player/player-copy.js';
 import {icon} from '../../ui/shared/icons.js';
 
-// The release entry stays separate; only the explicit test preview uses a wallet.
+// Local previews use an archive; cloud and Discord tests inject a test wallet.
 export class YakyukenScene {
   app = new Application();
   motion = new Motion();
@@ -219,7 +219,7 @@ export class YakyukenScene {
   }
   openSlot(){
     if(this.disposed || this.entering || this.entryOverlay || this.screen!=='games' || this.modal)return;
-    // This local preview opens the existing slot entry without changing its game.
+    // Preserve the activity launch context when opening the slot entry.
     location.assign(slotEntryPath(location));
   }
   selectCharacter(id){

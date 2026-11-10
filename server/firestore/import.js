@@ -1,15 +1,14 @@
 import {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
 import {inspectWalletDatabase} from '../sqlite/database.js';
-import {taipeiDay} from '../wallet/wallet.js';
+import {taipeiDay} from '../wallet/wallet-common.js';
 import {ledgerIndex,encodeHistory} from './schema.js';
 import {resetMarker,resetEntryIds,resetIndex} from '../wallet/wallet-admin.js';
 import {highlightEventPath,highlightEventIndex,assertHighlightEvent,assertHighlightBoard,highlightEvent} from './highlight-data.js';
 import {receiptCode,validRecordCode} from './record-codes.js';
+import {zeroSummary as blank,ledgerCategory} from './documents.js';
 
 const digest=value=>createHash('sha256').update(value).digest('hex');
-const blank=()=>({checkin:{days:0,total:0},game:{rounds:0,bet:0,payout:0,net:0}});
-const category=kind=>({grant:'rewards',reversal:'rewards',reset:'rewards',checkin:'checkin',spin:'game'}[kind]||'other');
 
 // Read an audited SQLite snapshot; the source is never modified or reopened writable.
 export function firestoreImportPlan(filename,environment,{version=1}={}){
@@ -39,7 +38,7 @@ export function firestoreImportPlan(filename,environment,{version=1}={}){
       wallets.set(base,{...row,claimedDay:null,revision:0,history:[],summary:blank(),milestone:!!row.milestone});
     }
     for(const entry of db.prepare('SELECT * FROM ledger ORDER BY id').iterate()){
-      nextId=Math.max(nextId,entry.id);const base=`wallets/${entry.guild}_${entry.user}`,wallet=wallets.get(base),id=String(entry.id).padStart(16,'0'),cat=category(entry.kind);
+      nextId=Math.max(nextId,entry.id);const base=`wallets/${entry.guild}_${entry.user}`,wallet=wallets.get(base),id=String(entry.id).padStart(16,'0'),cat=ledgerCategory(entry.kind);
       wallet.revision=entry.id;
       if(version===1){
         for(const name of ['ledger',`entries-${cat}`,`entries-${cat}-${entry.day}`,`entries-all-${entry.day}`])put(`${base}/${name}/${id}`,entry,{id:entry.id});

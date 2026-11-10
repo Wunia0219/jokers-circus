@@ -25,7 +25,7 @@
 | `npm run test:monitor` | scheduled handler、持久去重、故障與恢復通知 |
 | `node --test tests/yakyuken*.test.js` | 野球拳規則、紀錄、測試錢包邊界、原請求恢復與去重 |
 | `node scripts/qa/yakyuken-cloud-test.js` | 隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道 |
-| `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸及 3 組短視窗／安全區的規則與 CG 外框對照、跨角色等尺寸縮圖、全畫面檢視與下載鈕間距、手機觸控翻頁與 6 次 PNG 原檔下載 |
+| `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸及 3 組短視窗／安全區、共用外框、等尺寸縮圖、全畫面檢視、手機翻頁與 PNG 下載 |
 | `node scripts/qa/yakyuken-reward.js` | 隔離錢包：造型先於領獎、金額與音效同步、獨立靜音、縮放／背景恢復、重載不重播、勝敗再次挑戰／返回、新場只扣一次費，以及預取後 330ms 翻牌規劃、暫扣結算、原拳重試、缺票券與跨裝置進度衝突 |
 | `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：依本機 CG 目錄驗證原圖下載、位元組、CSP 與同源請求，需先部署對應版本的圖庫 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
@@ -39,13 +39,11 @@
 
 `npm ci` 會執行 Discord SDK 的相容安全修補；不可略過專案 `postinstall`。使用 `--ignore-scripts` 安裝時，必須另執行 `node scripts/security/patch-discord-sdk.js`，再以 `--check` 核對。完整驗證與正式建置會拒絕未修補或未知的 SDK 內容；細節見[資料保護](security.md#discord-sdkzod-修補)。
 
-瀏覽器測試使用鎖定的 Playwright 開發相依；一般驗證在 Windows 預設 Edge、Linux 預設 Chromium。`verify:ci` 在兩個平台都預設使用 Playwright 隨附的 Chromium，先執行 `npx playwright install chromium`（Linux 加 `--with-deps`）。可用 `PLAYWRIGHT_MODULE_PATH` 指定既有模組目錄、`PLAYWRIGHT_BROWSER_CHANNEL` 指定測試通道；`bundled` 表示鎖定版本的 Chromium，Windows 使用完整 Chromium 的新 headless 模式（`channel: 'chromium'`），Linux 沿用 headless shell，兩者由同一份 Playwright browser revision 鎖定。Windows ARM 執行 x64 headless shell 時曾在動畫與資源載入期間發生控制命令延遲；同版完整 Chromium 的對照測試保留真實輸入、可操作性及反向案例。此模式也由上述安裝指令準備，不需額外相依。[Playwright 新 headless 模式](https://playwright.dev/docs/browsers#chromium-new-headless-mode)
+瀏覽器測試使用鎖定的 Playwright 開發相依；一般驗證在 Windows 預設 Edge、Linux 預設 Chromium。`verify:ci` 在兩個平台都預設使用 Playwright 隨附的 Chromium，先執行 `npx playwright install chromium`（Linux 加 `--with-deps`）。可用 `PLAYWRIGHT_MODULE_PATH` 指定既有模組目錄、`PLAYWRIGHT_BROWSER_CHANNEL` 指定測試通道；`bundled` 表示鎖定版本的 Chromium，Windows 使用完整 Chromium 的新 headless 模式（`channel: 'chromium'`），Linux 沿用 headless shell，兩者由同一份 Playwright browser revision 鎖定。[Playwright 新 headless 模式](https://playwright.dev/docs/browsers#chromium-new-headless-mode)
 
 實際 Node／瀏覽器／Playwright 版本與啟動 channel 寫入 `test-results/browser-runtime.json`；同版瀏覽器仍不能取代遠端 Linux CI 驗證。
 
 Discord 雙遊戲的荷官圖片恢復檢查，以 `verifySlotAtlasRecovery` 將故障注入、回應觀察與「選擇老虎機」動作放在同一階段；原 60 秒門檻保留，不把前面的野球拳／CG 流程計入。桌機與手機都必須實際收到 503→200、恰好兩次圖片請求，並等待老虎機就緒；報告保存各回應的階段耗時，失敗報告也保存已觀察結果。`tests/slot-atlas-recovery.test.js` 覆蓋超過 60 秒的前段延遲、即時回應、不發請求、不重試、恢復失敗、額外重試及未就緒等情境；真實缺圖仍須失敗。這些都只作用於隔離 QA，不調整正式遊戲的載入、停輪或重試參數。
-
-Discord SDK 隔離測試預設使用 4195；若正在開啟同埠的野球拳預覽，可設定 `DISCORD_SDK_QA_PORT=4199` 再跑驗證，保留既有預覽。替代連接埠仍須未被占用，並維持只監聽 `127.0.0.1`。
 
 數字測試以 `willReadFrequently: true` 固定 Canvas 軟體繪製，避免 GPU／CPU 切換造成像素雜湊差異；此設定僅限隔離測試頁，正式遊戲不受影響。固定基準位於 `tests/fixtures/number-rendering.json`，仍逐一核對像素、尺寸及無障礙文字。僅在有意更改字型／外觀，或已證實需要統一測試繪圖路徑時，用 `npm run test:numbers -- --baseline` 更新並審查差異；失敗時也會保存 `test-results/number-rendering/after.json`。
 

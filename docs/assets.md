@@ -12,6 +12,8 @@
 | `images/dealer/v4/` | 荷官 manifest 與 51 頁無損 WebP |
 | `public/announcements/` | Discord 得獎公告 WebP，不進入遊戲預載；母檔及像素紀錄見[公告文件](casino-announcements.md#程式與素材) |
 | `audio/circus-background-optimized.mp3` | 使用者原音樂，182.76 秒、48 kHz 立體聲 |
+| `src/games/yakyuken/card-flip.wav` | 野球拳翻牌音效，來源授權保留在 `audio.js` |
+| `images/lobby/` | 大廳封面；老虎機 v2 母檔／提示詞在 `art/lobby/`，野球拳 v3 來源在 `art/yakyuken/cards-v3/manifest.json` |
 
 MP3 僅以 stream copy 移除封面／標籤，未重編碼。音樂按開關才載入、音量 16%、循環播放，入口支援 Range。合成音效由 `src/ui/audio/` 共用 voice plan 產生，`npm run audio:preview` 可離線試聽。
 
@@ -44,12 +46,16 @@ win 完整播放回待機後保留 30 秒，供短時間內的下一次得獎重
 
 兩組共 51 頁，保留全部影格、像素與播放順序；RGBA 尺寸合計約 298.83 MiB，WebP 共 41,019,400 bytes。記憶體數字是圖集尺寸估算，不是裝置實測；短期重用會延長 win 貼圖駐留時間。
 
-原畫在 `art/dealer/rebuild/host-master.webp`，補件／原幀／HD 圖集在 `art/dealer/v4/`，動作設計在 `art/dealer/win-design/`。R6 使用一次致意：上身峰值 +0.95°、自由臂 +6.5°，手臂較身體延後約 191ms；支撐手、平台與靴底固定。108 格含 107 張不同像素，首尾共用中立姿勢。
+原畫在 `art/dealer/rebuild/host-master.webp`，來源補件及 204 張原幀在 `art/dealer/v4/`，動作設計在 `art/dealer/win-design/`。R6 使用一次致意：上身峰值 +0.95°、自由臂 +6.5°，手臂較身體延後約 191ms；支撐手、平台與靴底固定。108 格含 107 張不同像素，首尾共用中立姿勢。
+
+HD 拼接圖集、抽出的部件與動畫預覽皆為可重建產物，分別輸出至忽略版控的 `test-results/dealer-v4/{sheets,parts,previews}/`。`export-dealer-v4.py` 由原幀產生 HD 與 runtime 圖集；預覽用 `python scripts/assets/export-dealer-v4-previews.py --clips idle --revision 4` 或 `--clips win --revision 6` 重建。原幀中相同像素的停留格仍代表獨立時間位置，不可去重刪除。
+
+開場保留 `approved-assets.json` 指定的三張核准 PNG，`prepare-launch-art.py` 由同一來源清單重建 WebP 與來源指紋。已取代的開場草稿、舊野球拳 v2 封面及未引用的合成示意圖由 Git 歷史追溯。CG 原始 PNG、無損母檔與遊戲 WebP 分別用於下載、重建及載入，不能因畫面相似而合併。
 
 ## 維護驗證
 
 `npm test`、`npm run build` 與 `python scripts/assets/check-dealer-v4.py --allow-duplicates --require-manifest` 核對來源、圖集及時間契約。`export-dealer-v4.py` 由原幀輸出無損圖集。畫面另檢查透明邊緣、完整人物、手機／桌面、鍵盤焦點及長位數金額；停輪規格集中在[基準](reel-timing-baseline.md)。
 
-匯出 idle／win 後，用 `python scripts/assets/repack-dealer.py` 產生共用外框候選與報告，加 `--write` 才套用。工具比較多組無損編碼參數，逐格還原 576×832 RGBA 並比對 SHA-256；若總下載量變大則拒絕套用。套用前原圖集備份與驗證報告在 `test-results/dealer-atlas-repack/`，原幀與 HD 圖集保持不變。
+匯出 idle／win 後，用 `python scripts/assets/repack-dealer.py` 產生共用外框候選與報告，加 `--write` 才套用。工具比較多組無損編碼參數，逐格還原 576×832 RGBA 並比對 SHA-256；若總下載量變大則拒絕套用。套用前原圖集備份與驗證報告在 `test-results/dealer-atlas-repack/`，原幀保持不變。
 
 `npm run test:dealer` 使用隔離 Edge 檢查短期重用、到期時的轉輪保護、背景釋放、併發準備與故障清理，並擷取桌機／手機全部 204 影格的渲染像素雜湊。修改前可先在同一裝置與瀏覽器執行 `npm run test:dealer -- --baseline` 保存本機基準；之後有該基準時會逐格比對像素、位置、縮放、時序與圖集峰值。報告在 `test-results/dealer-resources/`，不在正式遊戲加入測量 hooks。
