@@ -79,10 +79,11 @@
   "expressionGeometry": "scripts/assets/dealer_expression_morph.py",
   "uniqueDecodedSourceFrames": 107,
   "independentAnimatedWebp": {
-    "file": "images/dealer/v4/previews/win-r6.webp",
+    "file": "test-results/dealer-v4/previews/win-r6.webp",
     "codedFrames": 108,
     "durationMs": 3600,
-    "note": "108 forward time samples; one shared neutral at first/last gives 107 different source RGBA images, not 108 new drawings."
+    "note": "108 forward time samples; one shared neutral at first/last gives 107 different source RGBA images, not 108 new drawings.",
+    "rebuild": "python scripts/assets/export-dealer-v4-previews.py --clips win --revision 6"
   },
   "reviewSummary": "test-results/dealer-win/r6/review-summary.json",
   "motionRevision": 6,

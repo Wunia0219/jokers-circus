@@ -3,6 +3,7 @@ import {authenticateActivity} from './discord-auth.js';
 import {parentDiscordTestHost} from './discord-test-host.js';
 const CHANNEL='1564243344857632818',GUILD='760012177326997544';
 export const discordTestBuild=import.meta.env?.VITE_DISCORD_TEST_ACTIVITY==='true';
+export const discordTestMusic=()=>parentDiscordTestHost()?.musicFor?.(window.location)??null;
 export async function connectDiscordTestActivity({location=window.location,storage=globalThis.sessionStorage,fetchImpl=globalThis.fetch,connect=connectActivity,host=parentDiscordTestHost(),...options}={}){
   if(!isDiscordActivity(location))throw new Error('請從 Discord 指定測試頻道啟動遊戲。');
   const params=new URLSearchParams(location.search),clientId=options.clientId||import.meta.env?.VITE_DISCORD_CLIENT_ID;

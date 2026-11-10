@@ -10,23 +10,15 @@ SOURCES = [
     ('last-spin', 'art/launch-screen/review-v6/background-02-last-spin.png'),
     ('curtain-rises', 'art/launch-screen/review-v8/background-03-curtain-rises.png'),
 ]
-REVIEW_SOURCES = [
-    'review-v1/background.png', 'review-v1/loading-wordmark.png',
-    'review-v2/background-01-golden-salon.png', 'review-v2/background-02-midnight-roulette.png', 'review-v2/background-03-crimson-stage.png',
-    'review-v3/background-02-last-spin.png', 'review-v3/background-03-curtain-rises.png',
-    'review-v4/background-02-last-spin.png', 'review-v5/background-02-last-spin.png', 'review-v6/background-02-last-spin.png',
-    'review-v7/background-03-curtain-rises.png', 'review-v8/background-03-curtain-rises.png',
-]
-
 # Explicit provenance inventory, not a wildcard exemption for new runtime PNGs.
 reviews = []
-for name in REVIEW_SOURCES:
-    source = ROOT / 'art/launch-screen' / name
+for _, name in SOURCES:
+    source = ROOT / name
     with Image.open(source) as image:
         reviews.append(dict(file=source.relative_to(ROOT).as_posix(), dimensions=list(image.size),
                             sha256=hashlib.sha256(source.read_bytes()).hexdigest()))
 (ROOT / 'art/launch-screen/review-sources.json').write_text(
-    json.dumps(dict(purpose='offline design review originals; never referenced by the runtime', images=reviews), indent=2) + '\n', encoding='utf8')
+    json.dumps(dict(purpose='approved offline originals for runtime export; superseded drafts are in Git history', images=reviews), indent=2) + '\n', encoding='utf8')
 
 records = []
 for name, source in SOURCES:

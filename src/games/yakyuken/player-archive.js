@@ -1,4 +1,4 @@
-import {CHARACTERS,characterRule} from './characters.js';
+import {CHARACTERS,canUnlockPose,characterRule} from './characters.js';
 
 const ROOT='jokers-circus:yakyuken:archive:v1:';
 const ID=/^[A-Za-z0-9_-]{8,80}$/;
@@ -54,13 +54,12 @@ export class PlayerArchive {
       .sort((a,b)=>b.startedAt-a.startedAt || b.id.localeCompare(a.id));
   }
   unlock(characterId,pose){
-    const rule=characterRule(characterId);
-    if(!rule.enabled || !Number.isInteger(pose) || pose<0 || pose>2)return;
+    if(!canUnlockPose(characterId,pose))return;
     const key=this.prefix+`cg:${characterId}:${pose}`;
     if(!this.isUnlocked(characterId,pose))this.write(key,String(this.clock()));
   }
   isUnlocked(characterId,pose){
-    if(!CHARACTERS.some(c=>c.id===characterId && c.enabled) || !Number.isInteger(pose) || pose<0 || pose>2)return false;
+    if(!canUnlockPose(characterId,pose))return false;
     const value=this.read(this.prefix+`cg:${characterId}:${pose}`);
     return value!==null && /^\d{1,16}$/.test(value) && number(Number(value));
   }
@@ -77,7 +76,7 @@ export class PlayerArchive {
     const record={...previous,wins:challenge.wins,losses:challenge.losses,reward:challenge.reward,status:challenge.status,updatedAt:Math.max(previous.updatedAt,this.clock())};
     if(!validRecord(record,id))throw new Error('Invalid challenge archive state');
     this.write(this.prefix+'match:'+id,JSON.stringify(record));
-    for(let pose=0;pose<=Math.min(challenge.wins,2);pose++)this.unlock(record.characterId,pose);
+    for(let pose=0;pose<=record.wins;pose++)this.unlock(record.characterId,pose);
     return true;
   }
   leave(id){

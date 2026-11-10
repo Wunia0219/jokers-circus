@@ -6,13 +6,12 @@ import {ledgerIndex,sequenceKey,encodeHistory,decodeHistory} from './schema.js';
 import {highlightEvent,highlightEventPath,highlightEventIndex} from './highlight-data.js';
 import {firestoreAdminWallets} from './admin-wallets.js';
 import {firestoreWalletHistory} from './wallet-history.js';
-import {unpack,zeroSummary} from './documents.js';
+import {unpack,zeroSummary,ledgerCategory} from './documents.js';
 import {INITIAL_BALANCE,openingKind,openingReason,isOpeningKind} from '../wallet/wallet-opening.js';
 import {nextRecordCode,validRecordCode} from './record-codes.js';
 
 const maxBalance=1_000_000_000_000,maxDocument=512*1024;
 const digest=value=>createHash('sha256').update(value).digest('hex');
-const category=kind=>({grant:'rewards',reversal:'rewards',reset:'rewards',checkin:'checkin',spin:'game'}[kind]||'other');
 const packed=data=>({json:JSON.stringify(data)});
 
 export class FirestoreWalletCore {
@@ -155,7 +154,7 @@ export class FirestoreWalletCore {
   }
   invalidateCache(){this.cache.clear();this.cacheGeneration++;}
   record(tx,ref,entry){
-    const id=String(entry.id).padStart(16,'0'),cat=category(entry.kind);
+    const id=String(entry.id).padStart(16,'0'),cat=ledgerCategory(entry.kind);
     for(const name of ['ledger',`entries-${cat}`,`entries-${cat}-${entry.day}`,`entries-all-${entry.day}`]){
       this.write(tx,ref.collection(name).doc(id),entry,{create:true,index:{id:entry.id}});
     }

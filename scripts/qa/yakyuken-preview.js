@@ -5,7 +5,7 @@ import {launchBrowser} from './helpers/browser.js';
 import {ENTRY_TIMING} from '../../src/games/yakyuken/pixi/entry-state.js';
 import {slotHeaderLayout,yakyukenHeaderLayout} from '../../src/games/yakyuken/pixi/header-layout.js';
 import {tableLayout,TABLE_MOVES} from '../../src/games/yakyuken/pixi/layout.js';
-import {DEALER} from '../../src/games/yakyuken/characters.js';
+import {DEALER,characterRule} from '../../src/games/yakyuken/characters.js';
 import {APP_VERSION} from '../../src/version.js';
 
 const port=4196,origin=`http://127.0.0.1:${port}`,output='test-results/yakyuken-pixi';
@@ -26,7 +26,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
       return {code:code.replace('this.host = host;','globalThis.__yakyukenTest=this;this.host = host;')
         .replace('playChallengeRound(this.challenge,this.selected)','playChallengeRound(this.challenge,this.selected,{getRandomValues:values=>{values[0]=globalThis.__duelWeights?.shift() ?? 0;}})'),map:null};
     }
-    if(path.endsWith('/src/games/yakyuken/main.js'))return {code:code.replace('new YakyukenScene({wallet:testWallet})',"new YakyukenScene({wallet:testWallet,playerId:globalThis.__qaPlayer || 'local-guest'})"),map:null};
+    if(path.endsWith('/src/games/yakyuken/main.js'))return {code:code.replace('new YakyukenScene({wallet:testWallet,',"new YakyukenScene({wallet:testWallet,playerId:globalThis.__qaPlayer || 'local-guest',"),map:null};
     if(!path.endsWith('/src/main.js'))return;
     assert.ok(code.includes('startGame();'),'isolated slot ticker hook must match the real entry');
     return {code:code.replace('startGame();','globalThis.__slotNavigationTest={scene,controls};startGame();'),map:null};
@@ -36,7 +36,7 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:`${outpu
 const checks=[],errors=[],requests=[],entryEvidence=[],entryReleases=[];
 let browser;
 const watchEntryBindings=context=>context.on('page',page=>page.on('console',message=>{if(message.type()==='warning' && message.text().includes('[BindGroup]'))errors.push(message.text());}));
-const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===24 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
+const report=() => writeFileSync(`${output}/browser-report.json`,JSON.stringify({ok:checks.length===28 && errors.length===0,checks,errors,requests,entryEvidence},null,2));
 const frame=page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const phase=(page,value) => page.waitForFunction(expected => {const d=document.querySelector('canvas')?.dataset;return d?.phase===expected && (!['confirmed','selecting'].includes(expected) || d.changing!=='true');},value);
 const canvasState=page => page.locator('canvas').evaluate(canvas => ({...canvas.dataset}));
@@ -48,7 +48,7 @@ const assertArchiveControls=async(page,viewer=false)=>{
   });
   const close=controls.find(n=>n.name==='關閉視窗');assert.equal(close.variant,'close');assert.equal(close.iconSize,21);assert.equal(close.width,44);assert.equal(close.height,44);
   for(const control of controls){assert.ok(control.x>=0 && control.y>=0 && control.x+control.width<=width+1 && control.y+control.height<=height+1,`${control.name} fits ${width}×${height}`);assert.ok(control.height>=44);}
-  if(viewer){const download=controls.find(n=>n.name==='下載高畫質去背 PNG');assert.equal(download.caption,'','download has an icon and accessible name, without visible text');assert.equal(download.variant,'quiet');assert.ok(download.iconSize>=24);assert.equal(download.width,52);}
+  if(viewer){const download=controls.find(n=>n.name==='下載高畫質去背 PNG');assert.equal(download.caption,'下載原圖');assert.equal(download.variant,'tool');assert.ok(download.width>=108);assert.ok(close.x-download.x-download.width>=15.99);}
 };
 const assertTableWings=async page=>{
   const geometry=await page.evaluate(()=>{
@@ -89,7 +89,7 @@ const assertHeader=async(page,screen)=>{
   if(screen==='games'){
     assert.equal(await page.getByRole('button',{name:'CG 收藏',exact:true}).count(),0,'lobby has no game header');
   }else{
-    const checkin=page.getByRole('button',{name:'週簽到・介面預覽',exact:true}),h=slotHeaderLayout(width,height);
+    const checkin=page.locator('#daily-checkin'),h=slotHeaderLayout(width,height);
     assert.equal(await checkin.count(),1,'slot-style checkin placeholder is present');
     const checkinBox=await checkin.boundingBox();
     for(const key of ['x','y','width','height'])assert.ok(Math.abs(checkinBox[key]-h.checkin[key])<1,'checkin matches slot geometry');
@@ -122,19 +122,22 @@ const startTable=async(page,screenshots)=>{
   await page.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(page,'characters');
   await page.getByRole('button',{name:'選擇命運荷官',exact:true}).click();
   assert.equal((await canvasState(page)).entries,'0');
-  assert.equal(await page.getByRole('button',{name:'選擇第二位來賓',exact:true}).count(),0,'unavailable characters cannot enter');
+  assert.equal(await page.getByRole('button',{name:'選擇優然',exact:true}).count(),1,'the second character is available');
   await assertHeader(page,'characters');
   if(screenshots)await page.screenshot({path:`${output}/${screenshots}-characters.png`});
   assert.equal(await page.getByRole('button',{name:'選擇難度',exact:true}).count(),0);
-  await page.evaluate(()=>window.__yakyukenTest.selectCharacter('guest-4'));
-  assert.equal((await canvasState(page)).character,'dealer','unavailable characters cannot change the selected rules');
+  await page.evaluate(()=>window.__yakyukenTest.selectCharacter('unknown'));
+  assert.equal((await canvasState(page)).character,'dealer','unknown characters cannot change the selected rules');
   await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(page,'selecting');
   await assertTableWings(page);
   await assertHeader(page,'table');
   assert.equal(await page.evaluate(()=>window.__qaSound.musicEnabled),true,'each game starts with music enabled');
-  await page.getByRole('button',{name:'週簽到・介面預覽',exact:true}).click();
-  assert.equal((await canvasState(page)).modal || '','','checkin remains a UI-only placeholder');
   await page.keyboard.press('Enter');assert.equal((await canvasState(page)).entries,'1','duplicate entry input cannot start a second session');
+  await page.locator('#daily-checkin').click();
+  const checkin=page.getByRole('dialog',{name:'週簽到',exact:true});
+  assert.equal(await checkin.getByRole('listitem').count(),7);
+  assert.equal(await checkin.getByRole('button',{name:'週簽到預覽',exact:true}).isDisabled(),true);
+  await page.keyboard.press('Escape');await checkin.waitFor({state:'hidden'});
 };
 try {
   await server.listen();browser=await launchBrowser();
@@ -149,8 +152,8 @@ try {
   checks.push('game lobby, five character positions and explicit local entry precede the table; unavailable characters and duplicate entry are blocked');
   assert.equal((await canvasState(page)).dealerFrontCount,'0','the single dealer card starts face down');
   assert.equal(await page.locator('#yakyuken-app canvas').count(),1);
-  assert.equal(await page.locator('body').innerText(),'');
-  assert.equal(await page.locator('dialog,img,main,h1,header').count(),0);
+  assert.equal(await page.locator('#daily-checkin').innerText(),'週簽到\n查看七日獎勵');
+  assert.equal(await page.locator('dialog:visible,img,main,h1,header').count(),0,'the closed check-in cannot cover the canvas');
   assert.equal(await page.getByRole('button',{name:/^選擇(拳頭|剪刀|布)$/}).count(),3);
   assert.equal(await page.evaluate(() => document.documentElement.scrollHeight===innerHeight && document.documentElement.scrollWidth===innerWidth),true);
   const help=page.getByRole('button',{name:'CG 收藏',exact:true});
@@ -180,9 +183,13 @@ try {
     window.__dealerStages=[];window.__dealerFaces=[];
     new MutationObserver(() => {const data=document.querySelector('canvas').dataset;if(!window.__dealerStages.includes(data.dealerStage))window.__dealerStages.push(data.dealerStage);window.__dealerFaces.push({stage:data.dealerStage,fronts:data.dealerFrontCount,scale:window.__yakyukenTest.dealerCards[0].visual.scale.x});}).observe(document.querySelector('canvas'),{attributes:true,attributeFilter:['data-dealer-stage','data-dealer-front-count']});
   });
+  await page.evaluate(()=>window.__yakyukenTest.app.stop());
   await page.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(page,'presenting');
-  await page.keyboard.press('Enter');await phase(page,'confirmed');
-  assert.deepEqual(await page.evaluate(() => window.__dealerStages),['thinking','playing','shown']);
+  await page.keyboard.press('Enter');
+  await page.evaluate(async()=>{const s=window.__yakyukenTest;s.motion.tick(150);await Promise.resolve();s.app.render();});
+  await page.evaluate(async()=>{const s=window.__yakyukenTest;s.motion.tick(180);await Promise.resolve();s.app.render();});
+  await phase(page,'confirmed');await page.evaluate(()=>window.__yakyukenTest.app.start());
+  assert.deepEqual(await page.evaluate(() => window.__dealerStages),['playing','shown']);
   const flips=await page.evaluate(()=>window.__dealerFaces);
   assert.ok(flips.some(event=>event.stage==='playing' && event.fronts==='0'),'playing starts on the back');
   assert.ok(flips.some(event=>event.stage==='playing' && event.fronts==='1'),'the chosen front appears during the flip');
@@ -196,7 +203,7 @@ try {
   assert.equal((await canvasState(page)).selected,'');
   assert.equal((await canvasState(page)).dealerMove,'');
   assert.equal((await canvasState(page)).dealerFrontCount,'0','next round restores all backs');
-  checks.push('player confirmation triggers thinking, dealer card play and result; duplicate input cannot repeat the round');
+  checks.push('player confirmation immediately plays and flips the dealer card; duplicate input cannot repeat the round');
 
   await page.keyboard.press('3');assert.equal((await canvasState(page)).selected,'paper');
   await page.keyboard.press('Enter');await phase(page,'confirmed');
@@ -343,10 +350,9 @@ try {
     await archiveA.screenshot({path:`${output}/cg-refined-${width}.png`});
   }
   await archiveA.setViewportSize({width:390,height:844});await frame(archiveA);
-  const downloadButton=archiveA.getByRole('button',{name:'下載高畫質去背 PNG',exact:true});await downloadButton.hover();
-  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children.find(n=>n.accessibleTitle==='下載高畫質去背 PNG').outline.visible),false,'subtle hover does not draw a heavy button border');
+  const downloadButton=archiveA.getByRole('button',{name:'下載高畫質去背 PNG',exact:true});
   await archiveA.keyboard.press('Tab');await downloadButton.focus();
-  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children.find(n=>n.accessibleTitle==='下載高畫質去背 PNG').outline.visible),true,'icon-only download retains visible keyboard focus');
+  assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children.find(n=>n.accessibleTitle==='下載高畫質去背 PNG').outline.visible),true,'download retains visible keyboard focus');
   await archiveA.screenshot({path:`${output}/archive-mobile-cg.png`});await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   assert.equal(pngRequests.length,0,'neither entry, gallery nor full CG loads download PNGs');assert.equal(downloadRequests.length,0,'server receives no download request until activation');
   assert.equal(await archiveA.evaluate(async()=>{const {downloadCG}=await import('/src/games/yakyuken/cg-download.js');return downloadCG(window.__yakyukenTest.archive,'dealer',2);}),false,'locked CG cannot initiate a download');
@@ -376,12 +382,42 @@ try {
   assert.equal(await archiveA.getByRole('button',{name:'遊戲選單',exact:true}).count(),0,'history has no unrelated navigation menu');
   await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   await archiveA.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).waitFor();
   assert.equal(await archiveA.getByRole('button',{name:'回顧漸入佳境 CG',exact:true}).count(),1,'earned CG persists after reload');
   await archiveA.getByRole('button',{name:'關閉視窗',exact:true}).click();
   const archiveB=await playerPage('archive-B');await archiveB.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(archiveB,'characters');
   assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.archive.records().length),0);
   await archiveB.getByRole('button',{name:'CG 收藏',exact:true}).click();
-  assert.equal(await archiveB.getByRole('button',{name:/^回顧.*CG$/}).count(),0,"another player cannot review A's unlocks");
+  const galleryTiles=page=>page.evaluate(()=>window.__yakyukenTest.modalRoot.children.find(n=>n.label==='archive-dialog').children
+    .filter(n=>n.label?.startsWith('gallery-tile:')).map(n=>{const {x,y,width,height}=n.getBounds();return {enabled:n.enabled!==false,thumb:!!n.getChildByLabel('cg-thumbnail'),bounds:{x,y,width,height}};}));
+  for(const [name,count] of [['命運荷官',3],['優然',4],['夏澄',6]]){
+    await archiveB.getByRole('button',{name:new RegExp(`^${name}收藏，已解鎖 0 / ${count}`)}).click();
+    assert.equal(await archiveB.getByRole('button',{name:/^回顧.*CG$/}).count(),0);
+    assert.deepEqual((await galleryTiles(archiveB)).map(({enabled,thumb})=>[enabled,thumb]),Array.from({length:count},()=>[false,false]));
+  }
+  await archiveB.screenshot({path:`${output}/cg-xiache-fresh-locked.png`});
+  await archiveB.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  await archiveB.getByRole('button',{name:'選擇夏澄',exact:true}).click();
+  await archiveB.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(archiveB,'selecting');
+  await archiveB.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  assert.deepEqual((await galleryTiles(archiveB)).map(({enabled})=>enabled),[true,false,false,false,false,false]);
+  await archiveB.getByRole('button',{name:'關閉視窗',exact:true}).click();
+  await archivePlay(archiveB,'win');
+  await archiveB.getByRole('button',{name:'CG 收藏',exact:true}).click();
+  assert.deepEqual((await galleryTiles(archiveB)).map(({enabled})=>enabled),[true,true,false,false,false,false]);
+  await archiveB.getByRole('button',{name:'回顧整理袖口 CG',exact:true}).click();
+  await archiveB.keyboard.press('ArrowRight');assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.cgIndex),1);
+  await archiveB.keyboard.press('ArrowRight');assert.equal(await archiveB.evaluate(()=>window.__yakyukenTest.cgIndex),1,'viewer skips locked stages');
+  await archiveB.getByRole('button',{name:'返回 CG 收藏',exact:true}).click();
+  await archiveB.getByRole('button',{name:'夏澄收藏，已解鎖 2 / 6，目前顯示',exact:true}).waitFor();
+  await archiveB.getByRole('button',{name:/^優然收藏，已解鎖 0 \/ 4/}).click();
+  assert.equal((await canvasState(archiveB)).character,'guest-2','browsing CG never changes the active opponent');
+  await archiveB.getByRole('button',{name:/^夏澄收藏，已解鎖 2 \/ 6/}).click();
+  for(const [width,height] of [[320,568],[390,844],[844,390],[1600,900]]){
+    await archiveB.setViewportSize({width,height});await frame(archiveB);await assertArchiveControls(archiveB);
+    assert.ok((await galleryTiles(archiveB)).every(({bounds:b})=>b.x>=0&&b.y>=0&&b.x+b.width<=width&&b.y+b.height<=height&&b.height>=44));
+    await archiveB.screenshot({path:`${output}/cg-xiache-gallery-${width}.png`});
+  }
   await archiveB.getByRole('button',{name:'關閉視窗',exact:true}).click();
   await archiveB.evaluate(()=>{const a=window.__yakyukenTest.archive;for(let i=0;i<14;i++)a.leave(a.begin('dealer'));});
   await archiveB.setViewportSize({width:320,height:568});await frame(archiveB);
@@ -531,8 +567,11 @@ try {
   await resizing.goto(`${origin}/yakyuken-preview.html`);await startTable(resizing);
   await resizing.evaluate(()=>{window.__duelWeights=[4000];});
   await resizing.getByRole('button',{name:'選擇布',exact:true}).click();
+  await resizing.getByRole('button',{name:'確認出牌',exact:true}).waitFor();
+  await resizing.evaluate(()=>window.__yakyukenTest.app.stop());
   await resizing.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(resizing,'presenting');
   await resizing.setViewportSize({width:390,height:844});await phase(resizing,'confirmed');
+  await resizing.evaluate(()=>window.__yakyukenTest.app.start());
   assert.deepEqual([(await canvasState(resizing)).dealerMove,(await canvasState(resizing)).outcome,(await canvasState(resizing)).round],['scissors','loss','1']);
   assert.equal((await canvasState(resizing)).dealerFrontCount,'1','resize preserves only the chosen front');
   checks.push('resize during dealer presentation reveals the same round once, including a losing result');
@@ -558,7 +597,9 @@ try {
   await slot.locator('#loading').waitFor({state:'detached'});
   assert.equal(await slot.getByRole('button',{name:'旋轉一次',exact:true}).isEnabled(),true,'slot assets finish loading and its original controls are ready');
   assert.equal(await slot.locator('#daily-checkin').isVisible(),true);
-  assert.equal(await slot.locator('#daily-checkin').isDisabled(),true,'checkin is UI-only');
+  await slot.locator('#daily-checkin').click();
+  assert.equal(await slot.getByRole('button',{name:'週簽到預覽',exact:true}).isDisabled(),true,'wallet-free preview can view rewards but cannot claim');
+  await slot.locator('#close-dialog').click();
   const slotCheckin=await slot.locator('#daily-checkin').boundingBox(),expected=slotHeaderLayout(1600,900).checkin;
   for(const key of ['x','y','width','height'])assert.ok(Math.abs(slotCheckin[key]-expected[key])<1,`slot checkin ${key} matches shared geometry`);
   const slotTools=await slot.locator('.player-tools button').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect()).filter(r=>r.width>0 && r.height>0).map(r=>({x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height})));
@@ -666,7 +707,7 @@ try {
   entryEvidence.push({covering,revealing,stages:entryStages});
   checks.push('lobby-to-Yakyuken shows its independent logo and real preparation meter before character selection');
 
-  // Both in-game routes are plain fades; inspect their actual middle frames.
+  // The table shows a meter while returning to the lobby retains its plain fade.
   for(const kind of ['table','lobby']){
     const trigger=entry.getByRole('button',{name:kind==='table'?'進入野球拳試玩':'返回遊戲大廳',exact:true});
     await trigger.waitFor();
@@ -675,14 +716,15 @@ try {
     if(kind==='lobby'){await entry.evaluate(()=>window.__yakyukenTest.app.render());await entry.getByRole('button',{name:'確認離開',exact:true}).click();}
     await phase(entry,'entering');
     await tickEntry(entry,ENTRY_TIMING.cover/2);
-    assert.equal((await canvasState(entry)).entryKind,kind);assert.equal(await entry.getByRole('progressbar').count(),0);
-    assert.ok(await entry.evaluate(()=>{const overlay=window.__yakyukenTest.entryOverlay;return overlay.cover.value>0 && overlay.cover.value<1 && overlay.root.children.length===1 && !overlay.content;}),'fade-out contains only its plain cover');
+    assert.equal((await canvasState(entry)).entryKind,kind);assert.equal(await entry.getByRole('progressbar').count(),kind==='table'?1:0);
+    assert.ok(await entry.evaluate(kind=>{const overlay=window.__yakyukenTest.entryOverlay;return overlay.cover.value>0&&overlay.cover.value<1
+      &&(kind==='table'?overlay.content.alpha===overlay.cover.value:overlay.root.children.length===1&&!overlay.content);},kind),'the table loader fades with its cover');
     await entry.keyboard.press('Enter');await entry.keyboard.press('Escape');
     await entry.screenshot({path:`${output}/${kind}-fade-out.png`});
     await tickEntry(entry,ENTRY_TIMING.cover/2);
     await entry.waitForFunction(()=>document.querySelector('canvas')?.dataset.entryStage==='revealing');
     await tickEntry(entry,ENTRY_TIMING.reveal/2);
-    assert.equal(await entry.getByRole('progressbar').count(),0);
+    assert.equal(await entry.getByRole('progressbar').count(),kind==='table'?1:0);
     const fade=await entry.evaluate(()=>{const scene=window.__yakyukenTest;return {alpha:scene.entryOverlay.cover.value,zoom:scene.world.scale.x,cards:scene.playerCards.map(card=>({y:card.y,baseY:card.baseY,alpha:card.alpha}))};});
     assert.ok(fade.alpha>0 && fade.alpha<1);assert.equal(fade.zoom,1);
     for(const card of fade.cards){assert.equal(card.y,card.baseY);assert.equal(card.alpha,1);}
@@ -692,7 +734,7 @@ try {
     await tickEntry(entry,ENTRY_TIMING.reveal/2);await entry.evaluate(()=>window.__yakyukenTest.app.start());await phase(entry,kind==='table'?'selecting':'games');
     assert.equal((await canvasState(entry)).entries,'1');
   }
-  checks.push('Yakyuken selection-to-table and table-to-lobby use only fade-out/fade-in, with no logo, meter, zoom or card choreography');
+  checks.push('Yakyuken selection-to-table keeps its logo and progress visible through the transition; returning to the lobby stays a plain fade');
   await entry.close();
 
   const recoveryContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
@@ -727,7 +769,7 @@ try {
   assert.ok(Number((await canvasState(reduced)).entryProgress)<100);await reduced.screenshot({path:`${output}/entry-reduced-motion.png`});
   releaseReduced();await phase(reduced,'characters');assert.equal((await canvasState(reduced)).entries,'0');
   await reduced.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(reduced,'selecting');assert.equal((await canvasState(reduced)).entries,'1');
-  assert.equal(await reduced.getByRole('progressbar').count(),0);
+  await reduced.getByRole('progressbar').waitFor({state:'hidden'});
   await reducedContext.close();checks.push('reduced-motion entry still waits for real assets, while decorative transition motion is skipped');
 
   const disposed=await context.newPage();disposed.on('pageerror',error=>errors.push(error.message));let releaseDisposed;
@@ -743,6 +785,60 @@ try {
   assert.equal(await disposed.evaluate(()=>window.__yakyukenTest.loaded.size),0);
   assert.equal(await disposed.evaluate(()=>window.__yakyukenTest.entryGradients),null);
   await disposed.close();checks.push('disposing during entry cancels pending presentation and unloads late assets without resurrecting the renderer');
+
+  for(const [id,key,displayKey] of [['guest-1','youran','Youran'],['guest-2','xiache','Xiache'],['guest-3','selo','Selo'],['guest-4','wanshi','Wanshi']]){
+    const {name,winsRequired,reward}=characterRule(id);
+    const guestContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
+    watchEntryBindings(guestContext);
+    const guest=await guestContext.newPage();guest.on('pageerror',error=>errors.push(error.message));
+    await guest.goto(`${origin}/yakyuken-preview.html`);await phase(guest,'games');
+    await guest.getByRole('button',{name:'選擇野球拳',exact:true}).click();await phase(guest,'characters');
+    await guest.getByRole('button',{name:'選擇'+name,exact:true}).click();
+    assert.equal((await canvasState(guest)).character,id);
+    if(id==='guest-4'){
+      assert.match(await guest.locator('canvas').getAttribute('aria-label'),/目前選擇萬世。家財萬貫的名門少爺/);
+      await guest.screenshot({path:`${output}/${key}-selection-mobile.png`});
+    }
+    await guest.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(guest,'selecting');
+    assert.equal(await guest.evaluate(character=>{
+      const scene=window.__yakyukenTest;
+      return scene.pose===0&&scene.dealer.texture===scene.artTextures[character][0]&&scene.archive.isUnlocked(character,0);
+    },id),true);
+    for(let wins=1;wins<=winsRequired;wins++){
+      await guest.getByRole('button',{name:'選擇拳頭',exact:true}).click();
+      await guest.getByRole('button',{name:'確認出牌',exact:true}).click();
+      await guest.waitForFunction(({id,wins})=>{
+        const scene=window.__yakyukenTest;
+        return scene.phase==='confirmed'&&!scene.changing&&scene.pose===wins&&scene.dealer.texture===scene.artTextures[id][wins];
+      },{id,wins});
+      const cleared=wins===winsRequired,state=await canvasState(guest);
+      assert.deepEqual([state.wins,state.challengeStatus,state.reward],[String(wins),cleared?'won':'playing',cleared?String(reward):'0']);
+      assert.equal(await guest.evaluate(({id,winsRequired})=>window.__yakyukenTest.archive.isUnlocked(id,winsRequired),{id,winsRequired}),cleared);
+      if(!cleared){await guest.getByRole('button',{name:'下一局',exact:true}).click();await phase(guest,'selecting');}
+    }
+    if(id==='guest-4')await guest.screenshot({path:`${output}/${key}-table-mobile.png`});
+    await guest.getByRole('button',{name:'CG 收藏',exact:true}).click();
+    await guest.getByRole('button',{name:`${name}收藏，已解鎖 ${winsRequired+1} / ${winsRequired+1}，目前顯示`,exact:true}).waitFor();
+    if(id!=='guest-1'){
+      await guest.setViewportSize({width:320,height:568});await frame(guest);
+      await assertArchiveControls(guest);
+      await guest.screenshot({path:`${output}/${key}-collection-mobile.png`});
+    }
+    let visible=await guest.getByRole('button',{name:/^回顧.*CG$/}).count();
+    const nextPage=guest.getByRole('button',{name:'CG 收藏下一頁',exact:true});
+    while(await nextPage.count()){
+      await nextPage.click();await frame(guest);visible+=await guest.getByRole('button',{name:/^回顧.*CG$/}).count();
+    }
+    assert.equal(visible,winsRequired+1);
+    await guest.getByRole('button',{name:`回顧${name}終幕 CG`,exact:true}).click();
+    const download=guest.waitForEvent('download');
+    await guest.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).click();
+    const file=await download;
+    assert.equal(file.suggestedFilename(),`Jokers-Circus-Yakyuken-${displayKey}-finale.png`);
+    assert.deepEqual(readFileSync(await file.path()),readFileSync(`public/downloads/yakyuken/${key}-stage-${winsRequired}.png`));
+    if(id!=='guest-1')await guest.screenshot({path:`${output}/${key}-finale.png`});
+    await guestContext.close();checks.push(`${displayKey} shows every pose, unlocks the final CG only after ${winsRequired} wins and downloads its original`);
+  }
 
   const failure=await context.newPage();failure.on('pageerror',error => errors.push(error.message));
   await failure.route('**/images/yakyuken/**/stage-0.webp',route => route.abort());

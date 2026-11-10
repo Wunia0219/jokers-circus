@@ -1,0 +1,54 @@
+{
+  "workflow": "Built-in image_gen, then shared framing, PNG export and WebP encoding.",
+  "reference": "User-provided silver-haired portrait. Wanshi stage 0 is the identity master for stages 1–9.",
+  "canvas": {
+    "width": 1024,
+    "height": 1536,
+    "background": "transparent",
+    "direction": "near-frontal three-quarter",
+    "anchorX": 512,
+    "footBaseline": 1520,
+    "alphaThreshold": 180
+  },
+  "masterPrompt": "Generate stage 0, the authoritative identity master for ten game portraits of WANSHI, an explicitly adult 28-year-old fabulously wealthy old-money male heir at a midnight casino. The supplied silver-haired man with butterflies is the character reference: same mature masculine androgynous face, aloof expression, steel-blue eyes, cool porcelain skin, long cool silver hair worn half-up in a small bun with asymmetrical framing locks. Sapphire butterfly motif belongs on jewelry. Single isolated head-to-toe full-body fashion character, centered on a vertical 2:3 transparent canvas, 2–3% padding above head and below shoes, normal adult proportions, center at x50%, feet baseline near y97%, relaxed three-quarter turn, face toward player. Clothes, ALL visible: structured charcoal-black short shoulder cape with a trim black fur collar over a tailored black tuxedo jacket, a deep midnight blue-black fitted buttoned waistcoat underneath, a black fully buttoned high-collar silk shirt, elaborate silver sapphire butterfly collar pin with a short chain, two black leather gloves, a matching pair of small sapphire earrings, charcoal bespoke straight-leg pleated trousers with a plain black leather belt hidden by the waistcoat for now, and black polished dress shoes. Keep the cape short, silhouette elegant and compact. A hand at chest height lightly straightens the sapphire pin, the other relaxed. Richly detailed semi-realistic digital oil painting, controlled silver-blue edge lighting, realistic materials, cool noir. Keep silver hair and facial features clear at gameplay thumbnail scale. No background, floor, furniture, text, watermark, flying butterflies, or other objects.",
+  "variantPromptSuffix": " Edit the supplied full-body reference as a coherent sequential costume variant of the exact same 28-year-old old-money male heir. Lock identity: same mature face and slightly androgynous masculine features, almond steel-blue eyes, cool pale skin, silver half-up bun, silver hair length, build, realistic limb proportions, and same charcoal pleated trousers. Preserve the master image's full body scale, top of hair near y=12–25, baseline near y=1518, body centered at x=512, 1024×1536 portrait composition. Do not zoom or crop head, elbows or shoes/toes. Only change wardrobe and modest hand or eye action as specified. Natural hands, correct fingers, subtle shift in weight, gravity-driven cloth with distinct fur, jacquard, wool, silk and leather when present. Match the master: sophisticated semi-realistic digital oil painting, soft cool main light from upper image-left, muted shadow and controlled blue-silver rim. Truly transparent clean cutout with no halo or cast shadow, background, floor, lettering, extra objects or butterflies. One character, full body.",
+  "stage8CorrectionPrompt": "Precisely retouch the supplied transparent full-body fashion illustration. Remove the small vivid blue sapphire earring and the dangling silver setting on the single visible earlobe, on the right side of the image, at about x=543 y=141. Replace those jewelry pixels with natural bare earlobe, skin and silver hair detail. This is the one and only requested change. Keep the exact facial identity, expression, silver half-up hair, pose and hands, open silk shirt, black belt and trousers, bare feet, framing and scale. Maintain the original semi-realistic brushwork, original lighting, clean true transparent alpha, and the exact 1024×1536 full-body canvas. No jewelry on either ear. Do not add anything.",
+  "stages": [
+    {
+      "stage": 1,
+      "prompt": "Stage 1, sapphire pin removed. Retain the short embroidered fur collar cape, tuxedo jacket, blue jacquard waistcoat, high-neck black silk shirt fully buttoned, both black gloves, blue stud earrings, charcoal pleated trousers and shiny black dress shoes. Entire collar is bare of jewelry and chains. His right gloved hand lightly displays the tiny detached sapphire butterfly pin and chain between thumb and forefinger a little to the side of his chest, and his eyes briefly lower toward it."
+    },
+    {
+      "stage": 2,
+      "prompt": "Stage 2, gloves removed. Both hands bare, no gloves or pin anywhere. Retain the embroidered fur collar cape, tuxedo jacket, midnight-blue jacquard waistcoat, buttoned black silk high-neck shirt, sapphire earrings, charcoal trousers and black dress shoes. Relax one hand near the hip and let the other gently brush that wrist as if settling a cuff. A restrained calm glance toward the player."
+    },
+    {
+      "stage": 3,
+      "prompt": "Stage 3, cape removed. No fur, cape, collar jewelry or gloves. Retain black tuxedo jacket over the deep midnight-blue jacquard waistcoat, fully buttoned high-neck black silk shirt, small sapphire earrings, charcoal trousers and black dress shoes. He straightens the jacket lapel with a light pinch of two fingers, the other arm relaxed by his side."
+    },
+    {
+      "stage": 4,
+      "prompt": "Stage 4, tuxedo jacket removed. No cape, jacket, collar jewelry or gloves. His black silk shirt sleeves are clearly visible, fully buttoned at neck and cuffs, and he still wears the fitted midnight-blue patterned waistcoat with fine silver buttons, the sapphire earrings, charcoal trousers and black dress shoes. His bare fingers casually undo only the lowest waistcoat button as he glances to the side. One shoulder slightly lower."
+    },
+    {
+      "stage": 5,
+      "prompt": "Stage 5, waistcoat removed. No jacket, waistcoat, cape, gloves or collar jewelry. He now wears only a fully buttoned black silk shirt with full-length sleeves and a standing collar, small sapphire earrings, charcoal pleated trousers, fastened plain black leather belt with a polished understated silver buckle, and black dress shoes. He lightly touches the top closed shirt button with one hand, other hand relaxed at hip. Silk subtle cool satin, distinct from matte wool and glossy belt."
+    },
+    {
+      "stage": 6,
+      "prompt": "Stage 6, silk shirt opened. No waistcoat, jacket, cape, gloves or collar pin. Retain long-sleeved black silk shirt worn with the top three buttons open and the lower buttons fully fastened, sapphire earrings, charcoal trousers, a clearly visible fastened black leather belt with understated silver buckle, and black dress shoes. His raised fingertips have just left his open collar; his other arm hangs relaxed. Keep the neckline refined and his torso clothed."
+    },
+    {
+      "stage": 7,
+      "prompt": "Stage 7, sapphire earrings removed. No visible jewelry anywhere, both ears entirely bare and one ear shown clearly, no cape, jacket, gloves or waistcoat. Retain long-sleeved black silk shirt with the top three buttons open, lower buttons closed, charcoal trousers, a clearly visible fastened black leather belt with understated silver buckle, and black dress shoes. One hand briefly brushes the silver hair behind his bare ear, with a subtle half-smile."
+    },
+    {
+      "stage": 8,
+      "prompt": "Stage 8, dress shoes removed. Both feet are bare, anatomically natural and completely in view, heel and toes on same implied baseline. No footwear, socks, jewelry, waistcoat, jacket or cape. Retain the long-sleeved black silk shirt, upper three buttons open and lower buttons fastened, charcoal pleated trousers and a clearly visible fastened black leather belt with understated silver buckle. His hands hang naturally with a mild weight shift and a quiet confident gaze. Trouser hems keep the same straight bespoke cut, lightly breaking above the bare feet."
+    },
+    {
+      "stage": 9,
+      "prompt": "Stage 9, finale. Elegant non-sexual fashion illustration of an adult man shirtless from waist up, wearing only his charcoal-black high-waisted bespoke straight-leg pleated dress trousers fastened at the normal waist with the clearly visible plain black leather belt and understated silver buckle. Bare feet fully visible, no footwear or socks. No shirt, jacket, cape, waistcoat, gloves, earrings, necklace, ring or any other accessory. Natural lean adult male build. Long silver hair still half up with a small bun, one lock falls over one shoulder. He stands tall, weight naturally shifted, one hand relaxed near his trouser pocket and the other at his side, with a faint poised smile and confident eye contact. Tailored trousers and leather belt must read cleanly at small display sizes."
+    }
+  ]
+}

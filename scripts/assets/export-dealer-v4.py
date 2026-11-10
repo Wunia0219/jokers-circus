@@ -5,7 +5,7 @@ already use the shared 1152x1664 canvas, with at least 16 transparent pixels on
 all sides. The only resize is one 1152x1664 -> 576x832 runtime downsample.
 
 Example:
-  python scripts/assets/export-dealer-v4.py --frames-dir art/dealer/v4/idle \
+  python scripts/assets/export-dealer-v4.py --frames-dir art/dealer/v4/frames/idle \
     --clip idle --fps 30 --status draft
 
 Identical drawings are refused by default. --allow-duplicates explicitly keeps
@@ -27,7 +27,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'images/dealer/v4'
-ART = ROOT / 'art/dealer/v4/sheets'
+ART = ROOT / 'test-results/dealer-v4/sheets'
 CHECKS = ROOT / 'test-results/dealer-v4'
 SOURCE_SIZE = (1152, 1664)
 FRAME_SIZE = (576, 832)

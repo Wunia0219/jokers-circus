@@ -5,7 +5,7 @@ import {WalletStore} from '../server/wallet/wallet.js';
 import {handleCommand,commandDefinitions} from '../server/discord/commands.js';
 import {panelId,deferWalletInteraction} from '../server/discord/discord-panel.js';
 import {createActivityServer} from '../server/http/app.js';
-import {createGrantNotifier} from '../server/discord/grant-notification.js';
+import {createGrantNotifier,GrantNotifications} from '../server/discord/grant-notification.js';
 import {CasinoBot} from '../server/discord/casino-bot.js';
 const guild='100000000000000001',actor='100000000000000002',target='100000000000000003',channel='100000000000000004';
 let serial=0n;
@@ -19,6 +19,21 @@ const form=(r,fields,rootResolved=false)=>({...base(),type:5,data:{custom_id:r.d
   ...(rootResolved?{resolved:{members:{[fields.member]:{}},users:{[fields.member]:{id:fields.member}}}}:{})}});
 function fixture(t){const s=new WalletStore({guildIds:[guild],environment:'production',spinDelay:0});t.after(()=>s.close());return s;}
 const run=(i,s,notifyGrant)=>handleCommand(i,s,[],[channel],{notifyGrant});
+
+test('successful reversal deletes the corresponding notice; deletion retry never repeats settlement',async t=>{
+  const s=fixture(t);for(const method of ['grant','reverse']){const original=s[method].bind(s);s[method]=(...args)=>{const r=original(...args);return {...r,entry:s.db.prepare('SELECT * FROM ledger WHERE id=?').get(r.entry.id)};};}
+  const values=new Map();let deletion='retry',deletes=0;
+  const notices=new GrantNotifications({bot:{guild,channel,applicationId:actor,send:async()=>({kind:'sent',messageId:target}),removeMessage:async()=>{deletes++;return {kind:deletion};}},commandChannelIds:[channel],state:{get:k=>values.get(k),set:(k,v)=>values.set(k,v)}});
+  const effects={notifyGrant:notices.notify.bind(notices),removeGrantNotice:notices.remove.bind(notices),retryGrantNotice:notices.retry.bind(notices)},perform=i=>handleCommand(i,s,[],[channel],effects);
+  const panel=await perform(base()),modal=await perform(click(panel,'發放戲籌')),granted=await perform(form(modal,{member:target,amount:'500',reason:'test',notify:'yes'}));
+  const revoke=await perform(click(granted,'收回這筆發放')),submission=form(revoke,{reason:'更正'}),reversed=await perform(submission);
+  assert.equal(s.state(guild,target).balance,10000);assert.match(reversed.data.embeds[0].description,/尚未刪除/);assert.equal(deletes,1);
+  deletion='deleted';const retried=await perform(click(reversed,'重試刪除通知'));assert.match(retried.data.embeds[0].description,/通知已刪除/);assert.equal(s.state(guild,target).balance,10000);assert.equal(deletes,2);
+  await perform(submission);assert.equal(deletes,2);assert.equal(s.db.prepare("SELECT COUNT(*) n FROM ledger WHERE kind='reversal'").get().n,1);
+  const next=await perform(click(panel,'發放戲籌')),again=await perform(form(next,{member:target,amount:'500',reason:'test',notify:'yes'}));s.spin(guild,target,20,'after-grant-spin-0001');
+  // Force the debit to fail. A financial failure must never invoke deletion.
+  s.reverse=()=>{throw Object.assign(new Error('balance unavailable'),{status:409});};await perform(form(await perform(click(again,'收回這筆發放')),{reason:'test'}));assert.equal(deletes,2);
+});
 
 test('two simple slash roots open a private zero-read menu; only the game awards checkin',async()=>{
   assert.deepEqual(commandDefinitions.map(c=>[c.name,c.options]),[['戲籌',[]],['戲籌管理',[]]]);

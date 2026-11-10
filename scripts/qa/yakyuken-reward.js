@@ -6,9 +6,15 @@ import {PLAYTEST_FS_DENY} from '../game/yakyuken-test-gateway.js';
 import {PlaytestService} from '../../cloud/yakyuken-playtest-core.js';
 import {WARDROBE_DURATION} from '../../src/games/yakyuken/duel-presentation.js';
 import {REWARD_SHOWCASE_MS,REWARD_COUNT_MS,REWARD_FADE_MS} from '../../src/games/yakyuken/reward-presentation.js';
+import {verifyYakyukenPrefetch} from './helpers/yakyuken-prefetch.js';
 
 const output='test-results/yakyuken-reward',origin='http://127.0.0.1:4204',values=new Map(),calls=[],errors=[],checks=[];
 mkdirSync(output,{recursive:true});let ledger,outcome=0;
+let handGate=null,dropHand=false;const handRequests=[];
+const holdHand=()=>{
+  let release,started;const gate={promise:new Promise(resolve=>release=resolve),started:new Promise(resolve=>started=resolve),release:()=>{handGate=null;release();},begin:body=>started(body)};
+  handGate=gate;return gate;
+};
 const storage={get:async k=>structuredClone(values.get(k)),put:async(k,v)=>values.set(k,structuredClone(v)),delete:async k=>values.delete(k),transaction:async fn=>fn(storage)};
 const repository={read:async()=>structuredClone(ledger),mutate:async(_,fn)=>{ledger=structuredClone(fn(structuredClone(ledger)));return structuredClone(ledger);}};
 const service=new PlaytestService({player:'qa-a',storage,repository,entropy:{getRandomValues:v=>{v[0]=outcome;}}});
@@ -18,7 +24,13 @@ const server=await createServer({configFile:false,envDir:false,cacheDir:output+'
   plugins:[{name:'isolated-reward',transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/games/yakyuken/scene.js'))return {code:code.replace('this.host = host;','globalThis.__rewardScene=this;this.host = host;'),map:null};},configureServer(dev){dev.middlewares.use(async(req,res,next)=>{
     const path=new URL(req.url,origin).pathname;if(!path.startsWith('/api/playtest/'))return next();
     try{let text='';for await(const chunk of req)text+=chunk;const action=path.split('/').at(-1);if(req.method==='POST')calls.push(action);
-      const result=action==='state'?await service.stateView():await service.execute(action,JSON.parse(text));res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(result));
+      if(action==='hand'){
+        const body=JSON.parse(text);handRequests.push(body);
+        if(handGate){const gate=handGate;gate.begin(body);await gate.promise;}
+      }
+      const result=action==='state'?await service.stateView():await service.execute(action,JSON.parse(text));
+      if(action==='hand'&&dropHand){dropHand=false;throw new Error('Isolated response lost after commit');}
+      res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(result));
     }catch(error){res.writeHead(error.status||500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:error.message}));}
   });}}],server:{host:'127.0.0.1',port:4204,strictPort:true,hmr:false,fs:{deny:PLAYTEST_FS_DENY},watch:{ignored:['**/test-results/**']}}});
 let browser;
@@ -30,14 +42,23 @@ try{
   const tick=ms=>page.evaluate(ms=>{const s=window.__rewardScene;s.tickReward(ms);s.app.render();},ms);
   const play=async()=>{await page.getByRole('button',{name:'選擇拳頭',exact:true}).click();await page.getByRole('button',{name:'確認出牌',exact:true}).click();};
   await page.goto(origin+'/yakyuken-preview.html');await page.getByRole('button',{name:'選擇野球拳',exact:true}).click();await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase('selecting');
-  await page.waitForFunction(()=>window.__rewardScene.audio.background.enabled);
-  await page.evaluate(()=>{window.__rewardSounds=[];const s=window.__rewardScene,sound=s.audio.background,play=sound.playVoices.bind(sound);sound.playVoices=voices=>{if(sound.enabled&&!sound.suspended)window.__rewardSounds.push({stage:s.rewardPresentation.stage,elapsed:s.rewardPresentation.elapsed,amount:s.rewardPresentation.frame(s.wallet.wallet.balance).amount,voices:voices.length});play(voices);};});
+  await page.waitForFunction(()=>window.__rewardScene.audio.background.context?.state==='running');
+  await page.evaluate(()=>{
+    window.__gameSounds=[];
+    const s=window.__rewardScene,sound=s.audio.background,play=sound.playVoices.bind(sound);
+    sound.playVoices=voices=>{
+      window.__gameSounds.push({samples:voices.length===1&&!!voices[0].buffer,faceUp:s.dealerCards[0]?.faceUp,phase:s.phase});
+      play(voices);
+    };
+  });
   await play();await phase('confirmed');await page.getByRole('button',{name:'下一局',exact:true}).click();await phase('selecting');
   await page.emulateMedia({reducedMotion:'no-preference'});await play();
   await page.waitForFunction(()=>{const s=window.__rewardScene;if(!s?.wardrobe||s.rewardPresentation.stage!=='holding')return false;s.app.stop();return true;});
+  const gameSounds=()=>page.evaluate(()=>window.__gameSounds);
+  assert.deepEqual(await gameSounds(),Array.from({length:2},()=>({samples:true,faceUp:true,phase:'presenting'})),'only one paper sound per revealed card');
   assert.equal(ledger.balance,11500);assert.equal((await snapshot()).balance,'9,000');assert.equal((await snapshot()).visible,false);
-  assert.equal(await page.evaluate(()=>window.__rewardSounds.length),0,'no coin sound during the outfit reveal');
   await page.evaluate(()=>{const s=window.__rewardScene;s.wardrobe.tick(900);s.app.render();});
+  assert.equal((await gameSounds()).length,2,'outfit reveal adds no effect');
   assert.equal((await snapshot()).pose,2);assert.equal((await snapshot()).balance,'9,000');
   await page.screenshot({path:output+'/outfit-before-credit.png'});
   await page.setViewportSize({width:1255,height:550});await page.waitForFunction(()=>window.__rewardScene.layout.ui.height===550);
@@ -52,10 +73,12 @@ try{
   await page.evaluate(()=>{const s=window.__rewardScene;void s.confirm();s.visitScreen('games');void s.claimDaily();});assert.equal(calls.length,settledCalls);
   await tick(1);assert.equal((await snapshot()).payout,'+0');await tick(400);
   const mid=await snapshot(),earned=Number(mid.payout.replace(/[^\d]/g,''));assert.ok(earned>0&&earned<2500);assert.equal(Number(mid.balance.replaceAll(',','')),9000+earned);
-  const soundEvents=await page.evaluate(()=>window.__rewardSounds);assert.ok(soundEvents.length>=2);assert.ok(soundEvents.every(e=>e.stage==='counting'));assert.equal(soundEvents.at(-1).amount,earned);
+  assert.equal((await gameSounds()).length,2,'the visible award count adds no sound');
   await page.getByRole('button',{name:'關閉音效',exact:true}).click();assert.equal(await page.evaluate(()=>window.__rewardScene.audio.background.voices.size),0);
+  await page.evaluate(()=>window.__rewardScene.audio.flipCard());
+  assert.equal((await gameSounds()).length,2,'muting suppresses the paper flip');
   assert.equal(await page.evaluate(()=>window.__rewardScene.audio.background.musicEnabled),true,'muting effects keeps music enabled');
-  await page.getByRole('button',{name:'開啟音效',exact:true}).click();await tick(0);assert.equal(await page.evaluate(()=>window.__rewardSounds.length),soundEvents.length,'unmuting does not replay earlier count beats');
+  await page.getByRole('button',{name:'開啟音效',exact:true}).click();await tick(0);assert.equal((await gameSounds()).length,2,'unmuting does not replay a flip');
   await page.screenshot({path:output+'/counting-desktop.png'});
   for(const [width,height] of [[390,844],[320,568],[844,390]]){
     await page.setViewportSize({width,height});await page.waitForFunction(w=>window.__rewardScene.layout.ui.width===w,width);
@@ -65,8 +88,9 @@ try{
   await page.evaluate(()=>{const s=window.__rewardScene;s.pause();s.resume();s.app.stop();s.tickReward(100000);});
   assert.equal((await snapshot()).elapsed,400,'returning from a hidden/stopped view cannot consume the whole celebration');
   await tick(REWARD_COUNT_MS-400);const final=await snapshot();assert.equal(final.balance,'11,500');assert.equal(final.payout,'+2,500');assert.equal(final.busy,false);assert.equal(final.enabled,true);assert.equal(calls.length,settledCalls);assert.equal(ledger.balance,11500);
+  assert.equal((await gameSounds()).length,2,'final credit adds no chime');
   await page.screenshot({path:output+'/exact-award.png'});await tick(REWARD_FADE_MS);assert.equal((await snapshot()).visible,false);
-  checks.push('authoritative prize held until final outfit; staged count, resize, background recovery, exact +2500 and no extra financial calls');
+  checks.push('one paper sound per flip; outfit and award effects remain silent; visual award follows the final outfit and preserves exact +2500 through resize and background recovery');
   await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>window.__rewardScene.app.start());
   await page.evaluate(()=>{const s=window.__rewardScene,original=s.rewardPresentation.reveal.bind(s.rewardPresentation);s.rewardPresentation.reveal=()=>{const result=original();if(result)s.app.stop();return result;};});
   await page.getByRole('button',{name:'再次挑戰',exact:true}).click();await phase('selecting');assert.equal(ledger.balance,10500);
@@ -93,7 +117,10 @@ try{
   await play();await phase('confirmed');await page.getByRole('button',{name:'下一局',exact:true}).click();await phase('selecting');await play();await phase('confirmed');
   const beforeReturn=calls.length;await page.getByRole('button',{name:'返回',exact:true}).click();await page.waitForFunction(()=>window.__rewardScene.screen==='characters'&&!window.__rewardScene.entering);
   assert.equal(calls.length,beforeReturn,'returning from a finished match does not charge, refund or settle again');assert.equal(ledger.balance,12500);
-  checks.push('slot reward tones follow visible amounts, mute independently, and both endings offer explicit retry/return with exactly one fee per new match');
+  checks.push('paper effects mute independently of music, and both endings offer explicit retry/return with exactly one fee per new match');
+  outcome=0;
+  checks.push(await verifyYakyukenPrefetch({page,holdHand,dropHandResponse:()=>{dropHand=true;},handRequests,serverWallet:()=>ledger,
+    otherHand:ticket=>service.execute('hand',{requestId:'other-device-hand-0001',matchId:ticket.matchId,move:'paper',handIndex:ticket.index}),output}));
   assert.deepEqual(errors,[]);writeFileSync(output+'/report.json',JSON.stringify({ok:true,checks,calls,errors},null,2));console.log(JSON.stringify({ok:true,checks:checks.length,output}));
 }catch(error){writeFileSync(output+'/failure.json',JSON.stringify({error:error.stack,checks,calls,errors},null,2));throw error;}
-finally{await browser?.close();await server.close();}
+finally{handGate?.release();await browser?.close();await server.close();}

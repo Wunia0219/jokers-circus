@@ -1,11 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createChallenge,characterOdds,playChallengeRound,weightedDuel} from '../src/games/yakyuken/challenge.js';
+import {createChallenge,characterOdds,playChallengeRound,weightedDuel,createChallengePlan,duelForOutcome} from '../src/games/yakyuken/challenge.js';
 import {CHARACTERS,characterRule} from '../src/games/yakyuken/characters.js';
 import {MOVES,roundOutcome} from '../src/games/yakyuken/rules.js';
 
 const source=value=>({getRandomValues:values=>{values[0]=value;}});
 const hand=(state,outcome)=>playChallengeRound(state,'rock',source({win:0,loss:4000,draw:8000}[outcome]));
+
+test('entry planning is exactly the original independent sampler for every character and seeded stream',()=>{
+  const seeded=seed=>({getRandomValues:values=>{values[0]=seed=(Math.imul(seed,1664525)+1013904223)>>>0;}});
+  for(const rule of CHARACTERS)for(let seed=1;seed<=200;seed++){
+    const plan=createChallengePlan(rule.id,seeded(seed)),random=seeded(seed),expected=[];let state=createChallenge(rule.id);
+    while(state.status==='playing'){state=playChallengeRound(state,'paper',random);expected.push(state.last.outcome);}
+    assert.deepEqual(plan,expected);
+    for(const outcome of plan)for(const player of MOVES)assert.equal(roundOutcome(player,duelForOutcome(player,outcome).dealer),outcome);
+  }
+  const weights=[...Array(100).fill(8000),0,0],plan=createChallengePlan('dealer',{getRandomValues:v=>{assert.ok(weights.length);v[0]=weights.shift();}});
+  assert.equal(plan.length,102,'draws are not truncated or resampled');assert.equal(weights.length,0,'no randomness after the terminal hand');
+});
 
 test('challenge: all five table rows and every one of the 10,000 weights match for every player hand',()=>{
   const expected=[[2500,2,2,3189,4811,.35,.125],[5000,3,2,3135,4865,.17,.15],[10000,5,3,3057,4943,.08,.2],[25000,7,3,3299,4701,.03,.25],[50000,9,4,3022,4978,.01,.5]];

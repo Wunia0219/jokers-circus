@@ -2,7 +2,7 @@ import { DATABASE_VERSION, openWalletDatabase } from '../sqlite/database.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import { BETS, roundFromStops, REEL_STRIPS } from '../../src/game/index.js';
 
-import {problem,taipeiDay,nextCheckin} from './wallet-common.js';
+import {walletValidation,problem,taipeiDay,nextCheckin} from './wallet-common.js';
 import {checkinRewards,checkinReceipt,weeklyCheckinState} from './weekly-checkin.js';
 import {INITIAL_BALANCE,openingKind,openingReason} from './wallet-opening.js';
 import {RESET_BALANCE,RESET_WALLET_LIMIT,RESET_REASON,resetFingerprint,resetMarker,resetResult,compactResetResult,expandResetResult,resetEntryIds,resetReportRow} from './wallet-admin.js';
@@ -25,8 +25,10 @@ export class WalletStore {
         && this.db.prepare('PRAGMA user_version').get().user_version===DATABASE_VERSION;
     } catch { return false; }
   }
-  assertGuild(guild){if(!this.guildIds.has(guild))throw problem(403,'此伺服器尚未開放遊戲。','GUILD_CLOSED');}
-  validate(guild,user){this.assertGuild(guild);if(!snowflake(user))throw problem(400,'無效的玩家。','PLAYER_INVALID');}
+  assertGuild=walletValidation.assertGuild;
+  validate=walletValidation.validate;
+  reason=walletValidation.reason;
+  requestId=walletValidation.requestId;
   tx(fn){this.db.exec('BEGIN IMMEDIATE');try{const result=fn();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
   ensure(guild,user){
     this.validate(guild,user);
@@ -152,8 +154,6 @@ export class WalletStore {
       return {entry:this.credit(guild,entry.user,-entry.delta,'reversal',actor,reason,String(entryId))};
     }));
   }
-  reason(reason){if(typeof reason!=='string'||!reason.trim()||reason.length>200)throw problem(400,'原因必填，最多 200 字。','REASON_REQUIRED');}
-  requestId(id){if(!/^[-a-zA-Z0-9]{16,80}$/.test(id||''))throw problem(400,'無效的請求編號。','REQUEST_INVALID');}
   history(guild,user,before=Number.MAX_SAFE_INTEGER){
     this.validate(guild,user);if(!Number.isSafeInteger(before)||before<1)throw problem(400,'無效的紀錄游標。');
     return this.db.prepare('SELECT * FROM ledger WHERE guild=? AND user=? AND id<? ORDER BY id DESC LIMIT 50').all(guild,user,before);

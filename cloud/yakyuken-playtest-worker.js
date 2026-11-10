@@ -1,13 +1,20 @@
 import {timingSafeEqual} from 'node:crypto';
 import {FirestoreRest} from './firestore-rest.js';
 import {cloudFetch} from './fetch.js';
-import {assertPlaytestIdentity,PlaytestService,PLAYTEST_IDENTITY,PLAYTEST_PLAYERS,validTestPlayer,slotTestState} from './yakyuken-playtest-core.js';
-import {assertDiscordTestApp} from './discord-test-auth.js';
+import {assertPlaytestIdentity,PlaytestService,PLAYTEST_IDENTITY,PLAYTEST_PLAYERS,validTestPlayer,slotTestState,slotTestCheckinResult,discordTestPlayer} from './yakyuken-playtest-core.js';
+import {assertDiscordTestApp,TEST_GUILD} from './discord-test-auth.js';
+import {CHARACTERS} from '../src/games/yakyuken/characters.js';
 import {secureResponse} from '../server/http/security-headers.js';
 import {audioAsset} from './audio-asset.js';
+import {testWalletRepository} from './test-wallet-repository.js';
 export {DiscordTestAuth} from './discord-test-auth.js';
 
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+const allCG=Object.freeze(Object.fromEntries(CHARACTERS.filter(c=>c.enabled).map(c=>[c.id,c.winsRequired])));
+export function testCGUnlocks(wallet,player,previewUserId){
+  if(wallet?.player!==player||typeof previewUserId!=='string'||!/^\d{17,20}$/.test(previewUserId)||player!==discordTestPlayer(TEST_GUILD,previewUserId))return wallet;
+  return {...wallet,unlocks:{...wallet.unlocks,...allCG}};
+}
 function authorized(request,env){
   const actual=Buffer.from(request.headers.get('authorization')||''),expected=Buffer.from('Bearer '+(env.PLAYTEST_TOKEN||''));
   return /^[a-f0-9]{64}$/.test(env.PLAYTEST_TOKEN||'')&&actual.length===expected.length&&timingSafeEqual(actual,expected);
@@ -65,18 +72,31 @@ export class YakyukenTestPlayer{
       if(!this.service){
         const credentials=JSON.parse(this.env.GOOGLE_SERVICE_ACCOUNT_JSON||'null');
         if(credentials?.type!=='service_account'||credentials.project_id!==PLAYTEST_IDENTITY.projectId)throw new Error('Test credentials mismatch');
-        const db=new FirestoreRest({projectId:this.env.FIRESTORE_PROJECT_ID,namespace:this.env.FIRESTORE_NAMESPACE,credentials,endpoint:this.env.FIRESTORE_ENDPOINT,fetchImpl:cloudFetch}),ref=db.doc(`circus_wallet_v1/${this.env.FIRESTORE_NAMESPACE}/players/${player}`);
-        const decode=snap=>{
-          if(!snap.exists)return null;
-          if(snap.get('environment')!=='test'||snap.get('namespace')!==PLAYTEST_IDENTITY.namespace)throw new Error('Stored test identity mismatch');
-          const state=JSON.parse(snap.get('state'));if(state.player!==player||state.version!==1)throw new Error('Stored player mismatch');return state;
-        };
-        const repository={read:async()=>decode(await ref.get()),mutate:async(_,change)=>db.runTransaction(async tx=>{
-          const current=decode(await tx.get(ref)),state=change(current);if(state!==current)tx.set(ref,{environment:'test',namespace:PLAYTEST_IDENTITY.namespace,state:JSON.stringify(state)});return state;
-        })};
+        const db=new FirestoreRest({projectId:this.env.FIRESTORE_PROJECT_ID,namespace:this.env.FIRESTORE_NAMESPACE,credentials,endpoint:this.env.FIRESTORE_ENDPOINT,fetchImpl:cloudFetch});
+        const repository=testWalletRepository(db,player,{ledger:this.env.DISCORD_TEST_COMMANDS_ENABLED==='true'&&player.startsWith('d_760012177326997544_')});
         this.service=new PlaytestService({repository,storage:this.ctx.storage,player});
       }
-      const decorate=data=>{const name=request.headers.get('X-Test-Name');if(name&&data.wallet)data.wallet.name=decodeURIComponent(name);return data;};
+      if(path.startsWith('/__admin/')){
+        if(this.env.DISCORD_TEST_COMMANDS_ENABLED!=='true'||!player.startsWith('d_760012177326997544_')||request.method!=='POST')return json({error:'管理入口未開放。'},403);
+        const body=await request.json();
+        if(['freeze','release'].includes(action)){
+          if(typeof body.lease!=='string'||!/^[-a-zA-Z0-9]{16,80}$/.test(body.lease))return json({error:'無效的重設鎖。'},400);
+          const lease=await this.ctx.storage.get('admin-freeze');if(lease&&lease!==body.lease)return json({error:'另一筆重設進行中。'},409);
+          if(action==='freeze'){await this.service.recover();await this.ctx.storage.put('admin-freeze',body.lease);}
+          else{this.service.state=null;await this.ctx.storage.delete('admin-freeze');}
+          return json({ok:true});
+        }
+        if(await this.ctx.storage.get('admin-freeze'))return json({error:'測試錢包重設中。'},503);
+        if(!['grant','reverse'].includes(action))return json({error:'管理操作不存在。'},404);
+        return json(await this.service.execute(action,body));
+      }
+      if(await this.ctx.storage.get('admin-freeze'))return json({error:'測試錢包重設中，請稍後。'},503);
+      const decorate=data=>{
+        const name=request.headers.get('X-Test-Name');
+        if(!name||!data.wallet)return data;
+        const wallet=testCGUnlocks(data.wallet,player,this.env.DISCORD_TEST_CG_PREVIEW_USER_ID);
+        return {...data,wallet:{...wallet,name:decodeURIComponent(name)}};
+      };
       if((action==='state'||path==='/api/wallet')&&request.method==='GET'){
         const data=decorate(await this.service.stateView());return json(path==='/api/wallet'?{state:slotTestState(data.wallet)}:data);
       }
@@ -89,7 +109,8 @@ export class YakyukenTestPlayer{
       if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'無效的測試請求。'},400);
       if(path==='/api/checkin'&&!body.requestId)body.requestId='slot-daily-'+new Date(Date.now()+8*3600000).toISOString().slice(0,10);
       const data=decorate(await this.service.execute(action,body));
-      return json(['/api/spin','/api/checkin'].includes(path)?{state:slotTestState(data.wallet),...(data.round?{round:data.round}:{})}:data);
+      if(path==='/api/checkin')return json(slotTestCheckinResult(data));
+      return json(path==='/api/spin'?{state:slotTestState(data.wallet),round:data.round}:data);
     }catch(error){if(!error.status)console.error('Playtest operation unavailable:',error.message);return json({error:error.status?error.message:'測試雲端暫時無法完成請求，請保留原操作重試。',...(error.code?{code:error.code}:{}),...(error.retryAfterMs?{retryAfterMs:error.retryAfterMs}:{})},error.status||503);}
   }
 }

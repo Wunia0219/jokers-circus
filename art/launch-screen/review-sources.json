@@ -1,22 +1,6 @@
 {
-  "purpose": "offline design review originals; never referenced by the runtime",
+  "purpose": "approved offline originals for runtime export; superseded drafts are in Git history",
   "images": [
-    {
-      "file": "art/launch-screen/review-v1/background.png",
-      "dimensions": [
-        1672,
-        941
-      ],
-      "sha256": "c21ea60cf854e4c98f6f2f9c0ac413e8950f32ae630ad15c2f971843aa3f05e8"
-    },
-    {
-      "file": "art/launch-screen/review-v1/loading-wordmark.png",
-      "dimensions": [
-        2172,
-        724
-      ],
-      "sha256": "d70a57c7c8bc2d35ada7605dc33c936eb04f62bdb87ac9a097fe1bf24af53ca7"
-    },
     {
       "file": "art/launch-screen/review-v2/background-01-golden-salon.png",
       "dimensions": [
@@ -26,68 +10,12 @@
       "sha256": "b75f0a1cefe10093beca770b1b89194e89deb06c0eaae3437dc98399c28ca678"
     },
     {
-      "file": "art/launch-screen/review-v2/background-02-midnight-roulette.png",
-      "dimensions": [
-        1671,
-        941
-      ],
-      "sha256": "06316953db5789c3a6e0d3db93bbd526bb36b2e45523d19d0c80bac0af258ddd"
-    },
-    {
-      "file": "art/launch-screen/review-v2/background-03-crimson-stage.png",
-      "dimensions": [
-        1672,
-        941
-      ],
-      "sha256": "be965da81a836708e3f9d7c8f47613722b1168eed576823ead3b140097fee41e"
-    },
-    {
-      "file": "art/launch-screen/review-v3/background-02-last-spin.png",
-      "dimensions": [
-        1672,
-        941
-      ],
-      "sha256": "40ed19477e4cae63124846ef5cf00efc902183aa233c49ce2bc5fd4991eee520"
-    },
-    {
-      "file": "art/launch-screen/review-v3/background-03-curtain-rises.png",
-      "dimensions": [
-        1671,
-        941
-      ],
-      "sha256": "1d13e65f3b45a2c21c013638b945a5d3db0f278dda6a318763bff9f6fb838590"
-    },
-    {
-      "file": "art/launch-screen/review-v4/background-02-last-spin.png",
-      "dimensions": [
-        1672,
-        941
-      ],
-      "sha256": "3ed402e30a28873aab9b29d7fb1cb421c9ba76186b30e446f930603b97c87fe5"
-    },
-    {
-      "file": "art/launch-screen/review-v5/background-02-last-spin.png",
-      "dimensions": [
-        1672,
-        941
-      ],
-      "sha256": "2409cafd1e9d40ae15f50a11e9a7b1b76a0698aa44fe6e21b3980aee65b62b7e"
-    },
-    {
       "file": "art/launch-screen/review-v6/background-02-last-spin.png",
       "dimensions": [
         1672,
         941
       ],
       "sha256": "0b7354ee12a616041a53f6f944e9ac6d2237404ccd3bceaaa9eda8374853775e"
-    },
-    {
-      "file": "art/launch-screen/review-v7/background-03-curtain-rises.png",
-      "dimensions": [
-        1670,
-        941
-      ],
-      "sha256": "d45d9200962abdb3fc9b632436367f6f19293b7a56696def4af5aadb2d6e6696"
     },
     {
       "file": "art/launch-screen/review-v8/background-03-curtain-rises.png",

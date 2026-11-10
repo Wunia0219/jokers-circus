@@ -1,3 +1,6 @@
+import {duelForOutcome} from './challenge.js';
+import {canUnlockPose} from './characters.js';
+
 const profiles=new Set(['qa-a','qa-b','qa-low','qa-zero']);
 const sessionStorage=()=>{try{return globalThis.sessionStorage;}catch{return null;}};
 export class TestWalletClient{
@@ -7,7 +10,7 @@ export class TestWalletClient{
     Object.assign(this,{player,fetchImpl,storage,session,reauthorize});this.key='jokers-circus:yakyuken:cloud-test:pending:'+player;
     try{const pending=JSON.parse(storage?.getItem(this.key)||'null');if(pending&&['begin','hand','leave','checkin'].includes(pending.action)&&typeof pending.body?.requestId==='string'&&/^[-a-zA-Z0-9]{16,80}$/.test(pending.body.requestId))this.pending=pending;}catch{}
     this.archive={cloud:true,persistent:true,owns:()=>false,records:()=>this.wallet?.records||[],
-      isUnlocked:(character,pose)=>Number.isInteger(pose)&&pose>=0&&pose<=2&&(this.wallet?.unlocks[character]??-1)>=pose,
+      isUnlocked:(character,pose)=>canUnlockPose(character,pose)&&(this.wallet?.unlocks[character]??-1)>=pose,
       begin:()=>this.wallet?.activeId,update:()=>{},leave:()=>{}};
   }
   persist(){try{if(this.pending)this.storage?.setItem(this.key,JSON.stringify(this.pending));else this.storage?.removeItem(this.key);}catch{}}
@@ -19,9 +22,16 @@ export class TestWalletClient{
       this.session=renewed;return this.request(action,body,true);
     }
     let data;try{data=await response.json();}catch{throw new Error('測試雲端回應中斷，請重試原操作。');}
-    if(!response.ok)throw Object.assign(new Error(data.error||'測試雲端暫時無法使用。'),{status:response.status});
+    if(!response.ok)throw Object.assign(new Error(data.error||'測試雲端暫時無法使用。'),{status:response.status,code:data.code});
     if(data.wallet?.environment!=='test'||data.wallet?.player!==this.player||data.wallet?.cloud!==true)throw new Error('測試錢包身分不符，已停止連線。');
-    if(!this.wallet||data.wallet.revision>=this.wallet.revision)this.wallet=data.wallet;
+    if(!this.wallet||data.wallet.revision>=this.wallet.revision){
+      const hand=data.nextHand;
+      if(hand&&(!Number.isSafeInteger(hand.index)||hand.index<0||hand.matchId!==data.wallet.activeId||!['win','loss','draw'].includes(hand.outcome)))throw new Error('測試出牌進度無效，請重新同步。');
+      this.wallet=data.wallet;
+      if(Object.hasOwn(data,'nextHand')){
+        if(!hand||this.nextHand?.matchId!==hand.matchId||hand.index>=this.nextHand.index)this.nextHand=hand;
+      }
+    }
     return data;
   }
   async refresh(){if(this.pending)await this.sendPending();return this.request('state');}
@@ -43,7 +53,12 @@ export class TestWalletClient{
     return this.sendPending();
   }
   begin(characterId){return this.act('begin',{characterId});}
-  hand(matchId,move){return this.act('hand',{matchId,move});}
+  previewHand(matchId,move){
+    const hand=this.nextHand;
+    if(!hand||hand.matchId!==matchId||this.active()?.status!=='playing')return null;
+    return {duel:duelForOutcome(move,hand.outcome),handIndex:hand.index};
+  }
+  hand(matchId,move,handIndex){return this.act('hand',{matchId,move,...(handIndex===undefined?{}:{handIndex})});}
   leave(matchId){return matchId?this.act('leave',{matchId}):Promise.resolve();}
   checkin(){return this.act('checkin');}
   active(){return this.wallet?.records.find(r=>r.id===this.wallet.activeId);}

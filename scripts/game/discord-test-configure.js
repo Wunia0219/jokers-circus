@@ -19,7 +19,7 @@ const server=createServer(async(req,res)=>{
     const clientId=data.get('clientId'),publicKey=data.get('publicKey'),clientSecret=data.get('clientSecret');
     if(!/^\d{17,20}$/.test(clientId||'')||clientId===LIVE_APP||!/^[a-f\d]{64}$/i.test(publicKey||'')||typeof clientSecret!=='string'||clientSecret.length<16||clientSecret.length>128)return reply(400,'請確認新測試 App 的三項設定值。');
     const previous=JSON.parse(readFileSync(file,'utf8'));if(previous.clientId&&previous.clientId!==clientId)return reply(409,'已存在不同的測試 App 設定，未覆寫。');
-    writeFileSync(file,JSON.stringify({purpose:'discord-test',clientId,publicKey,clientSecret,guildId:TEST_GUILD,channelId:TEST_CHANNEL,testerIds:previous.testerIds||[]},null,2)+'\n');
+    writeFileSync(file,JSON.stringify({purpose:'discord-test',clientId,publicKey,clientSecret,guildId:TEST_GUILD,channelId:TEST_CHANNEL,testerIds:previous.testerIds||[],cgPreviewUserId:previous.cgPreviewUserId},null,2)+'\n');
     return reply(200,'<!doctype html><meta charset="utf-8"><title>測試 App 設定已儲存</title><h1>測試 App 設定已儲存</h1><p>密鑰未顯示於頁面，接著由部署工具載入本機設定。</p>');
   }catch{return reply(500,'無法儲存測試 App 設定。');}
 });

@@ -79,7 +79,7 @@ def make_parts():
  parts['eyes-closed']=eye_patch(master)
  left_hole=masks['arm-left'].filter(ImageFilter.MaxFilter(31)).filter(ImageFilter.GaussianBlur(1.5))
  parts['_continuous-body-source']=Image.composite(under,master,left_hole)
- dest=ART/'parts';dest.mkdir(parents=True,exist_ok=True)
+ dest=CHECK/'parts';dest.mkdir(parents=True,exist_ok=True)
  for name,img in parts.items():
   if img is not None and not name.startswith('_'):img.save(dest/(name+'.webp'),lossless=True, quality=100, method=6, exact=True)
  return parts

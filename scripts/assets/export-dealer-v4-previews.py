@@ -176,7 +176,7 @@ def main():
                         help='positive preview/report revision number (default: 5)')
     parser.add_argument('--clips', nargs='+', choices=tuple(COUNTS), default=['win'])
     parser.add_argument('--frames-root', type=Path, default=ROOT / 'art/dealer/v4/frames')
-    parser.add_argument('--output-root', type=Path, default=ROOT / 'images/dealer/v4/previews')
+    parser.add_argument('--output-root', type=Path, default=ROOT / 'test-results/dealer-v4/previews')
     parser.add_argument('--report', type=Path,
                         help='report path; defaults to test-results/dealer-v4/revision-N/webp-preview-export.json')
     args = parser.parse_args()

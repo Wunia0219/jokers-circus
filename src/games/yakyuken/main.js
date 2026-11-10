@@ -1,6 +1,6 @@
 import {YakyukenScene} from './scene.js';
 import {TestWalletClient} from './test-wallet-client.js';
-import {connectDiscordTestActivity,discordTestBuild,testReauthorization} from '../../platform/discord-test-activity.js';
+import {connectDiscordTestActivity,discordTestBuild,discordTestMusic,testReauthorization} from '../../platform/discord-test-activity.js';
 import {reportLobbyBoot} from '../../platform/launch-protocol.js';
 
 const root=document.querySelector('#yakyuken-app');
@@ -9,7 +9,7 @@ if(discordTestBuild){
   try{activity=await connectDiscordTestActivity();testWallet=new TestWalletClient({session:activity.session,reauthorize:testReauthorization(activity)});}
   catch(error){reportLobbyBoot(false);root.textContent=error.message;throw error;}
 }else if(import.meta.env.VITE_YAKYUKEN_CLOUD_TEST==='true')testWallet=new TestWalletClient({player:new URLSearchParams(location.search).get('testPlayer')||'qa-a'});
-const scene=new YakyukenScene({wallet:testWallet});
+const scene=new YakyukenScene({wallet:testWallet,music:discordTestBuild?discordTestMusic():null});
 scene.activity=activity;
 const leave=event => {if(event.persisted)scene.pause();else void scene.destroy();};
 const restore=event => {if(event.persisted)scene.resume();};

@@ -57,6 +57,14 @@ node --env-file=.env.server.production.local scripts/discord/check-discord.js --
 
 `status`／`health` 只讀 DO 摘要，不查玩家文件、不觸發備份。`health` 會核對本機版本；未發布分支的版本差異不等於遊戲故障。下載與還原見[備份](recovery.md)。
 
+### 遊戲入口開關
+
+要切換時可直接請 Codex「正式服切維修」或「正式服開放」。修改 `public/game-entry.json` 的 `mode` 為 `maintenance` 或 `open`，保留 `previewUserIds` 中已確認的 Discord 使用者 ID。設定檔是公開靜態資源，只放模式與允許預覽的 ID。首次發布預設 `maintenance`。
+
+首次發布後，單純切換狀態時使用線上同一版程式，只改入口設定。以正式 Discord App 的公開 client ID 建置，確認 `VITE_DISCORD_AUTH_ENABLED` 和 `VITE_DISCORD_WALLET_ENABLED` 均為 `true`。依本文件的正式發布前檢查核對產物和綁定，以 `wrangler.production.local.jsonc` 發布到既有正式 Worker。確認線上的 `/game-entry.json` 回傳預期模式與 `Cache-Control: no-store`、公開入口能顯示預期畫面、`/readyz` 正常。本機開發、loopback 測試錢包與獨立 Discord 測試活動沿用各自入口。
+
+新版遊戲啟動、回到前景或前景每 15–20 秒檢查入口。讀到維修後停止自動轉及新操作，正在處理的局或簽到完成後切到維修畫面。玩家可按「重新檢查」重新進入。舊版頁面仍可能提交操作。搬移資料或需要停止所有帳本寫入時，依[恢復程序](recovery.md)停寫並確認排空，適用於所有帳號。
+
 ## Discord
 
 新增的同身分大獎逐筆公告與玩家出入場公告見[賭場機器人公告](casino-announcements.md)。這是可選的 Bot REST 功能，預設停用；不需要 Gateway 常駐綠燈，也不更改既有 HTTP 指令。啟用前必須完成 bot 安裝、私密 Bot Token 與指定頻道的核對。
@@ -69,20 +77,7 @@ Activity `/` URL Mapping 指向固定 HTTPS 主機；Interactions Endpoint 為�
 
 Cloudflare 官方用量由外部 GitHub 排程監測；設定、Free 門檻／Paid 每日觀測及失敗處理見[Cloudflare 用量預警](monitoring.md)。以下為既有遊戲健康監控，兩者的用量口徑不同。
 
-`jokers-circus-monitor` 已接通[維護頻道](https://discord.com/channels/1441097301685698703/1564187899019141140)，每 10 分鐘 Cron 查正式遊戲私有狀態，已使用新的正式唯讀 token；私密本機監控設定也已同步正式入口。它只有 `MONITORED_TOKEN`、`MONITOR_WEBHOOK_URL`，沒有 Google、遊戲管理或備份金鑰；遊戲的 `CLOUD_MONITOR_TOKEN` 僅允許 GET status。
-
-| 條件 | 告警 |
-|---|---|
-| 連線／授權失敗、服務未 active | 嚴重 |
-| 備份缺失／失敗或超過 48 小時 | 嚴重，玩家 API 保護 |
-| 備份超過 26 小時 | 提醒 |
-| alarm 缺失／失敗或超過 30 分鐘 | 嚴重 |
-| Firestore 免費用量參考線達八成 | 只記錄，不推播、不攔截遊戲 |
-| 備份實體容量達八成／上限 | 提醒／嚴重；保留完整備份容量保護 |
-| 只告警模式超過免費用量參考線 | 維持相同提醒，不停服、不重複推送 |
-| 保護模式額度耗盡或狀態不明 | 嚴重 |
-
-個別告警連續兩次才通知，新增項目不重貼其他警告；同項異常連續消失至少 30 分鐘才重新準備提醒，同類排程／備份異常另有六小時持久冷卻。嚴重度升級及獨立異常保留通知，全部正常持續 30 分鐘才通知恢復。正常啟動或退役免費額度推播不發訊息。POST 前保存意圖，429 遵守供應商期限及一分鐘至一小時的指數退避；結果不明保留 uncertain，不盲目重貼。詳見[通知政策](monitoring.md)。內容只含摘要，停用 mentions。監控與遊戲仍共用 Cloudflare，無法保證整個平台故障時告警可送達。
+健康條件、通知去重、退避及監控權限集中於[監控文件](monitoring.md#遊戲健康條件)。
 
 設定範本 `deploy/monitor.env.example`、`wrangler.monitor.jsonc` 預設停用；不要拿範本覆蓋已啟用服務。撤回通知只改監控 `MONITOR_ENABLED=false`，保留遊戲與資料。
 

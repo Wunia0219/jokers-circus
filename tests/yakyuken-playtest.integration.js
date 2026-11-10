@@ -38,10 +38,15 @@ test('dedicated workerd test wallet persists Firestore fees/prizes, isolates pla
   }
   assert.equal(firestoreCalls,0,'malformed requests never touch the database');
   const entryBody={requestId:'runtime-entry-00000001',characterId:'dealer'},entry=await call('begin',entryBody);assert.equal(entry.status,200);assert.equal(entry.data.wallet.balance,9000);
+  assert.deepEqual(entry.data.nextHand,{matchId:entry.data.matchId,index:0,outcome:'win'});
+  assert.ok(!JSON.stringify(entry.data).includes('duelPlan'),'the private sequence never leaves the Worker');
   const matchId=entry.data.matchId,hand=(n,move='rock')=>call('hand',{requestId:'runtime-hand-0000000'+n,matchId,move});
   assert.equal((await hand(1)).data.wallet.records[0].wins,1);
   const beforeDraw=firestoreCalls,draw=await hand(2);assert.equal(draw.data.duel.outcome,'draw');assert.equal(firestoreCalls,beforeDraw,'real workerd performs zero Firestore calls for a draw');
   assert.equal((await hand(2)).data.duel.outcome,'draw');assert.equal(firestoreCalls,beforeDraw);
+  await mf.dispose();mf=new Miniflare(convertV4MiniflareOptions(config));
+  const resumed=await call('state');assert.equal(resumed.status,200);
+  assert.deepEqual(resumed.data.nextHand,{matchId,index:2,outcome:'win'},'cold workerd resumes after a free draw without rewinding the entry plan');
   const won=await hand(3);assert.equal(won.data.wallet.balance,11500);assert.equal(won.data.wallet.records[0].net,1500);
   assert.equal((await call('state',null,'qa-b')).data.wallet.balance,10000);
   assert.equal((await call('state',null,'qa-b')).data.wallet.records.length,0);

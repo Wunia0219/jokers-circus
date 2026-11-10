@@ -1,6 +1,6 @@
 # Cloudflare 方案與費用
 
-2026-10-31 使用者確認已升級 **Workers Paid**。正式遊戲與監控已部署 **1.0.2** 並核對 `CLOUD_PLAN=paid`；同帳戶測試 Worker 的本機私密設定也已更新。部署證據見[正式服交付](customer-handoff.md)，線上遊戲標記可由 `/__ops/status.cloudPlan` 核對。Firestore Blaze 與 Cloudflare 分開計費。
+2026-10-31 使用者確認已升級 **Workers Paid**，正式遊戲與監控採 `CLOUD_PLAN=paid`。部署版本與證據見[正式服交付](customer-handoff.md)，線上遊戲標記可由 `/__ops/status` 的 `cloudPlan` 核對。Firestore Blaze 與 Cloudflare 分開計費；以下費率與試算保留原核對日期，不代表即時報價。
 
 ## 方案與設定
 

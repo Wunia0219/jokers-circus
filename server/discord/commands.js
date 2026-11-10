@@ -3,6 +3,7 @@ import { problem } from '../wallet/wallet-common.js';
 import { privateReply, commandError } from './bot-replies.js';
 import {adminPanel,handlePanel,launchControls,parsePanel,panelId} from './discord-panel.js';
 import {recordLabel} from '../firestore/record-codes.js';
+import {revokeNotificationStatus} from './grant-notification.js';
 
 export const commandDefinitions = [
   {name:'戲籌',description:'查看戲籌或開啟遊戲',type:1,options:[]},
@@ -17,7 +18,7 @@ export function validSignature(publicKey, headers, raw, now=Date.now()) {
     return verify(null,Buffer.concat([Buffer.from(timestamp),raw]),key,Buffer.from(signature,'hex'));
   }catch{return false;}
 }
-export async function handleCommand(interaction, store, adminRoles=[],commandChannelIds=[],{notifyGrant}={}) {
+export async function handleCommand(interaction, store, adminRoles=[],commandChannelIds=[],effects={}) {
   const reply=(...args)=>privateReply(store.environment,...args);
   try {
     if(interaction.type===1)return {type:1};
@@ -41,7 +42,7 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
     if(!panel&&!['戲籌管理','\u7c4c\u78bc管理'].includes(interaction.data.name))throw problem(400,'不支援此指令。','COMMAND_UNKNOWN');
     const permissions=BigInt(interaction.member.permissions || '0');
     if(!(permissions&8n)&&!interaction.member.roles?.some(id=>adminRoles.includes(id)))throw problem(403,'只有伺服器管理員或指定的戲籌管理身分組可以操作。','COMMAND_ADMIN');
-    if(panel)return await handlePanel(interaction,store,recordField,panel,{notifyGrant});
+    if(panel)return await handlePanel(interaction,store,recordField,panel,effects);
     const sub=interaction.data.options?.[0];
     if(!sub)return adminPanel(interaction,store.environment);
     const args=Object.fromEntries((sub?.options||[]).map(option=>[option.name,option.value]));
@@ -63,7 +64,8 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
     }
     if(sub?.name==='更正'){
       const r=await store.reverse(guild,user,args['紀錄編號'],args['原因'],interaction.id);
-      return reply(r.duplicate?`這筆 **${number(-r.entry.delta)} 戲籌**已經收回過，這次沒有再扣一次。`:`已收回 **${number(-r.entry.delta)} 戲籌**，原本的發放紀錄也會保留。`,r.duplicate?'這筆已經收回了':'這筆戲籌收回了','warning',[
+      const notification=await revokeNotificationStatus(interaction,r,effects.removeGrantNotice);
+      return reply((r.duplicate?`這筆 **${number(-r.entry.delta)} 戲籌**已經收回過，這次沒有再扣一次。`:`已收回 **${number(-r.entry.delta)} 戲籌**，原本的發放紀錄也會保留。`)+'\n\n'+notification.message,r.duplicate?'這筆已經收回了':'這筆戲籌收回了','warning',[
         {name:'這筆收回前後',value:`${number(r.entry.before)} → **${number(r.entry.after)}**`,inline:true},
         {name:'對應發放',value:r.referenceCode||`#${r.entry.reference}`,inline:true},
         {name:'這次紀錄',value:recordLabel({...r.entry,recordCode:r.recordCode}),inline:true},

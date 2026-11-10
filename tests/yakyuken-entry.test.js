@@ -12,6 +12,10 @@ test('Yakyuken entry loader fits progress and recovery controls in portrait, lan
       if(error){assert.ok(l.actionY+24<=height);assert.ok(l.actionWidth>=44 && 2*l.actionWidth+12<=width-48);}
       else assert.ok(l.messageY+12<=height);
     }
+    const table=entryLoadingLayout(width,height,{showStatus:true,messageHeight:22});
+    assert.ok(table.barY+12<table.messageY-11&&table.messageY+11<height,'table status fits below the visible progress bar');
+    const failure=entryLoadingLayout(width,height,{error:true,messageHeight:88});
+    assert.ok(failure.logoY>=0&&failure.actionY+24<=height,'wrapped entry errors keep their actions visible');
   }
 });
 

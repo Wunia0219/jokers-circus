@@ -13,8 +13,8 @@ export function slotIcon(svg,size=20,color=0xead8cb){
 }
 
 export class PixiButton extends Container {
-  constructor({text='',subtitle='',width=160,height=44,onPress,primary=false,name=text,fontSize=14,variant=primary?'gold':'panel',icon=null,iconSize=20}){
-    super({label:`button:${name}`});Object.assign(this,{buttonWidth:width,buttonHeight:height,onPress,variant,iconSize});
+  constructor({text='',subtitle='',width=160,height=44,onPress,primary=false,name=text,fontSize=14,variant=primary?'gold':'panel',icon=null,iconSize=20,closeTheme=null}){
+    super({label:`button:${name}`});Object.assign(this,{buttonWidth:width,buttonHeight:height,onPress,variant,iconSize,closeTheme});
     this.background=new Graphics();this.outline=new Graphics();
     this.caption=label(text,variant==='action'?12:fontSize,variant==='gold' || variant==='duel'?0xfff0bd:PALETTE.cream,
       variant==='gold' || variant==='action'?{fontFamily:SLOT_UI.serif,fontWeight:'bold'}:variant==='duel'?{fontWeight:'600',letterSpacing:1}:{});
@@ -56,7 +56,7 @@ export class PixiButton extends Container {
       this.outline.clear().roundRect(-w/2-3,-h/2-3,w+6,h+6,14).stroke({width:1.5,color:PALETTE.bright});
     }else if(this.variant==='close'){
       // Match the slot dialog's 44px circular close control and 21px glyph.
-      g.circle(0,0,w/2).fill({color:this.hovered||this.pointerHeld?0xe7be71:0x281b2a,alpha:this.pointerHeld?.15:this.hovered?.08:.53}).stroke({color:0xe7be71,width:1,alpha:this.hovered?.3:.25});
+      g.circle(0,0,w/2-(this.closeTheme ? .5 : 0)).fill({color:this.hovered||this.pointerHeld?0xe7be71:this.closeTheme?.closeSurface??0x281b2a,alpha:this.pointerHeld?.15:this.hovered?.08:.53}).stroke({color:this.closeTheme?.line??0xe7be71,width:1,alpha:this.closeTheme ? .44 : this.hovered?.3:.25});
       this.outline.clear().circle(0,0,w/2+3).stroke({color:PALETTE.gold,width:2});
     }else if(this.variant==='quiet' || this.variant==='gallery'){
       g.roundRect(-w/2,-h/2,w,h,9).fill({color:0xe7be71,alpha:this.pointerHeld?.12:this.hovered?.055:0});
@@ -82,7 +82,7 @@ export class PixiButton extends Container {
     }
     this.outline.visible=!!(this.focused || !['link','close','quiet','gallery'].includes(this.variant) && this.hovered) && this.enabled!==false;
   }
-  setIcon(svg){this.svg=svg;if(this.glyph)this.glyph.destroy();this.glyph=slotIcon(svg,this.iconSize,this.active?0xffe0a2:0xead8cb);this.addChild(this.glyph);}
+  setIcon(svg){this.svg=svg;if(this.glyph)this.glyph.destroy();this.glyph=slotIcon(svg,this.iconSize,this.active?0xffe0a2:this.closeTheme?.gold??0xead8cb);this.addChild(this.glyph);}
   setActive(value){if(this.active===value)return;this.active=value;this.draw();if(this.svg)this.setIcon(this.svg);}
   hover(value){if(this.destroyed)return;this.hovered=value;if(['close','quiet','gallery'].includes(this.variant))this.draw();else this.outline.visible=!!(this.focused || this.variant!=='link' && value) && this.enabled!==false;}
   focus(value){if(this.destroyed)return;this.focused=value;this.outline.visible=!!(value || !['link','close','quiet','gallery'].includes(this.variant) && this.hovered) && this.enabled!==false;}

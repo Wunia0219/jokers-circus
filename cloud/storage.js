@@ -5,6 +5,7 @@ export class CloudState {
   constructor(storage){this.storage=storage;this.sql=storage.sql;this.sql.exec('CREATE TABLE IF NOT EXISTS cloud_state(key TEXT PRIMARY KEY,value TEXT NOT NULL)');}
   get(key){const row=[...this.sql.exec('SELECT value FROM cloud_state WHERE key=?',key)][0];return row?JSON.parse(row.value):null;}
   set(key,value){this.sql.exec('INSERT INTO cloud_state VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE cloud_state.value<>excluded.value',key,JSON.stringify(value));}
+  entries(prefix){return [...this.sql.exec('SELECT key,value FROM cloud_state WHERE key>=? AND key<?',prefix,prefix+'\uffff')].map(row=>[row.key,JSON.parse(row.value)]);}
 }
 export class Sealer {
   constructor(key){if(typeof key!=='string'||!/^[a-f0-9]{64}$/i.test(key))throw new Error('A separate 32-byte cloud encryption key is required');this.key=Buffer.from(key,'hex');}
