@@ -19,24 +19,29 @@ test('each CI suite retains its prerequisites without sharing an emulator or bro
   for(const suite of CI_SUITES){
     const steps=verificationPlan({ci:true,suite}),seen=new Set();
     for(const step of steps){for(const dependency of step.dependsOn)assert.ok(seen.has(dependency));seen.add(step.id);}
-    assert.equal(seen.has('firestore'),suite!=='browser');
-    assert.equal(seen.has('build'),suite!=='wallet');
+    assert.equal(seen.has('firestore'),['wallet','services'].includes(suite));
+    assert.equal(seen.has('build'),['browser','services'].includes(suite));
     assert.equal(seen.has('unit'),suite==='browser');
     assert.equal(seen.has('monitor'),suite==='services');
     assert.equal(seen.has('worker'),suite==='services');
     assert.equal(seen.has('monitor-build'),suite==='services');
     assert.equal(seen.has('yakyuken-reward'),suite==='browser','the award ordering regression runs in browser CI');
+    assert.equal(seen.has('discord-test-ui'),suite==='discord','the complete dual-account Discord fixture runs independently');
     if(suite==='services'){
       assert.deepEqual(steps.find(step=>step.id==='worker').dependsOn,['build']);
       assert.deepEqual(steps.find(step=>step.id==='firestore').dependsOn,['worker']);
       assert.deepEqual(steps.find(step=>step.id==='monitor').dependsOn,['monitor-build']);
     }
   }
-  const workflow=readFileSync('.github/workflows/verify.yml','utf8');
+  const workflow=readFileSync('.github/workflows/verify.yml','utf8').replaceAll('\r','');
   assert.deepEqual(workflow.match(/suite: \[([^\]]+)\]/)[1].split(',').map(s=>s.trim()),CI_SUITES,'workflow must schedule every suite');
   assert.match(workflow,/npx playwright install --with-deps chromium/,'cached browsers still run the locked installer and OS dependency checks');
   assert.match(workflow,/npm run firestore:emulator:setup/,'cached emulator still passes pinned checksum validation');
   assert.doesNotMatch(workflow,/cache-hit.*(?:!=|==)/,'a cache hit must never skip verification or setup');
+  const browserCondition="if: matrix.suite == 'browser' || matrix.suite == 'discord'";
+  assert.ok(workflow.includes('name: Cache matching Chromium build\n        '+browserCondition));
+  assert.ok(workflow.includes('run: npx playwright install --with-deps chromium\n        '+browserCondition),'both browser suites install Chromium and OS dependencies');
+  assert.ok(workflow.includes('group: verify-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}'),'PR, push and manual workflows cannot cancel each other');
 });
 
 test('local full verification retains its coverage and invalid suite selections fail closed',()=>{

@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}
+  group: verify-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [browser, wallet, services]
+        suite: [browser, discord, wallet, services]
     env:
       WRANGLER_SEND_METRICS: 'false'
       FIRESTORE_LIVE_ENABLED: 'false'
@@ -34,7 +34,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        if: matrix.suite != 'browser'
+        if: matrix.suite == 'wallet' || matrix.suite == 'services'
         with:
           distribution: temurin
           java-version: '21'
@@ -45,23 +45,23 @@ jobs:
       - run: npm audit --audit-level=high
         if: matrix.suite == 'browser'
       - name: Cache matching Chromium build
-        if: matrix.suite == 'browser'
+        if: matrix.suite == 'browser' || matrix.suite == 'discord'
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
       # Verify the locked browser and install uncached OS dependencies on every run.
       - run: npx playwright install --with-deps chromium
-        if: matrix.suite == 'browser'
+        if: matrix.suite == 'browser' || matrix.suite == 'discord'
       - name: Cache pinned Firestore emulator
-        if: matrix.suite != 'browser'
+        if: matrix.suite == 'wallet' || matrix.suite == 'services'
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: .tools/cloud-firestore-emulator-v*.jar
           key: firestore-emulator-${{ hashFiles('scripts/setup/setup-firestore-emulator.js') }}
       # setup rechecks the pinned SHA-256 even on a cache hit.
       - run: npm run firestore:emulator:setup
-        if: matrix.suite != 'browser'
+        if: matrix.suite == 'wallet' || matrix.suite == 'services'
       - run: npm run verify:ci -- --suite=${{ matrix.suite }}
       - name: Upload verification reports
         if: always()
@@ -76,6 +76,8 @@ jobs:
             test-results/discord-sdk/*.json
             test-results/discord-test-activity/report.json
             test-results/discord-test-activity/failure.json
+            test-results/discord-test-activity/timings.json
+            test-results/discord-test-activity/failure*.png
             test-results/yakyuken-reward/report.json
             test-results/yakyuken-reward/failure.json
             test-results/startup-resources/*.json

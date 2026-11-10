@@ -1,5 +1,6 @@
 import {createRequire} from 'node:module';
 import {mkdirSync,writeFileSync} from 'node:fs';
+import {availableParallelism,totalmem} from 'node:os';
 
 const require=createRequire(import.meta.url);
 export const browserOptions=()=>{
@@ -15,8 +16,15 @@ export async function launchBrowser(){
   const {chromium}=require(process.env.PLAYWRIGHT_MODULE_PATH||'playwright');
   const options=browserOptions(),browser=await chromium.launch(options);
   try{
+    let graphics,session;
+    try{
+      session=await browser.newBrowserCDPSession();
+      const {gpu}=await session.send('SystemInfo.getInfo');
+      graphics={devices:gpu.devices.map(({vendorString,deviceString,driverVendor,driverVersion})=>({vendorString,deviceString,driverVendor,driverVersion})),features:gpu.featureStatus};
+    }catch{graphics={unavailable:true};}
+    finally{try{await session?.detach();}catch{ /* Optional diagnostics must not affect verification. */ }}
     mkdirSync('test-results',{recursive:true});
-    writeFileSync('test-results/browser-runtime.json',JSON.stringify({node:process.version,platform:process.platform,arch:process.arch,channel:options.channel??'bundled-chromium',browser:browser.version(),projectPlaywright:require('playwright/package.json').version,moduleOverride:!!process.env.PLAYWRIGHT_MODULE_PATH},null,2)+'\n');
+    writeFileSync('test-results/browser-runtime.json',JSON.stringify({node:process.version,platform:process.platform,arch:process.arch,channel:options.channel??'chromium-headless-shell',browser:browser.version(),projectPlaywright:require('playwright/package.json').version,moduleOverride:!!process.env.PLAYWRIGHT_MODULE_PATH,machine:{cpus:availableParallelism(),memoryMiB:Math.round(totalmem()/1024/1024)},graphics},null,2)+'\n');
     return browser;
   }catch(error){await browser.close();throw error;}
 }

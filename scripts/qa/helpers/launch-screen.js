@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {Common} from '@discord/embedded-app-sdk';
+import {createQaScreenshots} from './qa-screenshots.js';
 
 const gate=()=>{let release;const promise=new Promise(resolve=>{release=resolve;});return {promise,release};};
 const variants=['golden-salon','last-spin','curtain-rises'];
@@ -35,7 +36,7 @@ async function verifyLetterRipple(shell){
   return observed;
 }
 
-export async function verifyLaunchScreen({browser,origin,output}){
+export async function verifyLaunchScreen({browser,origin,output,timing,screenshots=createQaScreenshots({timing})}){
   const checks=[];
   for(const [index,id] of variants.entries()){
     const startsPortrait=index%2===1;
@@ -95,7 +96,7 @@ export async function verifyLaunchScreen({browser,origin,output}){
           const croppedX=(1-visibleX)*geometry.position[0],croppedY=(1-visibleY)*geometry.position[1];
           assert.ok(left>=croppedX&&right<=croppedX+visibleX&&top>=croppedY&&bottom<=croppedY+visibleY,'portrait crop keeps the character and key props visible');
         }else assert.ok(Math.min(visibleX,visibleY)>.995,'landscape keeps the original composition');
-        await page.screenshot({path:`${output}/launch-${id}-${width}x${height}.png`});
+        await screenshots.capture(page,`${output}/launch-${id}-${width}x${height}.png`);
       }
       assert.equal(new Set(requests).size,2,'resizing only loads both orientations of the selected painting');
       token.release();await shell.waitForSelector('#game:not([hidden])');
@@ -115,7 +116,8 @@ export async function verifyLaunchScreen({browser,origin,output}){
       assert.equal(await shell.locator('#game').getAttribute('inert'),null);assert.equal(await shell.locator('#game').getAttribute('aria-hidden'),null);
       assert.equal((await page.evaluate(()=>__commands)).filter(x=>x==='HANDSHAKE').length,1);
       checks.push({art:id,viewports:new Set(sizes.map(size=>size.join('x'))).size,selectedArtRequests:requests.length,renderedLobbyBeforeDismissal:true,...(ripple?{letterRipple:ripple}:{})});
-    }finally{token.release();wallet.release();await context.close();}
+    }catch(error){await screenshots.failure(page,`${output}/failure-launch-${id}.png`);throw error;}
+    finally{token.release();wallet.release();await context.close();timing?.mark('launch/'+id);}
   }
   const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'}),page=await context.newPage(),token=gate();
   try{
@@ -127,12 +129,13 @@ export async function verifyLaunchScreen({browser,origin,output}){
     token.release();await shell.waitForSelector('#launch-screen[data-stage="error"]');
     assert.equal(await shell.locator('#launch-screen').getAttribute('data-stage'),'error');assert.equal(await shell.locator('#game').getAttribute('hidden'),'');
     assert.equal(await shell.locator('#launch-screen').getAttribute('aria-busy'),'false');
-    await page.screenshot({path:output+'/launch-login-failure.png'});
+    await screenshots.capture(page,output+'/launch-login-failure.png');
     assert.match(await shell.locator('.launch-status').innerText(),/關閉活動後重新開啟/);
     await page.unroute('**/api/token');await page.reload({waitUntil:'domcontentloaded'});
     const reloaded=await (await page.waitForSelector('iframe')).contentFrame();await reloaded.waitForSelector('#launch-screen',{state:'detached'});
     checks.push({reducedMotion:true,loginFailureKeepsLobbyBlocked:true,freshLaunchRecovers:true});
-  }finally{token.release();await context.close();}
+  }catch(error){await screenshots.failure(page,output+'/failure-launch-login.png');throw error;}
+  finally{token.release();await context.close();timing?.mark('launch/login-failure');}
   const fallback=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'}),fallbackPage=await fallback.newPage();
   try{
     await fallback.addInitScript(()=>{if(location.pathname==='/')Math.random=()=>.5;});
@@ -141,6 +144,7 @@ export async function verifyLaunchScreen({browser,origin,output}){
     const shell=await (await fallbackPage.waitForSelector('iframe')).contentFrame();await shell.waitForSelector('#launch-screen',{state:'detached'});
     const child=await (await shell.waitForSelector('#game:not([hidden])')).contentFrame();await child.waitForFunction(()=>document.querySelector('canvas')?.dataset.phase==='games');
     checks.push({decorativeArtFailureStillEntersReadyLobby:true});
-  }finally{await fallback.close();}
+  }catch(error){await screenshots.failure(fallbackPage,output+'/failure-launch-art.png');throw error;}
+  finally{await fallback.close();timing?.mark('launch/art-failure');}
   return checks;
 }

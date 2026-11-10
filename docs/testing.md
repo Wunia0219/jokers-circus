@@ -42,7 +42,9 @@
 
 瀏覽器測試使用鎖定的 Playwright 開發相依；一般驗證在 Windows 預設 Edge、Linux 預設 Chromium。`verify:ci` 在兩個平台都預設使用 Playwright 隨附的 Chromium，先執行 `npx playwright install chromium`（Linux 加 `--with-deps`）。可用 `PLAYWRIGHT_MODULE_PATH` 指定既有模組目錄、`PLAYWRIGHT_BROWSER_CHANNEL` 指定測試通道；`bundled` 表示鎖定版本的 Chromium，Windows 使用完整 Chromium 的新 headless 模式（`channel: 'chromium'`），Linux 沿用 headless shell，兩者由同一份 Playwright browser revision 鎖定。[Playwright 新 headless 模式](https://playwright.dev/docs/browsers#chromium-new-headless-mode)
 
-實際 Node／瀏覽器／Playwright 版本與啟動 channel 寫入 `test-results/browser-runtime.json`；同版瀏覽器仍不能取代遠端 Linux CI 驗證。
+實際 Node／瀏覽器／Playwright 版本、啟動 channel、可用 CPU 數與繪圖裝置／加速狀態寫入 `test-results/browser-runtime.json`；未指定 channel 的模式明確記為 `chromium-headless-shell`。同版瀏覽器仍不能取代遠端 Linux CI 驗證，GPU 與軟體繪圖也不能用相同速度預期。
+
+Discord 雙遊戲測試的 `timings.json` 記錄建置、開場各主題、桌機／手機主要操作階段，以及實際截圖耗時；階段耗時包含其中的截圖，不可再相加。這些量測只存在於 QA，不修改正式遊戲或等待門檻。GitHub CI（`CI=true`）預設只在失敗時擷取診斷圖片並上傳；全通過流程原本的 63 次 PNG 擷取（含登入故障注入案例）不參與像素比對，省去擷取仍完整檢查所有尺寸、裁切、動畫、來源、帳號及遊戲行為。數字像素基準與其他測試不受此策略影響。本機預設保留完整擷取，可用 `QA_SCREENSHOTS=all` 強制保存全部，或 `QA_SCREENSHOTS=failure` 重現 CI；失敗擷取最多等待 5 秒，擷取失敗也不覆蓋原本的測試錯誤。
 
 Discord 雙遊戲的荷官圖片恢復檢查，以 `verifySlotAtlasRecovery` 將故障注入、回應觀察與「選擇老虎機」動作放在同一階段；原 60 秒門檻保留，不把前面的野球拳／CG 流程計入。桌機與手機都必須實際收到 503→200、恰好兩次圖片請求，並等待老虎機就緒；報告保存各回應的階段耗時，失敗報告也保存已觀察結果。`tests/slot-atlas-recovery.test.js` 覆蓋超過 60 秒的前段延遲、即時回應、不發請求、不重試、恢復失敗、額外重試及未就緒等情境；真實缺圖仍須失敗。這些都只作用於隔離 QA，不調整正式遊戲的載入、停輪或重試參數。
 
@@ -61,17 +63,20 @@ CSP 注入測試等待非同步違規通知，確認 `script-src-elem` 對 `inli
 手動 `yakyuken-preview.js` 與 `dealer-resources.js` 共用 4196 埠；先結束前者，再執行後者或完整 CI，不要與 CI 同時啟動。
 `cg-responsive.js` 與數字繪製像素檢查共用 4198 埠，也應循序執行。
 
-GitHub Actions 使用三個獨立 runner 並行驗證，各組內仍循序執行：
+GitHub Actions 使用四個獨立 runner 並行驗證，各組內仍循序執行：
 
 | `--suite` | 範圍 |
 |---|---|
-| `browser` | 一般回歸、前端建置、全部瀏覽器與壓力測試、相依漏洞稽核 |
+| `browser` | 一般回歸、前端建置、除 Discord 雙遊戲外的瀏覽器與壓力測試、相依漏洞稽核 |
+| `discord` | 自行建置隔離前端、完整開場三主題／尺寸／故障、桌機與手機雙遊戲及跨帳號斷言 |
 | `wallet` | Firestore 錢包、v2、狀態快取 |
 | `services` | 自行建置前端及兩個 Worker，再驗證服務、備份、恢復、重設與監控 |
 
-重現單組使用 `npm run verify:ci -- --suite=browser`（或 `wallet`／`services`）；漏洞稽核由 workflow 另跑 `npm audit --audit-level=high`。本機完整重驗仍用 `npm run verify:ci`，不可在同一個目錄同時啟動多組，因為會共用模擬器連接埠及輸出目錄。分組覆蓋測試會檢查所有整合測試檔均分配且不重複、workflow 啟動所有組；新增檢查請同步維護清單。任一組失敗仍讓其餘組完成診斷，最後的 `Verify / verify` 只有全部成功才通過。
+重現單組使用 `npm run verify:ci -- --suite=browser`（或 `discord`／`wallet`／`services`）；漏洞稽核由 workflow 另跑 `npm audit --audit-level=high`。本機完整重驗仍用 `npm run verify:ci`，不可在同一個目錄同時啟動多組，因為會共用模擬器連接埠及輸出目錄。分組覆蓋測試會檢查完整清單不遺漏、所有整合測試檔均分配且不重複、workflow 啟動所有組；新增檢查請同步維護清單。Discord 測試仍完整執行並保留兩個帳號的隔離檢查，不改動畫、等待門檻或案例。任一組失敗仍讓其餘組完成診斷，最後的 `Verify / verify` 只有全部成功才通過。
 
-CI 每組保留 7 天的 `verification-<suite>-<run_id>-<attempt>` 診斷附件，並在執行摘要列出各步驟結果與耗時。附件只包含指定的 QA JSON，不包含 SQLite、玩家資料、備份或環境檔。一般停輪報告在 `test-results/reel-experience/`，壓力測試在 `test-results/reel-experience-stress/`；CSP 每次使用獨立 `run-*` 目錄，互不覆蓋。
+同一事件與分支的新執行會取消舊執行；PR、main 推送與手動執行使用不同取消群組，避免互相中斷。四組並行縮短等待時間，但不等於減少 GitHub Actions 累計用量，額外 runner 仍有安裝成本。流程不觸發 Netlify 或 Cloudflare 部署。
+
+CI 每組保留 7 天的 `verification-<suite>-<run_id>-<attempt>` 診斷附件，並在執行摘要列出各步驟結果與耗時。附件只包含指定的 QA JSON 與 Discord 隔離測試失敗畫面，不包含 SQLite、真實玩家資料、備份或環境檔。一般停輪報告在 `test-results/reel-experience/`，壓力測試在 `test-results/reel-experience-stress/`；CSP 每次使用獨立 `run-*` 目錄，互不覆蓋。
 
 ### 從零重驗
 

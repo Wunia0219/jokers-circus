@@ -1,4 +1,4 @@
-export const CI_SUITES=['browser','wallet','services'];
+export const CI_SUITES=['browser','discord','wallet','services'];
 
 const integrationFiles={
   wallet:['firestore','firestore-v2','firestore-state-cache'],
@@ -6,10 +6,10 @@ const integrationFiles={
 };
 
 export function verificationPlan({ci=false,full=false,suite='all',node=process.execPath,integrationNode=node}={}){
-  if(suite!=='all'&&(!ci||!CI_SUITES.includes(suite)))throw new Error('Use --suite=browser|wallet|services with --ci');
+  if(suite!=='all'&&(!ci||!CI_SUITES.includes(suite)))throw new Error('Use --suite='+CI_SUITES.join('|')+' with --ci');
   const step=(id,label,args,dependsOn=[],executable=node)=>({id,label,args,dependsOn,executable});
   const steps=[];
-  if(suite==='all'||suite==='browser'||suite==='services'){
+  if(suite==='all'||suite==='browser'||suite==='discord'||suite==='services'){
     steps.push(
       step('unit','一般回歸',['--test','tests/*.test.js']),
       step('build','前端建置',['node_modules/vite/bin/vite.js','build']),
@@ -29,14 +29,17 @@ export function verificationPlan({ci=false,full=false,suite='all',node=process.e
       step('security-stress','CSP 延遲通知',['scripts/qa/security-smoke.js','--delayed-csp-report'],['build']),
     );
   }
-  if((full||ci)&&suite!=='browser'){
+  if((full||ci)&&!['browser','discord'].includes(suite)){
     const files=suite==='all'?Object.values(integrationFiles).flat():integrationFiles[suite];
     steps.push(step('firestore','Firestore SDK／REST／workerd／恢復',[
       'scripts/qa/test-firestore.js',...files.map(name=>`tests/${name}.integration.js`),
     ],suite==='wallet'?[]:['worker'],integrationNode));
     if(suite!=='wallet')steps.push(step('monitor','監控 workerd',['--test','tests/monitor-runtime.integration.js'],['monitor-build'],integrationNode));
   }
-  if(suite==='browser')return steps.filter(step=>!['worker','monitor-build'].includes(step.id));
+  // The Discord fixture builds its own isolated frontend and keeps both accounts
+  // together, preserving the cross-player assertions without shared runner state.
+  if(suite==='discord')return steps.filter(step=>step.id==='discord-test-ui');
+  if(suite==='browser')return steps.filter(step=>!['worker','monitor-build','discord-test-ui'].includes(step.id));
   if(suite==='services')return steps.filter(step=>['build','worker','monitor-build','firestore','monitor'].includes(step.id));
   return steps;
 }

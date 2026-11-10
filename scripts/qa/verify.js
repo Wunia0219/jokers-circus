@@ -3,11 +3,11 @@ import {cloudNode,nodeVersion,runNode} from '../lib/node-runtime.js';
 import {checkDiscordSdk} from '../security/patch-discord-sdk.js';
 import {checkToolchain} from './check-toolchain.js';
 import {runVerificationSteps} from './helpers/verification.js';
-import {verificationPlan} from './helpers/verification-plan.js';
+import {CI_SUITES,verificationPlan} from './helpers/verification-plan.js';
 
 const ci=process.argv.includes('--ci'),full=ci||process.argv.includes('--full'),list=process.argv.includes('--list');
 const args=process.argv.slice(2),suiteArgs=args.filter(arg=>arg.startsWith('--suite=')),suite=suiteArgs.length?suiteArgs[0].slice(8):'all';
-if(suiteArgs.length>1||args.some(arg=>!['--ci','--full','--list'].includes(arg)&&!arg.startsWith('--suite=')))throw new Error('Use --ci, --full, --list and/or --suite=browser|wallet|services');
+if(suiteArgs.length>1||args.some(arg=>!['--ci','--full','--list'].includes(arg)&&!arg.startsWith('--suite=')))throw new Error('Use --ci, --full, --list and/or --suite='+CI_SUITES.join('|'));
 const node=process.execPath,integrationNode=cloudNode();
 const steps=verificationPlan({ci,full,suite,node,integrationNode});
 if(list){for(const {label,args} of steps)console.log(label+': node '+args.join(' '));process.exit(0);}
