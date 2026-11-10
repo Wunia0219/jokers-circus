@@ -1,0 +1,40 @@
+.maintenance-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  overflow: auto;
+  container-type: normal;
+  padding: max(1rem, var(--safe-top)) max(1rem, var(--safe-right))
+    max(1rem, var(--safe-bottom)) max(1rem, var(--safe-left));
+  background: radial-gradient(ellipse at 50% 35%, #382036, #160e1b 68%);
+  color: #f6e6cc;
+  text-align: center;
+}
+
+#app[hidden] { display: none; }
+
+.maintenance-notice { width: min(100%, 32rem); margin: auto; }
+.maintenance-notice img { display: block; width: 100%; height: auto; }
+.maintenance-notice p { margin: .7rem 0; line-height: 1.6; text-wrap: balance; }
+.maintenance-notice .maintenance-brand {
+  color: #ebbc80;
+  font: 600 .875rem/1.5 Georgia, serif;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+}
+.maintenance-notice h1 { margin: 0; color: #ffe8b7; font-size: clamp(2rem, 7vw, 3.25rem); }
+.maintenance-notice h1:focus { outline: none; }
+.maintenance-notice button {
+  margin-top: .65rem;
+  min-height: 44px;
+  padding: .5rem 1.3rem;
+  border: 1px solid #cb9c64;
+  border-radius: .45rem;
+  color: #ffe8b7;
+  background: #45263b;
+  font: inherit;
+  cursor: pointer;
+}
+.maintenance-notice button:hover { background: #5e354d; }
+.maintenance-notice button:focus-visible { outline: 2px solid #ffe8b7; outline-offset: 4px; }

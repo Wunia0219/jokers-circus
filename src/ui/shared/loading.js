@@ -11,6 +11,10 @@ export function createLoadingScreen() {
   let displayed = 0, frame = 0;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   screen.querySelector('#loading-retry').addEventListener('click', () => location.reload());
+  function dismiss() {
+    cancelAnimationFrame(frame);
+    screen.remove();
+  }
   function update(value, message) {
     progress = Math.max(progress, Math.min(100, value));
     cancelAnimationFrame(frame);
@@ -26,15 +30,14 @@ export function createLoadingScreen() {
     status.textContent = message;
   }
   return {
-    update,
+    update, dismiss,
     async finish() {
       update(100, '馬戲團已開啟');
       // Let the final fill settle; avoid flashing the screen on a cached visit.
       await wait(reduced ? 0 : Math.max(600, 1400 - (performance.now() - started)));
       screen.classList.add('is-leaving');
       await wait(reduced ? 0 : 450);
-      cancelAnimationFrame(frame);
-      screen.remove();
+      dismiss();
       document.querySelector('#app').inert = false;
     },
     fail(message) {

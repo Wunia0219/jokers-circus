@@ -3,7 +3,7 @@ import {resolve,dirname} from 'node:path';
 
 const productionPlatform='\0production-slot-platform';
 const testImports=new Set(['src/platform/discord-test-activity.js','src/platform/game-navigation.js'].map(file=>resolve(file)));
-const publicFiles=['privacy.html','terms.html','legal.css',
+const publicFiles=['privacy.html','terms.html','legal.css','game-entry.json',
   'announcements/big-win-22bea6e95a7a.webp','announcements/super-win-bebd0e262ee5.webp','announcements/mega-win-5f0adee4765d.webp'];
 export function assertProductionArtifact(files){
   for(const [name,content] of files){

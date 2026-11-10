@@ -19,6 +19,7 @@
 | `npm run test:experience` | Edge：正常／快停、慢結果、慢歷史、慢幀與手機觸控 |
 | `npm run test:dealer` | Edge：荷官完整影格、短期重用、背景／到期釋放及故障清理 |
 | `npm run test:startup` | Edge：六種啟動失敗、立即停止渲染、晚到素材回收與重試畫面 |
+| `node scripts/qa/game-entry.js` | 先用 Discord 登入與錢包開關建置；隔離驗證維修海報、帳號放行、重新開放與結算途中關閉，包含回應中斷及原請求保留 |
 | `npm run test:numbers` | 數字、符號、空值與後備文字的像素／尺寸／無障礙基準，以及 Canvas 重設次數 |
 | `npm run test:security` | 先 build；Edge：CSP、腳本注入阻擋、SQLite 結算 |
 | `npm run test:discord-sdk` | 隔離父頁／iframe：真實 SDK 握手、OAuth、方向鎖定及大型非法集合拒絕 |

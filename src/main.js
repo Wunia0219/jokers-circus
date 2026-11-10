@@ -11,10 +11,11 @@ import { Sound } from './ui/audio/audio.js';
 import { MUSIC_SOURCE } from './ui/audio/audio-cues.js';
 import {bindActivityMusic,startDefaultMusic} from './ui/audio/default-music.js';
 import { presentRoundWin } from './ui/wins/round-win.js';
-import { connectActivity } from './platform/discord-activity.js';
+import { connectActivity, isDiscordActivity } from './platform/discord-activity.js';
 import {connectDiscordTestActivity,discordTestBuild,discordTestMusic,testSessionFetch} from './platform/discord-test-activity.js';
 import { connectLocalWallet } from './platform/local-wallet.js';
 import { createLoadingScreen } from './ui/shared/loading.js';
+import { showMaintenanceScreen } from './ui/shared/maintenance-screen.js';
 import { BigWinPresentation } from './ui/wins/big-win.js';
 import { createGameRules } from './ui/dialogs/game-rules.js';
 import { applyProgrammeTheme } from './ui/shared/dialog-spec.js';
@@ -25,6 +26,7 @@ import { roundFeedbackTiming } from './ui/reels/presentation.js';
 import { setBitmapNumber } from './ui/shared/bitmap-number.js';
 import { installResponsiveLayout } from './ui/shared/responsive-layout.js';
 import { createWalletClient } from './platform/wallet-client.js';
+import { canEnterGame, readGameEntry } from './platform/game-entry.js';
 import {createCasinoPresence} from './platform/casino-presence.js';
 import {slotLobbyPath,canReturnToLobby} from './platform/game-navigation.js';
 import {fadeToLobby} from './platform/lobby-transition.js';
@@ -61,12 +63,17 @@ const KEY='kemet-slot-preview-v2';
 let state, storageAvailable=true;
 try { state=readState(localStorage.getItem(KEY)); } catch { state=freshState();storageAvailable=false; }
 let bet=100, busy=false, presenting=false, ready=false, leavingLobby=false, countAnimation=0, payoutAnimation=0, celebrationTimer=0;
+const loopbackWalletTest=location.protocol==='http:'&&location.hostname==='127.0.0.1'&&
+  new URLSearchParams(location.search).get('wallet')==='local';
+const entryEnabled=import.meta.env.PROD&&!discordTestBuild&&!loopbackWalletTest&&
+  import.meta.env.VITE_DISCORD_WALLET_ENABLED==='true';
+let entryClosing=false, maintenanceShown=false, entryCheck=null, activityIdentity, casinoPresence;
 const activityMusic=discordTestBuild?discordTestMusic():null;
 const scene=new SlotScene(), sound=new Sound({effectsEnabled:true,musicUrl:activityMusic?null:MUSIC_SOURCE,onStateChange:renderAudio});
 const bigWin=new BigWinPresentation($('#app'));
 let activityMode='browser', activityUser=null, walletClient=null, claiming=false, historySync=null, checkinPanel=null, checkinRetry=false;
 const controls=new SpinControls({
-  isReady:()=>ready&&!leavingLobby&&!claiming&&!document.hidden&&!$('#dialog').open,
+  isReady:()=>ready&&(!entryClosing||busy)&&!leavingLobby&&!claiming&&!document.hidden&&!$('#dialog').open,
   isBusy:()=>busy,
   startSpin:()=>spin(),
   stopReels:()=>scene.requestQuickStop(),
@@ -90,14 +97,18 @@ function renderAudio(){
 }
 renderAudio();
 const effectsInput=new AbortController();
-const stopMusic=activityMusic?bindActivityMusic(activityMusic,renderAudio,{signal:effectsInput.signal}):startDefaultMusic(sound);
+let stopMusic;
 const unlockEffects=event=>{if(event.isTrusted)void sound.unlockEffects();};
-document.addEventListener('pointerup',unlockEffects,{capture:true,signal:effectsInput.signal});
-document.addEventListener('keydown',unlockEffects,{capture:true,signal:effectsInput.signal});
-addEventListener('pagehide',event=>{if(event.persisted)void sound.setVisible(false);else{effectsInput.abort();stopMusic();sound.dispose();}});
-addEventListener('pageshow',event=>{if(event.persisted){leavingLobby=false;void sound.setVisible(true);}});
-const checkinOptions=()=>({ready:ready&&!!walletClient,busy,claiming,preview:!walletClient,retry:checkinRetry&&!state.claimed});
-function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,checkinPreview:!!lobbyPath&&!walletClient,localTest:activityMode==='local',ready,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(walletClient?state:{},checkinOptions());updateLobbyButton();}
+function startGameAudio(){
+  stopMusic=activityMusic?bindActivityMusic(activityMusic,renderAudio,{signal:effectsInput.signal}):startDefaultMusic(sound);
+  document.addEventListener('pointerup',unlockEffects,{capture:true,signal:effectsInput.signal});
+  document.addEventListener('keydown',unlockEffects,{capture:true,signal:effectsInput.signal});
+}
+if(!entryEnabled)startGameAudio();
+addEventListener('pagehide',event=>{if(maintenanceShown)return;if(event.persisted)void sound.setVisible(false);else{effectsInput.abort();stopMusic?.();sound.dispose();}});
+addEventListener('pageshow',event=>{if(event.persisted&&!maintenanceShown){leavingLobby=false;void sound.setVisible(true);void refreshEntry();}});
+const checkinOptions=()=>({ready:ready&&!entryClosing&&!!walletClient,busy,claiming,preview:!walletClient,retry:checkinRetry&&!state.claimed});
+function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,checkinPreview:!!lobbyPath&&!walletClient,localTest:activityMode==='local',ready:ready&&!entryClosing,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(walletClient?state:{},checkinOptions());updateLobbyButton();}
 function updateLobbyButton(){
   const pending=walletClient?.hasPending()===true;
   playerBar.lobby({enabled:canReturnToLobby({ready,busy,claiming,pending}),note:busy||claiming?'正在完成這局或處理戲籌，完成後即可返回大廳。':pending?'上一局尚待確認，請先按 SPIN 找回結果。':'返回遊戲大廳'});
@@ -114,17 +125,48 @@ function showPlayerError(error,context='game'){
   if(copy.reconnect){const retry=document.createElement('button');retry.className='notice-action';retry.textContent='重新開啟遊戲';retry.addEventListener('click',()=>location.reload());body.append(retry);}
   openDialog(copy.title,body);
 }
-async function refreshWallet(){if(!walletClient||busy||claiming||!ready)return;try{const update=await walletClient.state();if(!busy&&!claiming){save(update.state);renderState();}}catch(error){if(error.status===401)showPlayerError(error);}}
+async function refreshWallet(){if(!walletClient||busy||claiming||!ready||entryClosing)return;try{const update=await walletClient.state();if(!busy&&!claiming&&!entryClosing){save(update.state);renderState();}}catch(error){if(error.status===401&&!entryClosing)showPlayerError(error);}}
+function enterMaintenance(){
+  if(maintenanceShown||busy||claiming)return;
+  maintenanceShown=true;
+  ready=false;
+  $('#dialog').close();
+  $('#app').inert=true;
+  $('#app').hidden=true;
+  cancelAnimationFrame(countAnimation);
+  cancelAnimationFrame(payoutAnimation);
+  effectsInput.abort();
+  stopMusic?.();
+  sound.dispose();
+  casinoPresence?.dispose();
+  if(scene.initTask){
+    hideCelebration();
+    void scene.destroy().catch(error=>console.warn('Stage cleanup unavailable:',error.message));
+  }
+  showMaintenanceScreen({pending:walletClient?.hasPending()});
+}
+function refreshEntry(){
+  if(!entryEnabled||!ready||entryClosing||document.hidden)return;
+  entryCheck ||= readGameEntry().then(entry=>{
+    if(canEnterGame(entry,activityIdentity))return;
+    entryClosing=true;
+    controls.stopAuto();
+    setBusy(busy);
+    enterMaintenance();
+  },()=>{/* Keep the last confirmed state during a status fetch failure. */})
+    .finally(()=>{entryCheck=null;});
+  return entryCheck;
+}
 function renderState() {
   setBitmapNumber($('#balance'),fmt(state.balance));
   renderPlayer();
 }
 function setBusy(value) {
   busy=value;
-  renderSpinButton({busy,presenting,claiming,ready});
-  $('#max-bet').disabled=value||claiming||!ready||controls.auto;
-  $('#auto-spin').disabled=claiming||!ready;
-  document.querySelectorAll('[data-bet]').forEach(b=>b.disabled=value||claiming||!ready||controls.auto);
+  renderSpinButton({busy,presenting,claiming,ready:ready&&(!entryClosing||busy)});
+  $('#max-bet').disabled=value||claiming||!ready||entryClosing||controls.auto;
+  $('#auto-spin').disabled=claiming||!ready||entryClosing;
+  document.querySelectorAll('[data-bet]').forEach(b=>b.disabled=value||claiming||!ready||entryClosing||controls.auto);
   renderPlayer();
 }
 function result(title,detail) {
@@ -229,6 +271,7 @@ async function spin() {
     else showPlayerError(error);
   }finally{
     presenting=false;setBusy(false);controls.endRound(nextDelay);
+    if(entryClosing)enterMaintenance();
   }
 }
 function openDialog(title,body,variant='notice') {
@@ -244,7 +287,7 @@ function openDialog(title,body,variant='notice') {
 }
 function showRules(){openDialog('遊戲規則',createGameRules(bet,state.weeklyCheckin?.rewards),'rules');}
 function showCheckin(){
-  if((!walletClient&&!lobbyPath)||!ready||busy||claiming)return;
+  if((!walletClient&&!lobbyPath)||!ready||entryClosing||busy||claiming)return;
   checkinPanel=createWeeklyCheckin({onClaim:claimDaily});checkinPanel.update(walletClient?state:{},checkinOptions());
   openDialog('週簽到',checkinPanel.element,'checkin');
 }
@@ -284,7 +327,7 @@ async function showHistory(){
   });
 }
 async function claimDaily(){
-  if(!walletClient||!ready||busy||claiming||state.claimed)return;
+  if(!walletClient||!ready||entryClosing||busy||claiming||state.claimed)return;
   const panel=checkinPanel;panel?.message('');
   controls.stopAuto();claiming=true;setBusy(busy);
   try{
@@ -297,7 +340,7 @@ async function claimDaily(){
     else if(panel?.element.isConnected&&$('#dialog').open)panel.message(playerError(error,{context:'checkin'}).message);
     else notifyPlayer(playerError(error,{context:'checkin'}).message,'info');
   }
-  finally{claiming=false;setBusy(busy);}
+  finally{claiming=false;setBusy(busy);if(entryClosing)enterMaintenance();}
 }
 async function toggleSound(){
   const button=$('#sound');button.disabled=true;button.setAttribute('aria-busy','true');
@@ -331,9 +374,11 @@ $('#close-dialog').addEventListener('click',()=>$('#dialog').close());
 $('#dialog').addEventListener('click',e=>{if(e.target===$('#dialog')){const r=$('#dialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('#dialog').close();}});
 
 document.addEventListener('visibilitychange',()=>{
+  if(maintenanceShown)return;
   if(document.hidden){scene.setDealerVisible(false);controls.stopAuto();controls.stopCurrent();scene.finish();if(ready)scene.app.stop();sound.setVisible(false);}
-  else {scene.setDealerVisible(true);if(ready)scene.app.start();sound.setVisible(true);refreshWallet();}
+  else {scene.setDealerVisible(true);if(ready)scene.app.start();sound.setVisible(true);void refreshGameStatus();}
 });
+window.addEventListener('focus',()=>void refreshEntry());
 renderState();
 // History restores the wallet and reels, but a new visit has no current win.
 showPayout(0);
@@ -341,8 +386,27 @@ setBusy(false);
 async function startGame() {
   const loading = createLoadingScreen();
   loading.update(8, '正在連線…');
+  let previewActivity;
+  if(entryEnabled){
+    let entry;
+    try{entry=await readGameEntry();}
+    catch{loading.fail('暫時無法確認遊戲是否開放，請再試一次。');return;}
+    if(entry.mode==='maintenance'){
+      if(entry.previewUserIds.length&&isDiscordActivity(window.location)){
+        previewActivity=await connectActivity().catch(()=>null);
+      }
+      if(!canEnterGame(entry,previewActivity)){
+        entryClosing=true;
+        loading.dismiss();
+        enterMaintenance();
+        return;
+      }
+    }
+    startGameAudio();
+  }
   let stageProgress, showStageProgress=false,casinoSession;
-  const activityReady=discordTestBuild?connectDiscordTestActivity():connectLocalWallet(window.location).then(activity=>activity||connectActivity());
+  const activityReady=discordTestBuild?connectDiscordTestActivity():
+    connectLocalWallet(window.location).then(activity=>activity||previewActivity||connectActivity());
   const stageReady=Promise.all([scene.init($('#canvas-host'),(...progress)=>{
     stageProgress=progress;
     if(showStageProgress)loading.update(...progress);
@@ -351,6 +415,7 @@ async function startGame() {
   stageReady.catch(()=>{});
   try {
     const activity=await activityReady;
+    activityIdentity=activity;
     activityMode=activity.mode;
     activityUser=activity.user || null;
     if(activity.session){walletClient=createWalletClient(activity.session,discordTestBuild?testSessionFetch(activity):undefined);state=(await walletClient.state()).state;renderState();}
@@ -374,8 +439,9 @@ async function startGame() {
     scene.setStops(restoredStops(state));
     scene.app.render();
     await loading.finish();
-    if(casinoSession)await createCasinoPresence(casinoSession).start();
+    if(casinoSession){casinoPresence=createCasinoPresence(casinoSession);await casinoPresence.start();}
     ready=true;setBusy(false);
+    void refreshEntry();
     setTimeout(()=>scene.preloadDealer(),0);
   } catch(error) {
     showStageProgress=false;
@@ -384,7 +450,12 @@ async function startGame() {
   }
 }
 startGame();
+async function refreshGameStatus(){
+  if(entryEnabled)await refreshEntry();
+  await refreshWallet();
+}
 setTimeout(function pollWallet(){
-  if(!document.hidden)refreshWallet();
+  if(maintenanceShown)return;
+  if(!document.hidden)void refreshGameStatus();
   setTimeout(pollWallet,15000+Math.floor(Math.random()*5000));
 },15000+Math.floor(Math.random()*5000));

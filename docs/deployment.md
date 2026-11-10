@@ -57,6 +57,14 @@ node --env-file=.env.server.production.local scripts/discord/check-discord.js --
 
 `status`／`health` 只讀 DO 摘要，不查玩家文件、不觸發備份。`health` 會核對本機版本；未發布分支的版本差異不等於遊戲故障。下載與還原見[備份](recovery.md)。
 
+### 遊戲入口開關
+
+要切換時可直接請 Codex「正式服切維修」或「正式服開放」。修改 `public/game-entry.json` 的 `mode` 為 `maintenance` 或 `open`，保留 `previewUserIds` 中已確認的 Discord 使用者 ID。設定檔是公開靜態資源，只放模式與允許預覽的 ID。首次發布預設 `maintenance`。
+
+首次發布後，單純切換狀態時使用線上同一版程式，只改入口設定。以正式 Discord App 的公開 client ID 建置，確認 `VITE_DISCORD_AUTH_ENABLED` 和 `VITE_DISCORD_WALLET_ENABLED` 均為 `true`。依本文件的正式發布前檢查核對產物和綁定，以 `wrangler.production.local.jsonc` 發布到既有正式 Worker。確認線上的 `/game-entry.json` 回傳預期模式與 `Cache-Control: no-store`、公開入口能顯示預期畫面、`/readyz` 正常。本機開發、loopback 測試錢包與獨立 Discord 測試活動沿用各自入口。
+
+新版遊戲啟動、回到前景或前景每 15–20 秒檢查入口。讀到維修後停止自動轉及新操作，正在處理的局或簽到完成後切到維修畫面。玩家可按「重新檢查」重新進入。舊版頁面仍可能提交操作。搬移資料或需要停止所有帳本寫入時，依[恢復程序](recovery.md)停寫並確認排空，適用於所有帳號。
+
 ## Discord
 
 新增的同身分大獎逐筆公告與玩家出入場公告見[賭場機器人公告](casino-announcements.md)。這是可選的 Bot REST 功能，預設停用；不需要 Gateway 常駐綠燈，也不更改既有 HTTP 指令。啟用前必須完成 bot 安裝、私密 Bot Token 與指定頻道的核對。
