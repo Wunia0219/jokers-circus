@@ -64,6 +64,9 @@ export function buildLobby(scene){
       if(!character.enabled)button.setEnabled(false);
     });
     title(scene.wallet?'入場費不予退還':'本機試玩暫不扣款',c.infoX,c.feeY,root,Math.max(12,12*s),PALETTE.muted);
-    at(new PixiButton({text:`入場 ${ENTRY_FEE.toLocaleString('en-US')} 戲籌`,name:'進入野球拳試玩',variant:'gold',width:c.buttonWidth,height:c.buttonHeight,fontSize:16*s,onPress:()=>scene.enterCharacter()}),c.infoX,c.enterY,root);
+    const paused=scene.wallet?.admissionOpen===false;
+    const enter=at(new PixiButton({text:paused?'暫停新場次':`入場 ${ENTRY_FEE.toLocaleString('en-US')} 戲籌`,
+      name:paused?'暫停新場次':scene.onLobby?'進入野球拳':'進入野球拳試玩',variant:'gold',width:c.buttonWidth,height:c.buttonHeight,fontSize:16*s,onPress:()=>scene.enterCharacter()}),c.infoX,c.enterY,root);
+    enter.setEnabled(!paused);
   }
 }

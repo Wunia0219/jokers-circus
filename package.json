@@ -7,6 +7,7 @@
     "postinstall": "node scripts/security/patch-discord-sdk.js",
     "dev": "vite --host 127.0.0.1 --port 4187 --strictPort",
     "build": "vite build",
+    "arcade:build": "node scripts/build/arcade-release.js",
     "audio:preview": "node scripts/audio/render-previews.js",
     "preview": "vite preview --host 127.0.0.1 --port 4187 --strictPort",
     "activity:serve": "npm run build && npm run activity:server",

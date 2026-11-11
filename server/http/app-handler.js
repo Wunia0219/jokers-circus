@@ -11,6 +11,11 @@ import {completeDeferredCommand,validInteractionToken} from '../discord/deferred
 import {deferWalletInteraction} from '../discord/discord-panel.js';
 import {securityHeaders,contentSecurityPolicy} from './security-headers.js';
 
+export const duelPaths=new Map([
+  ['/api/feature/state','state'],['/api/feature/begin','begin'],['/api/feature/hand','hand'],
+  ['/api/feature/leave','leave'],['/api/feature/checkin','checkin'],
+]);
+
 const types = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.webp':'image/webp', '.png':'image/png', '.svg':'image/svg+xml', '.json':'application/json', '.woff2':'font/woff2', '.mp3':'audio/mpeg' };
 const json = (res, status, data) => {
   res.writeHead(status, { 'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff' });
@@ -147,10 +152,12 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
           return json(res, 200, { access_token:token.access_token,...(session?{session:{...session,...(wallet.visits?{casinoNotifications:true}:{})}}:{}) });
         } finally { if(!succeeded)loginRate.failed();activeExchanges--; }
       }
-      if(['/api/wallet','/api/spin','/api/checkin','/api/ledger','/api/rounds','/api/casino-visit'].includes(path)){
+      const duelAction=duelPaths.get(path);
+      if(duelAction&&(!wallet?.arcade||wallet.arcade.read().feature==='hidden'))return json(res,404,{error:'找不到此功能。'});
+      if(duelAction||['/api/wallet','/api/spin','/api/checkin','/api/ledger','/api/rounds','/api/casino-visit'].includes(path)){
         if(!wallet)return json(res,503,{error:'帳號戲籌尚未開啟。'});
         if(!wallet.localTest&&req.headers.origin&&!allowedOrigins.has(req.headers.origin))return json(res,403,{error:'不允許的來源。'});
-        const write=path==='/api/spin'||path==='/api/checkin'||path==='/api/casino-visit';
+        const write=path==='/api/spin'||path==='/api/checkin'||path==='/api/casino-visit'||!!(duelAction&&duelAction!=='state');
         if(req.method!==(write?'POST':'GET'))return json(res,405,{error:'不支援此操作。'});
         const session=await wallet.service.authorize(req.headers.authorization);
         if(wallet.store.walletEpoch&&req.headers['x-wallet-epoch']!==wallet.store.walletEpoch)return json(res,401,{error:'測試帳本已更新，請重新開啟遊戲。'});
@@ -160,6 +167,17 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
           return json(res,200,wallet.visits?await wallet.visits.request(session,input):{enabled:false});
         }
         const view={compact:req.headers['x-wallet-view']==='compact-v1'};
+        if(duelAction){
+          const admissionOpen=()=>wallet.arcade.read().feature==='open';
+          let result;
+          if(duelAction==='state')result=await wallet.store.duelState(guild,user);
+          else{
+            const input=await readJson(req);
+            result=duelAction==='checkin'?await wallet.store.checkin(guild,user,{compact:true,duel:true,day:input?.day??''}):
+              await wallet.store.duelAction(guild,user,duelAction,input,{allowNew:admissionOpen});
+          }
+          return json(res,200,{...result,admissionOpen:admissionOpen()});
+        }
         if(path==='/api/wallet')return json(res,200,{state:await wallet.store.state(guild,user,view)});
         if(path==='/api/rounds'){
           if(wallet.store.schemaVersion!==2)return json(res,400,{error:'請重新開啟遊玩紀錄。'});
@@ -170,7 +188,8 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
         if(path==='/api/ledger')return json(res,200,{entries:await wallet.store.history(guild,user,Number(new URL(req.url,'http://localhost').searchParams.get('before')||Number.MAX_SAFE_INTEGER))});
         const body=await readJson(req);
         if(path==='/api/checkin')return json(res,200,await wallet.store.checkin(guild,user,view));
-        const result=await wallet.store.spin(guild,user,body?.bet,body?.requestId,{...view,profileName:session.profile?.name});
+        const result=await wallet.store.spin(guild,user,body?.bet,body?.requestId,{...view,profileName:session.profile?.name,
+          ...(wallet.arcade?{allowSpin:()=>wallet.arcade.read().slot==='open'}:{})});
         try { wallet.highlights?.enqueue(session,result.round.id,result.round); }
         catch { console.warn('Discord highlights: could not queue result'); }
         return json(res,200,result);
@@ -212,7 +231,8 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
       const status = error.status || (['ENOENT','ENOTDIR'].includes(error.code) ? 404 : 502);
       const cooldown=status===429&&['SPIN_COOLDOWN','SETTLEMENT_BUSY'].includes(error.code);
       if(cooldown&&!res.headersSent)res.setHeader('Retry-After',String(Math.ceil(error.retryAfterMs/1000)));
-      if (!res.headersSent) json(res, status, { error:error.status ? error.message : status === 404 ? '找不到檔案。' : '暫時無法完成請求，請稍後重試。',...(cooldown?{code:error.code,retryAfterMs:error.retryAfterMs}:status===503&&error.code==='FIRESTORE_BUDGET'?{code:error.code}:{}) });
+      const playerCode=['FIRESTORE_BUDGET','SLOT_MAINTENANCE','DUEL_CLOSED','DUEL_HAND','DUEL_MATCH','DUEL_INPUT','REQUEST_CONFLICT'].includes(error.code)?error.code:null;
+      if (!res.headersSent) json(res, status, { error:error.status ? error.message : status === 404 ? '找不到檔案。' : '暫時無法完成請求，請稍後重試。',...(cooldown?{code:error.code,retryAfterMs:error.retryAfterMs}:playerCode?{code:playerCode}:{}) });
       else res.end();
     }
   };

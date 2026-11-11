@@ -1,0 +1,50 @@
+:root {
+  color-scheme: dark;
+  font-family: "Noto Sans TC", system-ui, sans-serif;
+  color: #fff3df;
+  background: #16101d;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+.lobby {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 760px);
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  padding: max(20px, env(safe-area-inset-top), var(--discord-safe-area-inset-top, 0px))
+    max(18px, env(safe-area-inset-right), var(--discord-safe-area-inset-right, 0px))
+    max(20px, env(safe-area-inset-bottom), var(--discord-safe-area-inset-bottom, 0px))
+    max(18px, env(safe-area-inset-left), var(--discord-safe-area-inset-left, 0px));
+  background: radial-gradient(ellipse at top, #492738 0%, #201625 58%, #16101d 90%);
+}
+h1 { margin: 0; color: #f5dba1; font: 600 clamp(1.6rem, 5vw, 3.1rem)/1.15 Georgia, serif; text-align: center; }
+h2 { margin: 0; font-size: clamp(1rem, 3vw, 1.4rem); }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; width: 100%; }
+.card { position: relative; min-height: 140px; aspect-ratio: 1.55; overflow: hidden; border: 1px solid #c3986e; border-radius: 14px; background: #38273b; }
+.card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.card img:not([src]) { visibility: hidden; }
+#feature-cover { opacity: 0; transition: opacity 420ms ease; }
+.card.revealed #feature-cover { opacity: 1; }
+.card-label {
+  position: absolute; inset: auto 0 0; display: flex; align-items: center;
+  justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 24px 12px 10px;
+  background: linear-gradient(transparent, #171021 52%);
+}
+button {
+  min-height: 44px; padding: 6px 12px; border: 1px solid #dbad73; border-radius: 8px;
+  color: #fff1d7; background: #42293b; cursor: pointer; font: inherit;
+}
+button:hover:not(:disabled) { background: #613947; }
+button:disabled { cursor: default; background: #241b2d; color: #e0d0d6; border-color: #837083; }
+button:focus-visible { outline: 3px solid #fff1bd; outline-offset: 3px; }
+#lobby-status { margin: 0; text-align: center; }
+#lobby-status:empty { display: none; }
+#arcade-game { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
+@media (max-width: 520px) and (orientation: portrait) {
+  .cards { grid-template-columns: minmax(0, 1fr); max-width: 400px; }
+  .card { aspect-ratio: 1.95; }
+}
+@media (prefers-reduced-motion: reduce) { #feature-cover { transition: none; } }

@@ -27,7 +27,6 @@ export function productionBoundary(){
       export const discordTestBuild=false;
       export const discordTestMusic=()=>null;
       export const slotLobbyPath=()=>null;
-      export const canReturnToLobby=()=>false;
       export const testSessionFetch=()=>undefined;
       export const connectDiscordTestActivity=()=>{throw new Error('This build only supports the production activity.');};
     `;},

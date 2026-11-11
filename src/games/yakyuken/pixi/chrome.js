@@ -108,13 +108,14 @@ export function updateSlotHud(scene){
   scene.returnButton.visible=results;
   if(results){const back=resultLayout.secondary;scene.returnButton.resizeButton(back.width,back.height);scene.returnButton.position.set(back.x,back.y);scene.returnButton.caption.style.fontSize=back.fontSize;}
   scene.returnButton.setEnabled(results&&!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing&&!scene.entering&&!scene.wallet?.pending);
-  const next=finished?'再次挑戰':'下一局';
+  const paused=finished&&scene.wallet?.admissionOpen===false;
+  const next=finished?(paused?'暫停新場次':'再次挑戰'):'下一局';
   const retryName=scene.wallet?.pending?'重試上一拳':'重新同步';
   scene.confirmButton.setText(scene.rewardPresentation.busy?'領獎中…':confirmed?next:retrying?retryName:phase==='confirming'?'正在確認紀錄…':phase==='requesting'?'正在確認出牌…':phase==='presenting'?`${opponent}出牌中…`:'確認出牌');
   scene.confirmButton.caption.scale.set(1);
   scene.confirmButton.caption.scale.set(Math.min(1,(scene.confirmButton.buttonWidth-24)/scene.confirmButton.caption.width));
   scene.confirmButton.setName(confirmed?next:retrying?retryName:'確認出牌');
-  scene.confirmButton.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing && !scene.ending && (confirmed || retrying || phase==='selecting' && !!selected));
+  scene.confirmButton.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing && !scene.ending && (confirmed&&!paused || retrying || phase==='selecting' && !!selected));
   scene.status.text=confirmed?{win:'你贏了',loss:`${opponent}獲勝`,draw:'平手，再來一拳'}[duel.outcome]:phase==='presenting'?`${opponent}即將揭牌`:selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
   scene.statusDetail.text=confirmed?`你出${TABLE_MOVE_NAMES[selected]} · ${opponent}出${TABLE_MOVE_NAMES[duel.dealer]}`:phase==='presenting'?'好戲，即將揭曉':selected?'準備好了，就出這一張':'選擇手牌，與命運一決勝負';
   if(phase==='confirming'){

@@ -19,14 +19,14 @@ export function parsePanel(i){
   const [prefix,action,guild,owner,...args]=value.split('|');
   if(prefix!=='jc'||!id(guild)||!id(owner))throw problem(400,'請重新開啟管理面板。','PANEL_INVALID');
   if(guild!==i.guild_id||owner!==i.member.user.id)throw problem(403,'請使用自己開啟的面板。','PANEL_OWNER');
-  if((i.type===5)!==['gs','hs','vs','rs'].includes(action))throw problem(400,'請重新開啟面板。','PANEL_INVALID');
+  if((i.type===5)!==['gs','hs','vs','rs','ws'].includes(action))throw problem(400,'請重新開啟面板。','PANEL_INVALID');
   if(i.data.values&&(!Array.isArray(i.data.values)||i.data.values.length!==1||typeof i.data.values[0]!=='string'))throw problem(400,'請只選一個項目。','PANEL_INVALID');
   return {action,args};
 }
 export function deferWalletInteraction(i){
   if(i.type===2)return i.data?.type!==4&&i.data?.name!=='簽到';
   if(![3,5].includes(i.type))return false;
-  return ['p','h','hc','hd','rp','rr','ra','rf','gs','hs','vs','rs','nd'].includes(i.data?.custom_id?.split('|')[1]);
+  return ['p','h','hc','hd','rp','rr','ra','rf','gs','hs','vs','rs','nd','ac','ws'].includes(i.data?.custom_id?.split('|')[1]);
 }
 const button=(i,label,action,args=[],style=2)=>({type:2,style,label,custom_id:panelId(i,action,...args)});
 const home=i=>button(i,'返回管理面板','home');
@@ -35,9 +35,10 @@ const response=(i,env,title,description,fields=[],components=[],tone='info')=>{
   if(i.type===3&&((i.message?.flags||0)&64)){result.type=7;delete result.data.flags;}return result;
 };
 export const launchControls=i=>[row(button(i,'開啟遊戲','go',[],1))];
-export function adminPanel(i,env){return response(i,env,'戲籌管理','選擇下方功能。若要收回誤發戲籌，請先查詢該筆發放紀錄。',[],[
+export function adminPanel(i,env,arcade){return response(i,env,'戲籌管理','選擇下方功能。若要收回誤發戲籌，請先查詢該筆發放紀錄。',[],[
   row(button(i,'玩家戲籌','p'),button(i,'發放戲籌','gf',[],1),button(i,'查詢紀錄','hf')),
   row(button(i,'重設全群','reset',[],4)),
+  ...(arcade?[row(...(arcade.canOperate(i.member.user.id)?[button(i,'遊戲營運','ao')]:[]),button(i,'查詢玩家回報','wf'))]:[]),
 ]);}
 const text=(custom_id,placeholder,max_length=200,value)=>({type:4,custom_id,style:max_length===200?2:1,required:true,min_length:1,max_length,placeholder,...(value?{value}:{})});
 const label=(name,component,description)=>({type:18,label:name,component,...(description?{description}:{})});
@@ -101,9 +102,46 @@ async function history(i,store,recordField,target,category='r',days=0,before){
   if(rows.some(r=>r.kind==='reset'))components.push(row(button(i,'上次重設報表','rf')));
   return response(i,store.environment,title,description,fields,components);
 }
-export async function handlePanel(i,store,recordField,parsed,{notifyGrant,removeGrantNotice,retryGrantNotice}={}){
+const gameModes={s:{key:'slot',name:'老虎機',options:{o:['open','開放'],m:['maintenance','維護']}},
+  f:{key:'feature',name:'野球拳',options:{o:['open','開放'],h:['hidden','預告隱藏'],p:['paused','暫停新場次']}}};
+function arcadePanel(i,env,state){
+  return response(i,env,'遊戲營運','老虎機與野球拳可獨立操作。暫停時，已接受的操作仍可確認，已入場的野球拳玩家也可續局。',[
+    ...Object.values(gameModes).map(game=>({name:game.name,value:Object.values(game.options).find(([mode])=>mode===state[game.key])[1],inline:true})),
+    ...(state.updatedAt?[{name:'最近更新',value:`${time(state.updatedAt)}（台灣時間）`}]:[]),
+  ],[row(button(i,state.slot==='open'?'老虎機切維護':'開放老虎機','ap',['s',state.slot==='open'?'m':'o',state.revision]),
+    button(i,state.feature==='hidden'?'揭曉野球拳':state.feature==='open'?'暫停野球拳':'重新開放野球拳','ap',['f',state.feature==='open'?'p':'o',state.revision],1)),row(home(i))]);
+}
+export async function handlePanel(i,store,recordField,parsed,{notifyGrant,removeGrantNotice,retryGrantNotice,arcade}={}){
   const {action,args}=parsed,env=store.environment,guild=i.guild_id,actor=i.member.user.id;
-  if(action==='home')return adminPanel(i,env);
+  if(action==='home')return adminPanel(i,env,arcade);
+  if(['ao','ap','ac'].includes(action)){
+    if(!arcade?.canOperate(actor))throw problem(403,'只有指定的遊戲營運管理員可以操作。','ARCADE_OPERATOR');
+    if(action==='ao')return arcadePanel(i,env,arcade.read());
+    const [gameCode,modeCode,revision,confirmation]=args;
+    const game=Object.hasOwn(gameModes,gameCode)?gameModes[gameCode]:null;
+    const choice=game&&Object.hasOwn(game.options,modeCode)?game.options[modeCode]:null;
+    if(!choice||modeCode==='h'||!/^\d+$/.test(revision??''))throw problem(400,'請重新選擇開關。','ARCADE_MODE');
+    if(action==='ap'){
+      const state=arcade.read();
+      if(Number(revision)!==state.revision)throw problem(409,'開關已更新，請重新開啟遊戲營運面板。','ARCADE_REVISION');
+      const reveal=gameCode==='f'&&state.feature==='hidden'&&modeCode==='o';
+      return response(i,env,reveal?'揭曉野球拳':`${game.name}切換確認`,reveal?'確認後，正式玩家會看到野球拳名稱與完整圖片，並可入場。':`確認將${game.name}切換為「${choice[1]}」。`,[],[
+        row(button(i,reveal?'確認揭曉':'確認切換','ac',[gameCode,modeCode,state.revision,request(i)],4),button(i,'取消','ao')),
+      ]);
+    }
+    fresh(confirmation);
+    return arcadePanel(i,env,await arcade.change(actor,game.key,choice[0],Number(revision)));
+  }
+  if(['wf','ws'].includes(action)){
+    if(!arcade)throw problem(404,'此環境未開放查詢。','SUPPORT_DISABLED');
+    if(action==='wf')return modal(i,'查詢玩家回報','ws',[],[userSelect(),label('玩家提供的回報碼',text('code','S- 或 D- 開頭',82))]);
+    const f=inputs(i),target=f.member(),code=/^([SD])-([-a-zA-Z0-9]{16,80})$/.exec((f.one('code')||'').trim());
+    if(!code)throw problem(400,'回報碼格式有誤。','SUPPORT_INPUT');
+    const found=await store.findWager(guild,target,code[1]==='S'?'spin':'duel',code[2]);
+    return response(i,env,'玩家回報查詢',found.status==='committed'?
+      `已確認 · 紀錄 ${esc(found.recordCode)}\n${time(found.time)}（台灣時間）\n${num(found.before)} → ${num(found.after)} 戲籌`:
+      '目前沒有查到這筆原請求的入帳結果。請核對玩家、回報碼及發生時間。若玩家仍在原畫面，請先用原操作確認。',[],[row(home(i))]);
+  }
   if(action==='p'){
     const [cursor='']=args;
     const page=await store.playerWallets(guild,{after:cursor});

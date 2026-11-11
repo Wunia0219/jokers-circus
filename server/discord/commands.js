@@ -44,7 +44,7 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
     if(!(permissions&8n)&&!interaction.member.roles?.some(id=>adminRoles.includes(id)))throw problem(403,'只有伺服器管理員或指定的戲籌管理身分組可以操作。','COMMAND_ADMIN');
     if(panel)return await handlePanel(interaction,store,recordField,panel,effects);
     const sub=interaction.data.options?.[0];
-    if(!sub)return adminPanel(interaction,store.environment);
+    if(!sub)return adminPanel(interaction,store.environment,effects.arcade);
     const args=Object.fromEntries((sub?.options||[]).map(option=>[option.name,option.value]));
     if(sub?.name==='玩家戲籌'){
       const page=await store.playerWallets(guild,{after:args['起始玩家']??''});

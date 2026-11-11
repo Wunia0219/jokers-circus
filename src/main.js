@@ -28,8 +28,9 @@ import { installResponsiveLayout } from './ui/shared/responsive-layout.js';
 import { createWalletClient } from './platform/wallet-client.js';
 import { canEnterGame, readGameEntry } from './platform/game-entry.js';
 import {createCasinoPresence} from './platform/casino-presence.js';
-import {slotLobbyPath,canReturnToLobby} from './platform/game-navigation.js';
+import {slotLobbyPath} from './platform/game-navigation.js';
 import {fadeToLobby} from './platform/lobby-transition.js';
+import {arcadeHost,ARCADE_SLOT_PATH,canReturnToLobby} from './platform/arcade-session.js';
 import { BETS, SYMBOL_NAMES, MODEL_VERSION, drawStops, restoredStops, freshState, readState, createRound } from './game/index.js';
 
 const $ = s => document.querySelector(s);
@@ -65,7 +66,8 @@ try { state=readState(localStorage.getItem(KEY)); } catch { state=freshState();s
 let bet=100, busy=false, presenting=false, ready=false, leavingLobby=false, countAnimation=0, payoutAnimation=0, celebrationTimer=0;
 const loopbackWalletTest=location.protocol==='http:'&&location.hostname==='127.0.0.1'&&
   new URLSearchParams(location.search).get('wallet')==='local';
-const entryEnabled=import.meta.env.PROD&&!discordTestBuild&&!loopbackWalletTest&&
+const arcade=location.pathname===ARCADE_SLOT_PATH?arcadeHost():null;
+const entryEnabled=import.meta.env.PROD&&!arcade&&!discordTestBuild&&!loopbackWalletTest&&
   import.meta.env.VITE_DISCORD_WALLET_ENABLED==='true';
 let entryClosing=false, maintenanceShown=false, entryCheck=null, activityIdentity, casinoPresence;
 const activityMusic=discordTestBuild?discordTestMusic():null;
@@ -89,7 +91,7 @@ const renderSpinButton=bindSpinButton($('#spin'),controls);
 const motion=matchMedia('(prefers-reduced-motion: reduce)');scene.reduced=motion.matches;motion.addEventListener('change',()=>scene.reduced=motion.matches);
 const signed=n=>(n>0?'+':'')+fmt(n);
 function save(next) { if(walletClient){if((next.revision||0)>=(state.revision||0))state=next;return;}state=next;try{localStorage.setItem(KEY,JSON.stringify(state));}catch{storageAvailable=false;} }
-const lobbyPath=slotLobbyPath(window.location);
+const lobbyPath=arcade?'/':slotLobbyPath(window.location);
 const playerBar=createPlayerBar({icon,onCheckin:showCheckin,onHistory:showHistory,onRules:showRules,onSound:toggleSound,onMusic:toggleMusic,onLobby:lobbyPath?returnToLobby:undefined});
 $('#player-header').append(playerBar.element);
 function renderAudio(){
@@ -115,13 +117,16 @@ function updateLobbyButton(){
 }
 function returnToLobby(){
   if(leavingLobby || !lobbyPath || !canReturnToLobby({ready,busy,claiming,pending:walletClient?.hasPending()}))return;
-  leavingLobby=true;controls.stopAuto();void fadeToLobby($('#app'),lobbyPath);
+  leavingLobby=true;controls.stopAuto();
+  if(arcade)arcade.back(window);else void fadeToLobby($('#app'),lobbyPath);
 }
 const {show:notifyPlayer}=createPlayerToast($('#player-toast'));
 function showPlayerError(error,context='game'){
   const copy=playerError(error,{context,canClaim:!!walletClient&&!state.claimed});
   if(error?.status===401){ready=false;setBusy(false);}
   const body=document.createElement('div'),message=document.createElement('p');message.textContent=copy.message;body.append(message);
+  const supportCode=context==='game'?walletClient?.supportCode():null;
+  if(supportCode){const code=document.createElement('p');code.textContent='回報碼 '+supportCode;code.style.overflowWrap='anywhere';body.append(code);}
   if(copy.reconnect){const retry=document.createElement('button');retry.className='notice-action';retry.textContent='重新開啟遊戲';retry.addEventListener('click',()=>location.reload());body.append(retry);}
   openDialog(copy.title,body);
 }
@@ -405,7 +410,7 @@ async function startGame() {
     startGameAudio();
   }
   let stageProgress, showStageProgress=false,casinoSession;
-  const activityReady=discordTestBuild?connectDiscordTestActivity():
+  const activityReady=arcade?Promise.resolve(arcade.connect(window)):discordTestBuild?connectDiscordTestActivity():
     connectLocalWallet(window.location).then(activity=>activity||previewActivity||connectActivity());
   const stageReady=Promise.all([scene.init($('#canvas-host'),(...progress)=>{
     stageProgress=progress;
@@ -418,7 +423,7 @@ async function startGame() {
     activityIdentity=activity;
     activityMode=activity.mode;
     activityUser=activity.user || null;
-    if(activity.session){walletClient=createWalletClient(activity.session,discordTestBuild?testSessionFetch(activity):undefined);state=(await walletClient.state()).state;renderState();}
+    if(activity.session){walletClient=createWalletClient(activity.session,arcade?.fetch??(discordTestBuild?testSessionFetch(activity):undefined));state=(await walletClient.state()).state;renderState();}
     if(activityMode==='discord'&&activity.session?.casinoNotifications)casinoSession=activity.session;
     if(activityMode==='discord'&&import.meta.env.VITE_DISCORD_WALLET_ENABLED==='true'&&!walletClient)throw new Error('帳號錢包尚未連接，請重新開啟活動。');
     renderPlayer();

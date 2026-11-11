@@ -16,6 +16,7 @@ export function checkinClaimFeedback({entry,duplicate,state,wallet}){
 // Display a useful next step, never an unfiltered server/SDK exception.
 export function playerError(error, { context = 'game', canClaim = false } = {}) {
   const message = String(error?.message || '');
+  if (error?.code === 'SLOT_MAINTENANCE') return { title: '老虎機維護中', message: '目前暫停新回合。你可以回到遊戲大廳，或稍後再試。' };
   if (error?.status === 401) return { title: '重新連線就能繼續', message: '登入已過期，請重新開啟遊戲。', reconnect: true };
   if (error?.status === 503 && error?.code === 'FIRESTORE_BUDGET') return { title: '遊戲暫時休息中', message: '服務使用量已達保護上限，暫時無法操作戲籌。請等候管理員處理，重新開啟遊戲無法解除。' };
   if (/戲籌不足|戲籌不夠/.test(message)) return { title: '戲籌不夠這次下注', message: canClaim ? '可先領今日簽到，或調低下注額。' : '請調低下注額，或明天簽到後再玩。' };

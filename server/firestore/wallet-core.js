@@ -9,6 +9,7 @@ import {firestoreWalletHistory} from './wallet-history.js';
 import {unpack,zeroSummary,ledgerCategory} from './documents.js';
 import {INITIAL_BALANCE,openingKind,openingReason,isOpeningKind} from '../wallet/wallet-opening.js';
 import {nextRecordCode,validRecordCode} from './record-codes.js';
+import {DUEL_LEDGER_KIND,duelFingerprint,duelIntent,duelKey,duelView,settleDuel} from '../wallet/duel-settlement.js';
 
 const maxBalance=1_000_000_000_000,maxDocument=512*1024;
 const digest=value=>createHash('sha256').update(value).digest('hex');
@@ -164,13 +165,14 @@ export class FirestoreWalletCore {
     const task=()=>this.settle(guild,user,operation,options);
     return this.settlementQueue?this.settlementQueue.run(task):task();
   }
-  async settle(guild,user,operation,{compact=false,profileName}={}){
+  async settle(guild,user,operation,{compact=false,profileName,duel=false,day:requestedDay}={}){
     this.validate(guild,user);if(this.closed)throw this.safe({});
     const ref=this.walletRef(guild,user);
     try{
       const result=await this.db.runTransaction(async tx=>{
         const now=this.clock(),day=taipeiDay(now),kind=operation.kind;
-        const key=kind==='checkin'?`daily:${user}:${day}`:kind==='spin'?`spin:${user}:${operation.requestId}`:
+        if(kind==='checkin'&&requestedDay!==undefined&&requestedDay!==day)throw problem(409,'已跨日，請確認新的簽到日期。');
+        const key=kind==='checkin'?`daily:${user}:${day}`:kind==='spin'?`spin:${user}:${operation.requestId}`:kind===DUEL_LEDGER_KIND?duelKey(user,operation.requestId):
           ['grant','reversal','fixture'].includes(kind)?`admin:${operation.requestId}`:null;
         const opRef=key?this.root.collection('operations').doc(digest(guild+'\0'+key)):null;
         const dayRef=ref.collection('days').doc(day),needsDay=kind==='spin'||kind==='checkin';
@@ -194,6 +196,7 @@ export class FirestoreWalletCore {
           if(reversed)throw problem(409,'這筆發放已更正過。','GRANT_REVERSED');
         }
         if(kind==='spin'){
+          if(operation.allowSpin&&!operation.allowSpin())throw problem(409,'老虎機暫停開放新回合。','SLOT_MAINTENANCE');
           const retryAfterMs=wallet.last_spin+this.spinDelay-now;
           if(retryAfterMs>0)throw Object.assign(problem(429,'轉輪尚未就緒，請稍後再試。','SPIN_COOLDOWN'),{retryAfterMs});
           if(wallet.balance+(fresh?INITIAL_BALANCE:0)<operation.bet)throw problem(409,'戲籌不足，請降低下注、簽到或聯絡管理員。');
@@ -231,6 +234,12 @@ export class FirestoreWalletCore {
           const checkin=checkinReceipt(wallet.claimedDay,wallet.checkin,day,this.weeklyRewards),amount=checkin.rewards[checkin.cycleDay-1];
           answer={entry:credit(amount,'checkin',user,`週簽到第 ${checkin.cycleDay} 天`),checkin};wallet.claimedDay=day;wallet.checkin=checkin;
           for(const summary of [wallet.summary,daySummary]){summary.checkin.days++;summary.checkin.total+=amount;}
+        }else if(kind===DUEL_LEDGER_KIND){
+          if(operation.intent.action==='begin'&&!wallet.duel?.active&&!operation.allowNew?.())throw problem(409,'目前暫停開放新場次。','DUEL_CLOSED');
+          const transition=settleDuel(wallet.duel,operation.intent,now,operation.makePlan);
+          wallet.duel=transition.state;
+          answer={entry:credit(transition.delta,DUEL_LEDGER_KIND,user,transition.reason,operation.requestId),matchId:transition.matchId,
+            ...(transition.duel?{duel:transition.duel}:{}),...(transition.plan?{plan:transition.plan,ruleVersion:transition.ruleVersion}:{})};
         }else if(kind==='grant')answer={entry:credit(operation.amount,'grant',operation.actor,operation.reason)};
         else if(kind==='reversal')answer={entry:credit(-original.delta,'reversal',operation.actor,operation.reason,String(operation.entryId))};
         else if(kind==='fixture')answer={entry:credit(operation.balance-wallet.balance,'test_fixture',null,'本機驗收情境初始餘額')};
@@ -266,6 +275,10 @@ export class FirestoreWalletCore {
       },{maxAttempts:3});
       const settledWallet=result.wallet;
       if(settledWallet)this.cacheWallet(settledWallet);delete result.wallet;
+      if(operation.kind===DUEL_LEDGER_KIND||duel){
+        const {plan,ruleVersion,state,...receipt}=result;
+        return {...receipt,...duelView(settledWallet,state,this.environment)};
+      }
       if(!compact&&result.state)result.state=await this.completeState(guild,user,result.state);
       // Database round trips have already consumed part of the two-second
       // interval. Do not make the client wait that elapsed time a second time.
@@ -276,9 +289,29 @@ export class FirestoreWalletCore {
   spin(guild,user,bet,requestId,options){
     this.validate(guild,user);if(!BETS.includes(bet))throw problem(400,'無效的下注或請求編號。');this.requestId(requestId);
     const stops=REEL_STRIPS.map(strip=>randomInt(strip.length));
-    return this.transact(guild,user,{kind:'spin',bet,requestId,fingerprint:String(bet),outcome:roundFromStops(bet,stops),roundId:randomUUID()},options);
+    return this.transact(guild,user,{kind:'spin',bet,requestId,allowSpin:options?.allowSpin,fingerprint:String(bet),outcome:roundFromStops(bet,stops),roundId:randomUUID()},options);
   }
   checkin(guild,user,options){return this.transact(guild,user,{kind:'checkin',fingerprint:'daily'},options);}
+  async duelState(guild,user){
+    if(this.schemaVersion!==2)throw problem(503,'遊戲帳本尚未就緒。','DUEL_SCHEMA');
+    await this.readState(guild,user);
+    const wallet=this.cache.get(`${guild}:${user}`)?.wallet??await this.read(this.walletRef(guild,user));
+    return duelView(wallet,this.snapshot(wallet),this.environment);
+  }
+  duelAction(guild,user,action,input,{allowNew,makePlan}={}){
+    if(this.schemaVersion!==2)throw problem(503,'遊戲帳本尚未就緒。','DUEL_SCHEMA');
+    const intent=duelIntent(action,input);
+    return this.transact(guild,user,{kind:DUEL_LEDGER_KIND,intent,allowNew,makePlan,requestId:intent.requestId,fingerprint:duelFingerprint(intent)},{compact:true});
+  }
+  async findWager(guild,user,kind,requestId){
+    this.validate(guild,user);this.requestId(requestId);
+    if(!['spin','duel'].includes(kind))throw problem(400,'遊戲類型有誤。','SUPPORT_INPUT');
+    const receipt=await this.read(this.root.collection('operations').doc(digest(guild+'\0'+`${kind}:${user}:${requestId}`)));
+    if(!receipt)return {status:'unconfirmed'};
+    const {entry,round,matchId}=receipt.result;
+    return {status:'committed',...(round?{recordCode:round.recordCode??round.id,time:round.time,before:round.before,after:round.after,delta:round.net}:
+      {recordCode:String(entry.id),time:entry.time,before:entry.before,after:entry.after,delta:entry.delta,matchId})};
+  }
   grant(guild,actor,user,amount,reason,requestId){
     this.validate(guild,actor);this.validate(guild,user);this.reason(reason);this.requestId(requestId);
     if(!Number.isSafeInteger(amount)||amount<=0||amount>this.grantMax)throw problem(400,`單次發放限 1～${this.grantMax} 戲籌。`,'GRANT_AMOUNT');

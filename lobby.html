@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#211426">
+    <title>Joker’s Circus · 遊戲大廳</title>
+  </head>
+  <body>
+    <main id="lobby" class="lobby">
+      <h1>Joker’s Circus</h1>
+      <div class="cards">
+        <article class="card">
+          <img id="slot-cover" alt="">
+          <div class="card-label"><h2>老虎機</h2><button id="slot" disabled>進入遊戲</button></div>
+        </article>
+        <article class="card">
+          <img id="teaser-cover" alt="">
+          <img id="feature-cover" alt="">
+          <div class="card-label">
+            <h2 id="feature-title" aria-live="polite">即將揭曉</h2>
+            <button id="feature" hidden>進入遊戲</button>
+          </div>
+        </article>
+      </div>
+      <p id="lobby-status" role="status">正在連線…</p>
+      <button id="lobby-retry" hidden>重新連線</button>
+    </main>
+    <iframe id="arcade-game" title="Joker’s Circus 遊戲" hidden></iframe>
+    <script type="module" src="/src/platform/arcade-lobby.js"></script>
+  </body>
+</html>

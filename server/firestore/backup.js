@@ -125,8 +125,8 @@ function operationKey(entry,document){
   }
   // Pre-upgrade spins and claims have recoverable keys. Administrative IDs require
   // a verified migration baseline or the new ledger link; never drop deduplication.
-  if(entry.kind==='spin'||entry.kind==='checkin'){
-    const expected=entry.kind==='spin'?`spin:${entry.user}:${entry.reference}`:`daily:${entry.user}:${entry.day}`;
+  if(['spin','checkin','duel'].includes(entry.kind)){
+    const expected=entry.kind==='checkin'?`daily:${entry.user}:${entry.day}`:`${entry.kind}:${entry.user}:${entry.reference}`;
     if(linked&&linked!==expected)throw fail('BACKUP_OPERATION_LINK_MISMATCH');
     return expected;
   }

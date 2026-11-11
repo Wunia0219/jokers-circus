@@ -7,6 +7,7 @@ import {resetMarker,resetEntryIds,resetIndex} from '../wallet/wallet-admin.js';
 import {highlightEventPath,highlightEventIndex,assertHighlightEvent,assertHighlightBoard,highlightEvent} from './highlight-data.js';
 import {receiptCode,validRecordCode} from './record-codes.js';
 import {zeroSummary as blank,ledgerCategory} from './documents.js';
+import {DUEL_LEDGER_KIND,replayDuel} from '../wallet/duel-settlement.js';
 
 const digest=value=>createHash('sha256').update(value).digest('hex');
 
@@ -19,7 +20,7 @@ export function firestoreImportPlan(filename,environment,{version=1}={}){
   const put=(path,data,index={})=>{if(documents.has(path))throw new Error('Duplicate import target');documents.set(path,{path,data,index});};
   try{
     db.exec('BEGIN');
-    const operationLinks=new Map(),spinRequests=new Map(),roundSequences=new Map(),resetLinks=new Map(),lastRounds=new Map(),codes=new Map(),referenceCodes=new Map(),seenCodes=new Set();
+    const operationLinks=new Map(),spinRequests=new Map(),roundSequences=new Map(),resetLinks=new Map(),lastRounds=new Map(),codes=new Map(),referenceCodes=new Map(),seenCodes=new Set(),duelReceipts=new Map();
     for(const row of db.prepare('SELECT * FROM operations').iterate()){
       const result=JSON.parse(row.result);
       const code=receiptCode(result);
@@ -30,6 +31,7 @@ export function firestoreImportPlan(filename,environment,{version=1}={}){
       }
       if(row.key.startsWith('reset:'))resetLinks.set(resetEntryIds(result)[0],row.key);
       if(result.entry)operationLinks.set(result.entry.id,row.key);
+      if(result.entry?.kind===DUEL_LEDGER_KIND)duelReceipts.set(result.entry.id,row);
       if(result.referenceCode)referenceCodes.set(result.entry.id,result.referenceCode);
       if(result.round)spinRequests.set(row.guild+'\0'+row.key,result.round.id);
     }
@@ -40,6 +42,11 @@ export function firestoreImportPlan(filename,environment,{version=1}={}){
     for(const entry of db.prepare('SELECT * FROM ledger ORDER BY id').iterate()){
       nextId=Math.max(nextId,entry.id);const base=`wallets/${entry.guild}_${entry.user}`,wallet=wallets.get(base),id=String(entry.id).padStart(16,'0'),cat=ledgerCategory(entry.kind);
       wallet.revision=entry.id;
+      if(entry.kind===DUEL_LEDGER_KIND){
+        if(version!==2)throw new Error('Challenge recovery requires Firestore schema 2');
+        const operation=duelReceipts.get(entry.id);
+        wallet.duel=replayDuel(wallet.duel,operation,JSON.parse(operation.result),entry);
+      }
       if(version===1){
         for(const name of ['ledger',`entries-${cat}`,`entries-${cat}-${entry.day}`,`entries-all-${entry.day}`])put(`${base}/${name}/${id}`,entry,{id:entry.id});
         put(`ledger/${entry.id}`,entry,entry.kind==='reset'?{operationKey:resetLinks.get(entry.id)||null}:{});

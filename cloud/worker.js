@@ -18,6 +18,10 @@ import {handleFetch} from './http-bridge.js';
 import {APP_VERSION} from '../src/version.js';
 import {operationsHealth} from './operations-health.js';
 import {casinoVisitStatus} from '../server/discord/casino-visits.js';
+import {arcadeEnabled,readArcade} from './arcade-controls.js';
+import {ARCADE_STATUS,arcadeStatus,arcadeAsset,arcadeLobby} from './arcade-routes.js';
+import {duelPaths} from '../server/http/app-handler.js';
+import {duelDigest} from '../server/wallet/duel-settlement.js';
 
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const apiPaths=new Set(['/healthz','/readyz','/api/token','/api/interactions','/api/wallet','/api/spin','/api/checkin','/api/ledger','/api/rounds','/api/casino-visit']);
@@ -43,7 +47,8 @@ export class CircusProject extends DurableObject {
       try{const operation=this.opsTail.then(()=>this.admin(url.pathname,request));this.opsTail=operation.catch(()=>{});return await operation;}catch{return json({error:'Cloud operation refused; inspect status before retrying'},409);}
     }
     if(url.pathname==='/healthz')return json({ok:true,version:APP_VERSION,model:MODEL_VERSION});
-    if(!apiPaths.has(url.pathname))return json({error:'找不到此功能。'},404);
+    if(url.pathname===ARCADE_STATUS&&request.method==='GET'&&arcadeEnabled(this.env))return json(arcadeStatus(this.state));
+    if(!apiPaths.has(url.pathname)&&!(arcadeEnabled(this.env)&&duelPaths.has(url.pathname)&&arcadeStatus(this.state).feature))return json({error:'找不到此功能。'},404);
     if(!this.ready())return json({error:'帳號戲籌正在維護，請稍後再試。'},503);
     const origin=request.headers.get('origin');if(origin&&origin!==`https://${this.env.DISCORD_CLIENT_ID}.discordsays.com`)return json({error:'不允許的來源。'},403);
     const run=async()=>{try{const rt=await this.runtime();if(!this.ready())return json({error:'服務正在維護。'},503);return await handleFetch(rt.handler,request);}catch(error){return json({error:'暫時無法完成請求，請沿用原請求重試。',...(error?.code==='FIRESTORE_BUDGET'?{code:error.code}:{})},503);}};
@@ -56,6 +61,7 @@ export class CircusProject extends DurableObject {
       if(quota)quota.scopes=Object.fromEntries(['maintenance','highlights'].map(scope=>[scope,{used:this.quota.totals(scope),limits:this.quota.identity().limits[scope],...(quota.enforcement?{enforcement:quota.enforcement}: {})}]));
       const backup=this.state.get('backup-status'),manifest=this.state.get('backup:'+this.state.get('backup-latest'));
       const status={version:APP_VERSION,cloudPlan:this.env.CLOUD_PLAN,mode:this.state.get('mode')||'unseeded',source:this.state.get('source'),backup:backup?{...backup,...(Number.isSafeInteger(manifest?.bytes)?{bytes:manifest.bytes,limitBytes:manifest.limitBytes,parts:manifest.parts,limitParts:manifest.format===2?BACKUP_MAX_PARTS:200}: {})}:null,alarm:this.state.get('alarm-status'),quota};
+      if(arcadeEnabled(this.env))status.arcade=readArcade(this.state);
       const job=this.state.get('backup-job'),retry=this.state.get('backup-retry');
       if(job)status.backupProgress={phase:job.phase,cursor:job.cursor,target:job.target,startedAt:job.startedAt};
       if(retry)status.backupRetry=retry;
@@ -101,7 +107,8 @@ export class CircusProject extends DurableObject {
       if(input.writersStopped!==true||!planVerified)throw new Error('Cutover prerequisites');
       const r=await this.runtime(),snapshot=r.vault.load(this.state.get('backup-latest')),meta=await r.store.read(r.store.meta);r.store.checkMeta(meta);
       if(meta.nextId!==snapshot.revision||snapshot.upstreamImportFingerprint!==(meta.importFingerprint??null))throw new Error('Source moved since backup');
-      for(const w of snapshot.tables.wallets){const actual=await r.store.read(r.store.walletRef(w.guild,w.user));if(!actual||actual.balance!==w.balance||Number(actual.milestone)!==w.milestone||actual.last_spin!==w.last_spin)throw new Error('Wallet mismatch');}
+      for(const w of snapshot.tables.wallets){const actual=await r.store.read(r.store.walletRef(w.guild,w.user));if(!actual||actual.balance!==w.balance||Number(actual.milestone)!==w.milestone||actual.last_spin!==w.last_spin||
+        (snapshot.readTime||w.duelDigest!==undefined)&&duelDigest(actual.duel)!==w.duelDigest)throw new Error('Wallet mismatch');}
       r.store.invalidateCache();this.state.set('mode','active');await this.schedule(1000);return json({active:true});
     }
     if(path==='/__ops/verify'){if(this.state.get('mode')!=='paused'||this.active.size)throw new Error('Paused writer required');const r=await this.runtime(),db=new FirestoreRest({...settings,credentials:JSON.parse(this.env.GOOGLE_SERVICE_ACCOUNT_JSON),fetchImpl:cloudFetch,readOnly:true}),store=new FirestoreWalletCore(settings,{db,quota:this.quota,guildIds:[...r.store.guildIds]});return json(await verifyCloudSnapshot(r.vault.load(this.state.get('backup-latest')),store));}
@@ -175,12 +182,17 @@ export class CircusProject extends DurableObject {
 
 async function routeRequest(request,env){
   const path=new URL(request.url).pathname;
+  const project=()=>{const settings=cloudIdentity(env);return env.CIRCUS_PROJECT.get(env.CIRCUS_PROJECT.idFromName(settings.projectId));};
   if(path.startsWith('/api/')||path.startsWith('/__ops/')||apiPaths.has(path)){
-    try{const settings=cloudIdentity(env);return await env.CIRCUS_PROJECT.get(env.CIRCUS_PROJECT.idFromName(settings.projectId)).fetch(request);}catch{return json({error:'服務尚未就緒。'},503);}
+    try{return await project().fetch(request);}catch{return json({error:'服務尚未就緒。'},503);}
   }
   if(!['GET','HEAD'].includes(request.method))return json({error:'不支援此操作。'},405);
+  try{const asset=await arcadeAsset(request,env,project);if(asset)return asset;}
+  catch{return json({error:'服務尚未就緒。'},503);}
   if(path.startsWith('/assets/')&&path.endsWith('.mp3'))return audioAsset(request,env.ASSETS);
   return env.ASSETS.fetch(request);
 }
 
-export default {async fetch(request,env){return secureResponse(await routeRequest(request,env));}};
+export default {async fetch(request,env){
+  return secureResponse(await routeRequest(request,env),{sameOriginFrame:arcadeLobby(new URL(request.url),env)});
+}};

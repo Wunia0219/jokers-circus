@@ -12,6 +12,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {roundFromStops} from '../src/game/index.js';
 import {QUOTA_LIMITS} from '../cloud/quota.js';
 import {APP_VERSION} from '../src/version.js';
+import {auditSnapshot} from '../cloud/snapshot.js';
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:8787');
 
 test('real workerd supplies mobile audio byte ranges even when its static asset binding returns full files',async t=>{
@@ -47,7 +48,15 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    if(u.pathname.endsWith('/messages/@original')&&request.method==='PATCH'){replies.push(await request.json());return MFResponse.json({});}
    throw new Error('Unapproved external request in test');
  }};
- if(casino)Object.assign(config.bindings,{CLOUD_PLAN:'paid',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'',DISCORD_CASINO_ENABLED:'true',DISCORD_CASINO_CHANNEL_ID:'100000000000000006',DISCORD_COMMAND_CHANNEL_IDS:'100000000000000006',DISCORD_BOT_TOKEN:'isolated-bot-token-not-real-0000000000'});
+ if(casino){
+  Object.assign(config.bindings,{CLOUD_PLAN:'paid',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'',DISCORD_CASINO_ENABLED:'true',DISCORD_CASINO_CHANNEL_ID:'100000000000000006',DISCORD_COMMAND_CHANNEL_IDS:'100000000000000006',DISCORD_BOT_TOKEN:'isolated-bot-token-not-real-0000000000',ARCADE_RELEASE_ENABLED:'true',ARCADE_OPERATOR_IDS:user});
+  const directory=join(dir,'assets');
+  mkdirSync(join(directory,'arcade','feature','assets'),{recursive:true});
+  for(const path of ['index.html','arcade/lobby.html','arcade/feature/play.html','arcade/feature/cover.webp','arcade/feature/assets/character.webp'])
+    writeFileSync(join(directory,path),'/'+path);
+  config.assets={directory,binding:'ASSETS',run_worker_first:true,routerConfig:{has_user_worker:true},
+    assetConfig:{html_handling:'none',not_found_handling:'none'}};
+ }
  const adminRole='100000000000000009';
  config.bindings[casino?'CHIP_ADMIN_ROLE_IDS':'ADMIN_ROLE_IDS']=` ${adminRole} `;
  config.bindings.FIRESTORE_ENDPOINT='https://firestore.asia-east1.rep.googleapis.com';
@@ -83,7 +92,21 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  }
  const login=await call('/api/token',{body:{code:'fixture-code',guildId:guild}});assert.equal(login.status,200,JSON.stringify(login));const token=login.data.session.token;assert.equal((await call('/api/wallet',{token,headers:{origin:'https://untrusted.invalid'}})).status,403);assert.equal((await call('/api/wallet')).status,401);
  assert.equal((await call('/api/wallet',{token})).data.state.balance,snapshot.tables.wallets[0].balance);
+ if(casino){
+   assert.deepEqual((await call('/api/arcade')).data,{slot:'open',revision:0});
+   assert.equal((await call('/api/feature/state',{token})).status,404);
+   assert.equal((await call('/api/feature/begin',{token,body:{characterId:'dealer',requestId:randomUUID()}})).status,404);
+   for(const path of ['/arcade/feature/play.html','/arcade/%66eature/cover.webp','/arcade/feature/assets/character.webp']){
+     const hidden=await mf.dispatchFetch('http://localhost'+path);assert.equal(hidden.status,404,path);
+   }
+   const lobby=await mf.dispatchFetch('http://localhost/?frame_id=fixture');
+   assert.equal(await lobby.text(),'/arcade/lobby.html');
+   assert.match(lobby.headers.get('content-security-policy'),/frame-src 'self'/);
+   assert.equal(await (await mf.dispatchFetch('http://localhost/arcade/slot')).text(),'/index.html');
+ }
  const visitId=randomUUID();
+ let arcadeReplies=0;
+ const beginDuel={characterId:'dealer',requestId:randomUUID()},winningHand={matchId:beginDuel.requestId,move:'rock',handIndex:1,requestId:randomUUID()};
  if(casino){
    assert.equal(login.data.session.casinoNotifications,true);
    assert.equal((await call('/api/casino-visit',{token,body:{action:'enter',instanceId:visitId}})).data.active,true);
@@ -123,11 +146,65 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   assert.deepEqual(await sendGrant(),{type:5,data:{flags:64}});
   for(let i=0;i<150&&!replies.some(p=>p.embeds?.[0]?.title==='這筆已經發放過');i++)await delay(100);
   assert.ok(replies.some(p=>p.embeds?.[0]?.title==='這筆已經發放過'));assert.equal(notices().length,1);
+  const signed=async interaction=>{
+   const body=JSON.stringify(interaction),ts=String(Math.floor(Date.now()/1000));
+   return (await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',headers:{'x-signature-timestamp':ts,'x-signature-ed25519':sign(null,Buffer.from(ts+body),ed.privateKey).toString('hex'),'Content-Type':'application/json'},body})).json();
+  };
+  const component=custom_id=>({...interaction,type:3,id:String((BigInt(Date.now())-1420070400000n)<<22n),
+    message:{flags:64},member:{...interaction.member,roles:[adminRole]},data:{custom_id}});
+  const panelPrefix=`jc|`,panelSuffix=`|${guild}|${user}`;
+  const click=(action,args='')=>signed(component(panelPrefix+action+panelSuffix+args));
+  const change=async(game,mode,revision)=>{
+    const confirm=await click('ap',`|${game}|${mode}|${revision}`);
+    const id=confirm.data.components[0].components[0].custom_id;
+    const before=replies.length;
+    assert.deepEqual(await signed(component(id)),{type:6});
+    for(let i=0;i<100&&replies.length===before;i++)await delay(30);
+    assert.equal(replies.length,before+1);
+    assert.equal(replies.at(-1).embeds[0].title,'遊戲營運');
+    arcadeReplies++;
+  };
+  await change('f','o',0);
+  const stale=await click('ap','|f|o|0');
+  assert.equal(stale.data.embeds[0].title,'營運狀態已更新');
+  assert.equal((await call('/api/feature/state')).status,401);
+  assert.equal(await (await mf.dispatchFetch('http://localhost/arcade/feature/cover.webp')).text(),'/arcade/feature/cover.webp');
+  const original=await sdk.duelAction(guild,user,'begin',beginDuel,{allowNew:()=>true,makePlan:()=>['win','win']});
+  const replay=await call('/api/feature/begin',{token,body:beginDuel});
+  assert.equal(replay.data.duplicate,true);assert.deepEqual(replay.data.entry,original.entry);assert.equal(replay.data.entry.delta,-1000);
+  assert.deepEqual(replay.data.nextHand,{matchId:beginDuel.requestId,index:0});
+  assert.equal(replay.data.plan,undefined);
+  assert.equal((await call('/api/wallet',{token})).data.state.balance,replay.data.wallet.balance);
+  await change('f','p',1);
+  await change('s','m',2);
+  await mf.dispose();mf=new Miniflare(convertV4MiniflareOptions(config));
+  const persisted=(await call('/api/arcade')).data;
+  assert.equal(persisted.feature.mode,'paused');assert.equal(persisted.slot,'maintenance');
+  assert.equal((await call('/api/spin',{token,body:{bet:20,requestId:randomUUID()}})).data.code,'SLOT_MAINTENANCE');
+  assert.equal((await call('/api/spin',{token,body:{bet:20,requestId:'runtime-new-spin-request-0002'}})).data.duplicate,true);
+  const first={...winningHand,handIndex:0,requestId:randomUUID()};
+  assert.equal((await call('/api/feature/hand',{token,body:first})).data.entry.delta,0);
+  assert.equal((await call('/api/feature/hand',{token,body:{...first,requestId:randomUUID()}})).data.code,'DUEL_HAND');
+  const paid=await call('/api/feature/hand',{token,body:winningHand});
+  assert.equal(paid.data.entry.delta,2500);
+  assert.deepEqual((await call('/api/feature/hand',{token,body:winningHand})).data.entry,paid.data.entry);
+  assert.equal((await call('/api/feature/begin',{token,body:{...beginDuel,requestId:randomUUID()}})).data.code,'DUEL_CLOSED');
+  assert.equal((await call('/api/wallet',{token})).data.state.balance,paid.data.wallet.balance);
+  assert.equal((await call('/api/feature/checkin',{token,body:{day:new Date(Date.now()+8*3600000).toISOString().slice(0,10)}})).data.duplicate,true);
+  const query=component(panelPrefix+'ws'+panelSuffix);
+  const before=replies.length;
+  assert.deepEqual(await signed({...query,type:5,data:{...query.data,components:[
+    {type:18,component:{type:5,custom_id:'member',values:[user],resolved:{members:{[user]:{}},users:{[user]:{id:user,bot:false}}}}},
+    {type:18,component:{type:4,custom_id:'code',value:'D-'+winningHand.requestId}},
+  ]}}),{type:5,data:{flags:64}});
+  for(let i=0;i<100&&replies.length===before;i++)await delay(30);
+  assert.match(replies.at(-1).embeds[0].description,/已確認/);
+  arcadeReplies++;
  }
  const resetId='100000000000000008',resetInteraction={...interaction,id:resetId,member:{...interaction.member,permissions:'0',roles:[adminRole]},data:{name:'戲籌管理',options:[{name:'重設戲籌',options:[{name:'確認',value:true}]}]}};
  const resetRaw=JSON.stringify(resetInteraction),resetSignature=sign(null,Buffer.from(timestamp+resetRaw),ed.privateKey).toString('hex');
  const resetReply=await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',headers:{'x-signature-timestamp':timestamp,'x-signature-ed25519':resetSignature,'Content-Type':'application/json'},body:resetRaw});assert.deepEqual(await resetReply.json(),{type:5,data:{flags:64}});
- assert.equal((await call('/__ops/pause',{adminAuth:true,body:{}})).status,200);assert.equal(replies.length,casino?4:2);assert.equal(replies.at(-1).embeds[0].title,'戲籌已重設');assert.match(replies.at(-1).embeds[0].fields[0].value,new RegExp((forced.state.balance+(casino?500:0)).toLocaleString('en-US')+' → 10,000'));assert.equal((await call('/api/checkin',{token,body:{}})).status,503);
+ assert.equal((await call('/__ops/pause',{adminAuth:true,body:{}})).status,200);assert.equal(replies.length,(casino?4:2)+arcadeReplies);assert.equal(replies.at(-1).embeds[0].title,'戲籌已重設');assert.match(replies.at(-1).embeds[0].fields[0].value,new RegExp((forced.state.balance+(casino?2000:0)).toLocaleString('en-US')+' → 10,000'));assert.equal((await call('/api/checkin',{token,body:{}})).status,503);
  for(let i=0;i<20;i++){const b=await call('/__ops/backup',{adminAuth:true,body:{}});assert.equal(b.status,200,JSON.stringify(b));if(i===0)await sdk.grant(guild,user,user,7,'concurrent readTime fixture',randomUUID());if(b.data.complete)break;if(i===19)assert.fail('Backup did not finish');}
  assert.equal((await call('/__ops/export',{adminAuth:true,body:{}})).status,409,'backup readTime excludes later progress, so export is refused');
  for(let i=0;i<20;i++){const b=await call('/__ops/backup',{adminAuth:true,body:{}});assert.equal(b.status,200);if(b.data.complete)break;if(i===19)assert.fail('Latest backup did not finish');}
@@ -162,8 +239,16 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  assert.deepEqual(decodeCloudArchive({manifest:m,chunks:download},key,'test'),decodeCloudArchive(archive.data.archive,key,'test'));
  assert.equal((await call('/__ops/archive-page',{adminAuth:true,body:{generation:m.generation,start:-1,limit:2}})).status,409);
  const released=await call('/__ops/export' ,{adminAuth:true,body:{}});assert.equal(released.status,200,JSON.stringify(released));assert.equal(released.data.released,true);assert.deepEqual((await call('/__ops/export',{adminAuth:true,body:{}})).data,released.data);assert.equal((await call('/__ops/activate',{adminAuth:true,body:{writersStopped:true,freePlanVerified:true}})).status,409);
- const restored=decodeCloudArchive(released.data.archive,key,'test');assert.equal(restored.tables.rounds.length,3);assert.equal(restored.tables.ledger.length,snapshot.tables.ledger.length+(casino?6:5));assert.equal(restored.tables.highlight_events.find(e=>e.round_id===forced.round.id).status,'sent');assert.equal(restored.tables.highlight_boards[0].message_id,'100000000000000007');assert.equal(restoreCloudSnapshot(restored,join(dir,'cloud-restored.sqlite'),'test').ok,true);
+ const restored=decodeCloudArchive(released.data.archive,key,'test');assert.equal(restored.tables.rounds.length,3);assert.equal(restored.tables.ledger.length,snapshot.tables.ledger.length+(casino?9:5));assert.equal(restored.tables.highlight_events.find(e=>e.round_id===forced.round.id).status,'sent');assert.equal(restored.tables.highlight_boards[0].message_id,'100000000000000007');assert.equal(restoreCloudSnapshot(restored,join(dir,'cloud-restored.sqlite'),'test').ok,true);
  const rollbackSettings={...settings,namespace:'rollback-'+randomUUID()+'-test'},rollback=new FirestoreWalletStore(rollbackSettings,{guildIds:[guild]});t.after(()=>rollback.close());await importFirestore(rollback,firestoreImportPlan(join(dir,'cloud-restored.sqlite'),'test',{version:2}));assert.equal((await rollback.state(guild,user)).balance,10007);assert.equal((await rollback.spin(guild,user,20,'runtime-new-spin-request-0002')).duplicate,true);
  assert.equal((await rollback.resetWallets(guild,user,resetId)).duplicate,true);assert.equal((await rollback.state(guild,user)).balance,10007);
+ if(casino){
+  const damaged=structuredClone(restored);
+  delete damaged.tables.wallets[0].duelDigest;
+  assert.throws(()=>auditSnapshot(damaged,'test'),/Challenge wallet mismatch/);
+  const replay=await rollback.duelAction(guild,user,'hand',winningHand);
+  assert.equal(replay.duplicate,true);assert.equal(replay.entry.delta,2500);
+  assert.equal(replay.wallet.unlocks.dealer,2);assert.equal(replay.wallet.balance,10007);
+ }
  assert.ok(released.data.quota.scopes.global.usage.reduce((n,x)=>n+x.reads,0)>37);writeFileSync('test-results/cloud-runtime-report.json',JSON.stringify({emulatorOnly:true,realWorkerd:true,persistentSessions:true,originalQuotaCarried:true,cloudBackupRestored:true,newProgressSurvivesRollback:true,privateCommandReply:true,alarmRecoversOutbox:true,backupResumesAfterRestart:true,consistentReadTime:true,staleExportRefused:true,actualCloudDeployment:false},null,2));
 });
