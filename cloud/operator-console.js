@@ -1,5 +1,5 @@
 import {createHash,timingSafeEqual} from 'node:crypto';
-import {arcadeEnabled,changeArcade,readArcade} from './arcade-controls.js';
+import {arcadeEnabled,changeArcade,operatorEnabled,readArcade} from './arcade-controls.js';
 import {walletSettings} from '../server/wallet/settings.js';
 import {problem} from '../server/wallet/wallet-common.js';
 import {securityHeaders} from '../server/http/security-headers.js';
@@ -9,17 +9,10 @@ import page from './operator-page.js';
 
 export const operatorPage='/operator';
 export const operatorApi='/__operator/';
-const tokenPattern=/^[a-f0-9]{64}$/i;
 const script=page.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n?/g,'\n');
 const scriptHash=createHash('sha256').update(script).digest('base64');
 const responseHeaders={...securityHeaders,'Cache-Control':'no-store'};
 const json=(value,status=200)=>Response.json(value,{status,headers:responseHeaders});
-
-export function operatorEnabled(env){
-  if(!arcadeEnabled(env)||typeof env.ARCADE_CONSOLE_TOKEN!=='string'||!tokenPattern.test(env.ARCADE_CONSOLE_TOKEN))return false;
-  const key=env.ARCADE_CONSOLE_TOKEN.toLowerCase();
-  return ![env.CLOUD_ADMIN_TOKEN,env.CLOUD_MONITOR_TOKEN].some(value=>typeof value==='string'&&value.toLowerCase()===key);
-}
 
 export function serveOperator(request,env){
   if(!operatorEnabled(env))return json({error:'找不到此頁面。'},404);
@@ -46,7 +39,7 @@ function status(project){
   const job=project.state.get('backup-job');
   return {
     environment:project.env.APP_ENV,ready:project.ready(),mode:project.state.get('mode')??'unseeded',
-    entry:{slot,feature,featureTitle:'野球拳',revision,updatedAt},guilds:walletSettings(project.env,{cloud:true}).guildIds,
+    entry:{slot,revision,updatedAt,...(arcadeEnabled(project.env)?{feature,featureTitle:'野球拳'}:{})},guilds:walletSettings(project.env,{cloud:true}).guildIds,
     backup:{at:backup?.ok?backup.at:null,running:!!job,retryAt:project.state.get('backup-retry')?.nextAttempt??null},
   };
 }
@@ -92,7 +85,7 @@ export async function handleOperator(project,request,path){
     }
     if(action==='report'){
       const code=typeof data.code==='string'&&/^([SD])-([-a-zA-Z0-9]{16,80})$/i.exec(data.code.trim());
-      if(!code||typeof data.player!=='string'||!/^\d{17,20}$/.test(data.player)||!status(project).guilds.includes(data.guild))
+      if(!code||(!arcadeEnabled(project.env)&&code[1].toUpperCase()==='D')||typeof data.player!=='string'||!/^\d{17,20}$/.test(data.player)||!status(project).guilds.includes(data.guild))
         throw problem(400,'請核對伺服器、玩家 ID 和完整回報碼。');
       const {store}=await project.runtime();
       const game=code[1].toUpperCase()==='S'?'spin':'duel';

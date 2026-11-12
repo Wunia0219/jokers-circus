@@ -1,7 +1,7 @@
 export const GAME_ENTRY_PATH = '/game-entry.json';
 
 export async function readGameEntry(fetchImpl = fetch) {
-  const response = await fetchImpl(GAME_ENTRY_PATH, {
+  const response = await fetchImpl(GAME_ENTRY_PATH+'?controls=1', {
     cache: 'no-store',
     signal: AbortSignal.timeout(5000),
   });

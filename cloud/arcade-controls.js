@@ -3,6 +3,11 @@ import {problem} from '../server/wallet/wallet-common.js';
 const initial=Object.freeze({slot:'open',feature:'hidden',revision:0});
 export const arcadeEnabled=env=>env.ARCADE_RELEASE_ENABLED==='true';
 export const readArcade=state=>state.get('arcade-controls')??initial;
+export function operatorEnabled(env){
+  if(typeof env.ARCADE_CONSOLE_TOKEN!=='string'||!/^[a-f0-9]{64}$/i.test(env.ARCADE_CONSOLE_TOKEN))return false;
+  const key=env.ARCADE_CONSOLE_TOKEN.toLowerCase();
+  return ![env.CLOUD_ADMIN_TOKEN,env.CLOUD_MONITOR_TOKEN].some(value=>typeof value==='string'&&value.toLowerCase()===key);
+}
 const transitions={
   slot:{open:['maintenance'],maintenance:['open']},
   feature:{hidden:['open'],open:['paused'],paused:['open']},
@@ -12,7 +17,7 @@ export function changeArcade(project,actor,game,mode,revision,queue){
   const apply=()=>{
     const before=readArcade(project.state);
     if(!Number.isSafeInteger(revision)||revision!==before.revision)throw problem(409,'開關已更新，請重新開啟遊戲營運面板。','ARCADE_REVISION');
-    if(!Object.hasOwn(transitions,game)||!transitions[game][before[game]].includes(mode))
+    if(!Object.hasOwn(transitions,game)||(game==='feature'&&!arcadeEnabled(project.env))||!transitions[game][before[game]].includes(mode))
       throw problem(400,'此遊戲狀態無法切換。','ARCADE_MODE');
     if(game==='feature'&&mode==='open'&&!project.ready())throw problem(503,'帳本與備份尚未就緒。','ARCADE_READINESS');
     const next={...before,[game]:mode,revision:revision+1,updatedAt:Date.now(),actor};

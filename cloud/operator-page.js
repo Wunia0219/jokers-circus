@@ -81,7 +81,7 @@ export default String.raw`<!doctype html>
             <p class="muted">關閉入口後停止新回合，已受理的轉輪仍可確認。</p>
             <button id="slot-button"></button>
           </article>
-          <article class="card">
+          <article class="card" id="feature-card" hidden>
             <div class="card-heading"><h3 id="feature-title"></h3><span id="feature-state" class="pill"></span></div>
             <p id="feature-description" class="muted"></p>
             <button id="feature-button"></button>
@@ -171,9 +171,11 @@ export default String.raw`<!doctype html>
       $('health').textContent=value.ready?'服務可接受新回合':value.mode==='active'?'服務保護中，請核對備份及服務狀態。':'遊戲服務尚未啟用';
       $('health').dataset.warning=String(!value.ready);
       const {slot,feature,featureTitle,updatedAt}=value.entry;
-      $('feature-title').textContent=featureTitle;
+      $('feature-card').hidden=!feature;
+      $('feature-title').textContent=featureTitle??'';
+      $('code').placeholder=feature?'S- 或 D- 開頭':'S- 開頭';
       $('entry-heading').title=updatedAt?'最近更新 '+date(updatedAt):'';
-      for(const [game,state] of Object.entries({slot,feature})){
+      for(const [game,state] of Object.entries(feature?{slot,feature}:{slot})){
         $(game+'-state').textContent=labels[state];
         $(game+'-state').dataset.open=String(state==='open');
       }

@@ -18,7 +18,7 @@ async function scenario({id, mode='maintenance', mobile=false, holdSpin=false, l
   const viewport=mobile?{width:390,height:844}:{width:1280,height:800};
   const context=await browser.newContext({viewport,isMobile:mobile,reducedMotion:'reduce'});
   const page=await context.newPage();
-  const errors=[], requests={token:0,wallet:0,spin:0};
+  const errors=[], requests={token:0,wallet:0,spin:0}, spinIds=[];
   page.on('pageerror',error=>errors.push(error.message));
   const state=freshState();
   let releaseSpin, spinSent;
@@ -40,9 +40,10 @@ async function scenario({id, mode='maintenance', mobile=false, holdSpin=false, l
     if(url.pathname==='/api/spin'){
       requests.spin++;
       const {bet,requestId}=route.request().postDataJSON();
+      spinIds.push(requestId);
       spinSent();
       await hold;
-      if(lostResponse)return route.abort();
+      if(lostResponse&&requests.spin===1)return route.abort();
       const update=createRound(state,bet,[0,1,2,3,4],requestId);
       return route.fulfill({json:update});
     }
@@ -67,7 +68,7 @@ async function scenario({id, mode='maintenance', mobile=false, holdSpin=false, l
     document.body.append(frame);
   },{id,guildId,mobile});
   const view=await (await page.waitForSelector('iframe')).contentFrame();
-  return {page,view,context,requests,errors,sent,releaseSpin,setMode:value=>{mode=value;}};
+  return {page,view,context,requests,errors,sent,releaseSpin,spinIds,setMode:value=>{mode=value;}};
 }
 
 async function maintenance({view}){
@@ -120,10 +121,18 @@ try{
     assert.equal(await active.view.locator('#spin').isEnabled(),true,'quick stop remains available while the round is pending');
     await active.view.locator('#spin').click();
     active.releaseSpin();
+    if(lostResponse){
+      await active.view.getByRole('heading',{name:'連線不太穩',exact:true}).waitFor();
+      assert.equal(await active.view.evaluate(key=>sessionStorage.getItem(key),pendingKey),pending);
+      await active.view.evaluate(()=>location.reload());
+      await active.view.waitForFunction(()=>document.querySelector('#game-status')?.textContent.startsWith('上一局的結果仍待確認'));
+      assert.equal(await active.view.locator('#auto-spin').isEnabled(),false);
+      await active.view.locator('#spin').click();
+    }
     await maintenance(active);
-    assert.equal(active.requests.spin,1);
-    assert.equal(await active.view.evaluate(key=>sessionStorage.getItem(key),pendingKey),lostResponse?pending:null);
-    assert.equal(await active.view.getByText('上一局的結果仍待確認。',{exact:false}).count(),Number(lostResponse));
+    assert.equal(active.requests.spin,lostResponse?2:1);
+    assert.ok(active.spinIds.every(id=>id===JSON.parse(pending).requestId));
+    assert.equal(await active.view.evaluate(key=>sessionStorage.getItem(key),pendingKey),null);
     assert.deepEqual(active.errors,[]);
     await active.context.close();
   }

@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "jokers-circus-arcade-test-monitor",
+  "main": "monitor/worker.js",
+  "compatibility_date": "2026-07-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "durable_objects": {"bindings": [{"name": "CIRCUS_MONITOR", "class_name": "CircusMonitor"}]},
+  "migrations": [{"tag": "monitor-v1", "new_sqlite_classes": ["CircusMonitor"]}],
+  "triggers": {"crons": ["*/10 * * * *"]},
+  "vars": {
+    "CLOUD_PLAN": "paid",
+    "MONITOR_ENABLED": "true",
+    "MONITORED_ORIGIN": "https://jokers-circus-arcade-test.nini900219.workers.dev"
+  },
+  "observability": {"enabled": false}
+}

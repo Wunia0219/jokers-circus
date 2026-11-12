@@ -25,7 +25,7 @@ import { installSpinShortcut } from './ui/reels/spin-shortcut.js';
 import { roundFeedbackTiming } from './ui/reels/presentation.js';
 import { setBitmapNumber } from './ui/shared/bitmap-number.js';
 import { installResponsiveLayout } from './ui/shared/responsive-layout.js';
-import { createWalletClient } from './platform/wallet-client.js';
+import { createWalletClient, hasPendingSpin } from './platform/wallet-client.js';
 import { canEnterGame, readGameEntry } from './platform/game-entry.js';
 import {createCasinoPresence} from './platform/casino-presence.js';
 import {slotLobbyPath} from './platform/game-navigation.js';
@@ -74,8 +74,9 @@ const activityMusic=arcade?.music??(discordTestBuild?discordTestMusic():null);
 const scene=new SlotScene(), sound=new Sound({effectsEnabled:true,musicUrl:activityMusic?null:MUSIC_SOURCE,onStateChange:renderAudio});
 const bigWin=new BigWinPresentation($('#app'));
 let activityMode='browser', activityUser=null, walletClient=null, claiming=false, historySync=null, checkinPanel=null, checkinRetry=false;
+const canUseSpin=()=>ready&&(!entryClosing||busy||walletClient?.hasPending());
 const controls=new SpinControls({
-  isReady:()=>ready&&(!entryClosing||busy)&&!leavingLobby&&!claiming&&!document.hidden&&!$('#dialog').open,
+  isReady:()=>canUseSpin()&&!leavingLobby&&!claiming&&!document.hidden&&!$('#dialog').open,
   isBusy:()=>busy,
   startSpin:()=>spin(),
   stopReels:()=>scene.requestQuickStop(),
@@ -132,7 +133,7 @@ function showPlayerError(error,context='game'){
 }
 async function refreshWallet(){if(!walletClient||busy||claiming||!ready||entryClosing)return;try{const update=await walletClient.state();if(!busy&&!claiming&&!entryClosing){save(update.state);renderState();}}catch(error){if(error.status===401&&!entryClosing)showPlayerError(error);}}
 function enterMaintenance(){
-  if(maintenanceShown||busy||claiming)return;
+  if(maintenanceShown||busy||claiming||walletClient?.hasPending())return;
   maintenanceShown=true;
   ready=false;
   $('#dialog').close();
@@ -168,7 +169,7 @@ function renderState() {
 }
 function setBusy(value) {
   busy=value;
-  renderSpinButton({busy,presenting,claiming,ready:ready&&(!entryClosing||busy)});
+  renderSpinButton({busy,presenting,claiming,ready:canUseSpin()});
   $('#max-bet').disabled=value||claiming||!ready||entryClosing||controls.auto;
   $('#auto-spin').disabled=claiming||!ready||entryClosing;
   document.querySelectorAll('[data-bet]').forEach(b=>b.disabled=value||claiming||!ready||entryClosing||controls.auto);
@@ -397,14 +398,16 @@ async function startGame() {
     try{entry=await readGameEntry();}
     catch{loading.fail('暫時無法確認遊戲是否開放，請再試一次。');return;}
     if(entry.mode==='maintenance'){
-      if(entry.previewUserIds.length&&isDiscordActivity(window.location)){
+      if(isDiscordActivity(window.location)){
         previewActivity=await connectActivity().catch(()=>null);
       }
       if(!canEnterGame(entry,previewActivity)){
         entryClosing=true;
-        loading.dismiss();
-        enterMaintenance();
-        return;
+        if(!hasPendingSpin(previewActivity?.session)){
+          loading.dismiss();
+          enterMaintenance();
+          return;
+        }
       }
     }
     startGameAudio();
@@ -446,6 +449,7 @@ async function startGame() {
     await loading.finish();
     if(casinoSession){casinoPresence=createCasinoPresence(casinoSession);await casinoPresence.start();}
     ready=true;setBusy(false);
+    if(entryClosing&&walletClient?.hasPending())result('上一局的結果仍待確認','維護期間可按 SPIN 確認上一局，不會再次下注。');
     void refreshEntry();
     setTimeout(()=>scene.preloadDealer(),0);
   } catch(error) {

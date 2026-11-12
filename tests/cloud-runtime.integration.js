@@ -58,7 +58,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
     writeFileSync(join(directory,path),'/'+path);
   config.assets={directory,binding:'ASSETS',run_worker_first:true,routerConfig:{has_user_worker:true},
     assetConfig:{html_handling:'none',not_found_handling:'none'}};
- }
+ }else Object.assign(config.bindings,{ARCADE_CONSOLE_TOKEN:operatorToken,DISCORD_COMMAND_PROFILE:'test-simple'});
  const adminRole='100000000000000009';
  config.bindings[casino?'CHIP_ADMIN_ROLE_IDS':'ADMIN_ROLE_IDS']=` ${adminRole} `;
  config.bindings.FIRESTORE_ENDPOINT='https://firestore.asia-east1.rep.googleapis.com';
@@ -66,9 +66,9 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  let mf=new Miniflare(convertV4MiniflareOptions(config));t.after(()=>mf.dispose());const call=async(path,{body,token,adminAuth=false,headers={},method}={})=>{const r=await mf.dispatchFetch('http://localhost'+path,{method:method||(body?'POST':'GET'),headers:{...(body?{'Content-Type':'application/json'}:{}),...(token?{Authorization:'Bearer '+token}:{}),...(adminAuth?{Authorization:'Bearer '+admin}:{}),...headers},...(body?{body:JSON.stringify(body)}:{})});const data=await r.json();return {status:r.status,data};};
  assert.equal((await call('/api/wallet')).status,503);assert.equal((await call('/__ops/status')).status,403);
  const operatorPage=await mf.dispatchFetch('http://localhost/operator');
- assert.equal(operatorPage.status,casino?200:404);
- assert.equal((await call('/__operator/status')).status,casino?401:404);
- if(casino){
+ assert.equal(operatorPage.status,200);
+ assert.equal((await call('/__operator/status')).status,401);
+ {
    assert.equal(operatorPage.headers.get('cache-control'),'no-store');
    assert.match(operatorPage.headers.get('content-security-policy'),/frame-ancestors 'none'/);
    const markup=await operatorPage.text();
@@ -120,6 +120,18 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    assert.equal(await lobby.text(),'/arcade/lobby.html');
    assert.match(lobby.headers.get('content-security-policy'),/frame-src 'self'/);
    assert.equal(await (await mf.dispatchFetch('http://localhost/arcade/slot')).text(),'/index.html');
+ }else{
+   const web=(action,body)=>call('/__operator/'+action,{headers:operatorHeaders,body});
+   assert.deepEqual((await web('status')).data.entry,{slot:'open',revision:0});
+   assert.equal((await call('/api/arcade')).status,404);
+   assert.equal((await web('entry',{game:'feature',mode:'open',revision:0})).status,400);
+   assert.equal((await web('report',{guild,player:user,code:'D-runtime-original-spin-0001'})).status,400);
+   assert.equal((await web('entry',{game:'slot',mode:'maintenance',revision:0})).data.entry.slot,'maintenance');
+   assert.deepEqual((await call('/game-entry.json?controls=1')).data,{mode:'maintenance',previewUserIds:[]});
+   assert.equal((await call('/game-entry.json')).data.mode,'open','old tabs rely on the settlement gate');
+   assert.equal((await call('/api/spin',{token,body:{bet:20,requestId:'closed-new-spin-request-0001'}})).data.code,'SLOT_MAINTENANCE');
+   assert.equal((await call('/api/spin',{token,body:{bet:20,requestId:'runtime-original-spin-0001'}})).data.duplicate,true);
+   assert.equal((await web('entry',{game:'slot',mode:'open',revision:1})).data.entry.slot,'open');
  }
  const visitId=randomUUID();
  let arcadeReplies=0;
@@ -149,6 +161,21 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  assert.equal((await call('/api/interactions',{body:{type:1}})).status,401);
  const interaction={type:2,id:'100000000000000004',application_id:client,guild_id:guild,channel_id:'100000000000000006',token:'fixture-interaction-token',member:{user:{id:user,bot:false},permissions:'0'},data:{name:'戲籌'}},raw=JSON.stringify(interaction),timestamp=String(Math.floor(Date.now()/1000)),signature=sign(null,Buffer.from(timestamp+raw),ed.privateKey).toString('hex');
  const r=await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',headers:{'x-signature-timestamp':timestamp,'x-signature-ed25519':signature,'Content-Type':'application/json'},body:raw});assert.deepEqual(await r.json(),{type:5,data:{flags:64}});
+ if(!casino){
+  const signed=async payload=>{const body=JSON.stringify(payload);return (await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',headers:{'x-signature-timestamp':timestamp,'x-signature-ed25519':sign(null,Buffer.from(timestamp+body),ed.privateKey).toString('hex'),'Content-Type':'application/json'},body})).json();};
+  const member={...interaction.member,roles:[adminRole]};
+  const component=custom_id=>({...interaction,type:3,member,data:{custom_id}});
+  const panel=await signed(component(`jct|home|${guild}|${user}`));
+  const buttons=panel.data.components.flatMap(row=>row.components);
+  assert.ok(buttons.length&&buttons.every(button=>button.custom_id?.startsWith('jct|')));
+  assert.ok(!buttons.some(button=>/遊戲營運|查詢玩家回報/.test(button.label)));
+  const stale=await signed(component(`jc|gf|${guild}|${user}`));
+  assert.equal(stale.type,4);assert.equal(stale.data.embeds[0].title,'請重新開啟面板');
+  const fresh=await signed(component(`jct|gf|${guild}|${user}`));
+  assert.equal(fresh.type,9);assert.equal(fresh.data.components.length,3,'test grant form has no public notification option');
+  for(let i=0;i<100&&!replies.length;i++)await delay(30);
+  assert.match(replies[0].embeds[0].description,new RegExp(forced.state.balance.toLocaleString('en-US')+' 戲籌'),'Discord reads the same balance as the game');
+ }
  if(casino){
   const formId=String((BigInt(Date.now())-1420070400000n)<<22n),grant={...interaction,type:5,id:formId,member:{...interaction.member,roles:[adminRole]},data:{custom_id:`jc|gs|${guild}|${user}|${formId}`,components:[
    {type:18,component:{type:5,custom_id:'member',values:[user],resolved:{members:{[user]:{}},users:{[user]:{id:user,bot:false}}}}},

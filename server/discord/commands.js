@@ -19,6 +19,7 @@ export function validSignature(publicKey, headers, raw, now=Date.now()) {
   }catch{return false;}
 }
 export async function handleCommand(interaction, store, adminRoles=[],commandChannelIds=[],effects={}) {
+  interaction={...interaction,panelPrefix:effects.panelPrefix??'jc'};
   const reply=(...args)=>privateReply(store.environment,...args);
   try {
     if(interaction.type===1)return {type:1};

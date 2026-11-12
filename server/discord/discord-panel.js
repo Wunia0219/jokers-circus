@@ -11,13 +11,13 @@ const categories={r:['發放、收回與重設','rewards'],c:['週簽到','check
 const periods={0:'全部期間',1:'今天',7:'近 7 天',30:'近 30 天'};
 const row=(...components)=>({type:1,components:components.filter(Boolean)});
 export function panelId(i,action,...args){
-  const value=['jc',action,i.guild_id,i.member.user.id,...args.map(String)].join('|');
+  const value=[i.panelPrefix??'jc',action,i.guild_id,i.member.user.id,...args.map(String)].join('|');
   if(value.length>100)throw problem(400,'面板資料過長，請重新開啟。','PANEL_INVALID');return value;
 }
 export function parsePanel(i){
   const value=i.data?.custom_id;if(typeof value!=='string'||value.length>100)throw problem(400,'請重新開啟管理面板。','PANEL_INVALID');
   const [prefix,action,guild,owner,...args]=value.split('|');
-  if(prefix!=='jc'||!id(guild)||!id(owner))throw problem(400,'請重新開啟管理面板。','PANEL_INVALID');
+  if(prefix!==(i.panelPrefix??'jc')||!id(guild)||!id(owner))throw problem(400,'請重新開啟管理面板。','PANEL_INVALID');
   if(guild!==i.guild_id||owner!==i.member.user.id)throw problem(403,'請使用自己開啟的面板。','PANEL_OWNER');
   if((i.type===5)!==['gs','hs','vs','rs','ws'].includes(action))throw problem(400,'請重新開啟面板。','PANEL_INVALID');
   if(i.data.values&&(!Array.isArray(i.data.values)||i.data.values.length!==1||typeof i.data.values[0]!=='string'))throw problem(400,'請只選一個項目。','PANEL_INVALID');

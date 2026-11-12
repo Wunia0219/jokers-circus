@@ -96,6 +96,15 @@ try{
   assert.equal(await page.getByLabel('管理金鑰').inputValue(),'');
   assert.equal(await page.locator('#player').inputValue(),'');
   assert.equal(await page.locator('#result').isVisible(),false);
+  status.environment='production';
+  delete status.entry.feature;
+  delete status.entry.featureTitle;
+  await page.getByLabel('管理金鑰').fill(key);
+  await page.getByRole('button',{name:'登入',exact:true}).click();
+  await page.getByText('正式環境',{exact:true}).waitFor();
+  assert.equal(await page.locator('#feature-card').isVisible(),false);
+  assert.equal(await page.getByLabel('回報碼',{exact:true}).getAttribute('placeholder'),'S- 開頭');
+  assert.equal(await page.locator('#slot-button').isEnabled(),true);
   assert.deepEqual(errors,[]);
   console.log('Operator console login, entry changes, report lookup, backup and mobile layout passed.');
 }finally{

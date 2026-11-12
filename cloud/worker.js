@@ -18,13 +18,14 @@ import {handleFetch} from './http-bridge.js';
 import {APP_VERSION} from '../src/version.js';
 import {operationsHealth} from './operations-health.js';
 import {casinoVisitStatus} from '../server/discord/casino-visits.js';
-import {arcadeEnabled,readArcade} from './arcade-controls.js';
+import {arcadeEnabled,operatorEnabled,readArcade} from './arcade-controls.js';
 import {ARCADE_STATUS,arcadeStatus,arcadeAsset,arcadeLobby} from './arcade-routes.js';
 import {duelPaths} from '../server/http/app-handler.js';
 import {duelDigest} from '../server/wallet/duel-settlement.js';
 import {authorizeOperator,handleOperator,operatorApi,operatorPage,serveOperator} from './operator-console.js';
 
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+const slotEntry=(url,env)=>url.pathname==='/game-entry.json'&&!arcadeEnabled(env)&&operatorEnabled(env);
 const apiPaths=new Set(['/healthz','/readyz','/api/token','/api/interactions','/api/wallet','/api/spin','/api/checkin','/api/ledger','/api/rounds','/api/casino-visit']);
 const authorized=(req,env,name='CLOUD_ADMIN_TOKEN')=>{const expected=env[name];if(!/^[a-f0-9]{64}$/i.test(expected||''))return false;const value=req.headers.get('authorization')?.replace(/^Bearer /,'')||'';return /^[a-f0-9]{64}$/i.test(value)&&timingSafeEqual(Buffer.from(value),Buffer.from(expected));};
 async function body(req,limit=12*1024**2){let n=0,parts=[];for await(const chunk of req.body||[]){n+=chunk.length;if(n>limit)throw new Error('Body too large');parts.push(chunk);}return JSON.parse(Buffer.concat(parts).toString('utf8'));}
@@ -42,6 +43,13 @@ export class CircusProject extends DurableObject {
   async schedule(delay){const now=Date.now(),due=now+delay,old=await this.ctx.storage.getAlarm();if(!old||old>due)await this.ctx.storage.setAlarm(due);}
   async fetch(request){
     const url=new URL(request.url);
+    if(slotEntry(url,this.env)){
+      if(!['GET','HEAD'].includes(request.method))return json({error:'不支援此操作。'},405);
+      // Older builds use the server's bet gate and can still replay a saved round.
+      const mode=url.searchParams.get('controls')==='1'?readArcade(this.state).slot:'open';
+      const response=json({mode,previewUserIds:[]});
+      return request.method==='HEAD'?new Response(null,response):response;
+    }
     if(url.pathname.startsWith(operatorApi)){
       const refused=authorizeOperator(request,this.env);
       if(refused)return refused;
@@ -190,9 +198,9 @@ export class CircusProject extends DurableObject {
 }
 
 async function routeRequest(request,env){
-  const path=new URL(request.url).pathname;
+  const url=new URL(request.url),path=url.pathname;
   const project=()=>{const settings=cloudIdentity(env);return env.CIRCUS_PROJECT.get(env.CIRCUS_PROJECT.idFromName(settings.projectId));};
-  if(path.startsWith('/api/')||path.startsWith('/__ops/')||path.startsWith(operatorApi)||apiPaths.has(path)){
+  if(path.startsWith('/api/')||path.startsWith('/__ops/')||path.startsWith(operatorApi)||apiPaths.has(path)||slotEntry(url,env)){
     try{return await project().fetch(request);}catch{return json({error:'服務尚未就緒。'},503);}
   }
   if(!['GET','HEAD'].includes(request.method))return json({error:'不支援此操作。'},405);

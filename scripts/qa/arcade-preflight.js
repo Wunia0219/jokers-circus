@@ -5,7 +5,7 @@ import {existsSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,unlinkSync,wr
 import {join,relative,resolve,sep} from 'node:path';
 import {buildArcadeRelease} from '../build/arcade-release.js';
 import {arcadeAssetDirs,assertArcadeArtifact,assertEntryApp,readReleaseFiles} from '../build/arcade-artifact.js';
-import {TEST_DISCORD_APP} from '../build/production-boundary.js';
+import {assertProductionArtifact,TEST_DISCORD_APP} from '../build/production-boundary.js';
 import {checkToolchain} from './check-toolchain.js';
 
 const productionApp='1561284960986599626';
@@ -16,7 +16,7 @@ const targets={
     guild:'760012177326997544',channel:'1564243344857632818',region:'us',
   },
   production:{
-    config:'wrangler.production.local.jsonc',dist:'dist-arcade',worker:'jokers-circus-production',
+    config:'wrangler.production.local.jsonc',dist:'dist',worker:'jokers-circus-production',
     project:'jokers-circus-production',namespace:'jokers-circus-v2-20261030-production',app:productionApp,
     guild:'1503958213454856252',channel:'1565731918107115690',region:'asia-east1',
   },
@@ -39,17 +39,27 @@ assert.deepEqual([vars.APP_ENV,vars.FIRESTORE_PROJECT_ID,vars.FIRESTORE_NAMESPAC
 ]);
 assert.ok(!Object.hasOwn(vars,'ARCADE_CONSOLE_TOKEN'),'Set the console key as a Worker Secret');
 assert.ok(!vars.FIRESTORE_EMULATOR_HOST&&!vars.DISCORD_TEST_ENABLED);
+assert.equal(resolve(config.assets.directory),resolve(expected.dist));
+assert.equal(config.assets.binding,'ASSETS');
+assert.match(vars.DISCORD_PUBLIC_KEY??'',/^[a-f\d]{64}$/i);
 if(target==='test'){
-  assert.equal(resolve(config.assets.directory),resolve(expected.dist));
   assert.equal(config.assets.run_worker_first,true);
   assert.equal(config.assets.html_handling,'none');
   assert.equal(config.assets.not_found_handling,'none');
   assert.equal(vars.ARCADE_RELEASE_ENABLED,'true');
-  assert.match(vars.DISCORD_PUBLIC_KEY??'',/^[a-f\d]{64}$/i);
+  assert.equal(vars.DISCORD_COMMAND_PROFILE,'test-simple');
   assert.deepEqual(config.migrations,[{tag:'v1',new_sqlite_classes:['CircusProject']}]);
   assert.ok(!config.route&&!config.routes&&!config.env&&!config.triggers,'Test Worker must use its dedicated workers.dev URL');
   assert.ok(Object.keys(vars).every(key=>!/^DISCORD_(?:BOT|CASINO|HIGHLIGHTS)/.test(key)),
     'Test Worker must have no Discord announcement configuration');
+}else{
+  assert.ok(!vars.ARCADE_RELEASE_ENABLED||vars.ARCADE_RELEASE_ENABLED==='false');
+  assert.ok(!vars.DISCORD_COMMAND_PROFILE);
+  assert.equal(vars.DISCORD_CASINO_ENABLED,'true');
+  assert.equal(vars.DISCORD_CASINO_GUILD_ID,expected.guild);
+  assert.equal(vars.DISCORD_CASINO_CHANNEL_ID,expected.channel);
+  for(const path of ['/api/*','/__ops/*','/healthz','/readyz','/assets/*.mp3','/game-entry.json','/operator','/__operator/*'])
+    assert.ok(config.assets.run_worker_first.includes(path),'Missing production Worker route: '+path);
 }
 
 const oppositeApp=target==='test'?productionApp:TEST_DISCORD_APP;
@@ -61,13 +71,15 @@ if(legacy){
   const oldFiles=[['index.html',readFileSync(join(legacy,'index.html'))],
     ...arcadeAssetDirs.filter(dir=>existsSync(join(legacy,dir))).flatMap(dir=>readReleaseFiles(legacy,dir))];
   assertEntryApp(oldFiles,'index.html',expected.app);
+  if(target==='production')assertProductionArtifact(oldFiles);
   checkOtherApp(oldFiles);
 }
 const dist=resolve(expected.dist);
 if(existsSync(dist))assert.equal(relative(realpathSync('.'),realpathSync(dist)),expected.dist,'Release output must be inside this workspace');
 await buildArcadeRelease({clientId:expected.app,target,legacy,outDir:dist,logLevel:'warn'});
 const files=readReleaseFiles(dist);
-assertArcadeArtifact(files,expected.app);
+if(target==='test')assertArcadeArtifact(files,expected.app);
+else{assertProductionArtifact(files);assertEntryApp(files,'index.html',expected.app);}
 checkOtherApp(files);
 
 const reports=resolve('test-results/arcade-preflight');
@@ -77,8 +89,7 @@ const configPath=join(output,'wrangler.jsonc');
 const relativeToOutput=path=>relative(output,path).split(sep).join('/');
 const staged={
   ...config,main:relativeToOutput(resolve(config.main)),
-  assets:{...config.assets,directory:relativeToOutput(dist),binding:'ASSETS',run_worker_first:true,html_handling:'none',not_found_handling:'none'},
-  vars:{...vars,ARCADE_RELEASE_ENABLED:'true'},
+  assets:{...config.assets,directory:relativeToOutput(dist)},
 };
 const bundle=join(output,'worker');
 writeFileSync(configPath,JSON.stringify(staged),{mode:0o600});

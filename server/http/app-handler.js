@@ -44,6 +44,7 @@ async function readJson(req) {
 
 // Only built game files are served. Project sources and .env files are never exposed.
 export function createActivityHandler({ clientId, clientSecret, publicKey, wallet=null, localPort=4188, distDir = resolve('dist'), fetchImpl = fetch, loginClock, loginLimiter, defer=()=>{}, operations=null } = {}) {
+  const commandWallet=wallet?.commandEffects?{...wallet,...wallet.commandEffects}:wallet;
   if(!Number.isInteger(localPort)||localPort<1||localPort>65535)throw new Error('Invalid local port');
   let activeExchanges = 0;
   const loginRate = loginLimiter || new LoginRateLimit({clock:loginClock});
@@ -107,10 +108,10 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
         if(wallet.store.backend==='firestore'&&deferWalletInteraction(interaction)){
           if(!validInteractionToken(interaction.token))return json(res,400,{error:'無效的互動憑證。'});
           json(res,200,interaction.type===3&&((interaction.message?.flags||0)&64)?{type:6}:{type:5,data:{flags:64}});
-          const work=completeDeferredCommand(interaction,wallet,{fetchImpl}).catch(()=>console.warn('Discord command reply unavailable'));
+          const work=completeDeferredCommand(interaction,commandWallet,{fetchImpl}).catch(()=>console.warn('Discord command reply unavailable'));
           deferredCommands.add(work);defer(work);void work.finally(()=>deferredCommands.delete(work));return;
         }
-        return json(res,200,await handleCommand(interaction,wallet.store,wallet.adminRoles,wallet.commandChannelIds,wallet));
+        return json(res,200,await handleCommand(interaction,wallet.store,wallet.adminRoles,wallet.commandChannelIds,commandWallet));
       }
       if (path === '/api/token') {
         if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return json(res, 405, { error:'請使用 POST。' }); }
@@ -189,7 +190,7 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
         const body=await readJson(req);
         if(path==='/api/checkin')return json(res,200,await wallet.store.checkin(guild,user,view));
         const result=await wallet.store.spin(guild,user,body?.bet,body?.requestId,{...view,profileName:session.profile?.name,
-          ...(wallet.arcade?{allowSpin:()=>wallet.arcade.read().slot==='open'}:{})});
+          allowSpin:wallet.slotOpen??(wallet.arcade?()=>wallet.arcade.read().slot==='open':undefined)});
         try { wallet.highlights?.enqueue(session,result.round.id,result.round); }
         catch { console.warn('Discord highlights: could not queue result'); }
         return json(res,200,result);

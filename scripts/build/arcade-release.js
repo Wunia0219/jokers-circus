@@ -33,9 +33,10 @@ const lobbyIsolation={
     }
   },
 };
-export async function buildArcadeRelease({clientId,outDir=resolve('dist-arcade'),legacy=null,logLevel,target='production'}){
+export async function buildArcadeRelease({clientId,legacy=null,logLevel,target='test',outDir=resolve(target==='production'?'dist':'dist-arcade-test')}){
   if(!/^\d{17,20}$/.test(clientId??''))throw new Error('Set VITE_DISCORD_CLIENT_ID to the target Discord Application ID');
   const allowTestApp=target==='test';
+  const slotOnly=!allowTestApp;
   if(!['test','production'].includes(target)||allowTestApp!==(clientId===TEST_DISCORD_APP))
     throw new Error('Discord Application ID does not match the arcade build target');
   const flags={
@@ -50,7 +51,7 @@ export async function buildArcadeRelease({clientId,outDir=resolve('dist-arcade')
     if(!isAbsolute(path)&&path!=='..'&&!path.startsWith('..'+sep))
       throw new Error('Save the previous release outside the output directory before rebuilding');
   }
-  const legacyAssets=retained?arcadeAssetDirs.filter(dir=>existsSync(join(retained,dir))).flatMap(dir=>readReleaseFiles(retained,dir)):[];
+  const legacyAssets=retained?(slotOnly?['assets']:arcadeAssetDirs).filter(dir=>existsSync(join(retained,dir))).flatMap(dir=>readReleaseFiles(retained,dir)):[];
   assertArcadeAssets(legacyAssets,{allowTestApp});
   const plugins=allowTestApp?base.plugins.map(plugin=>plugin.name==='production-slot-only'?productionBoundary({allowTestApp}):plugin):base.plugins;
   await build({...base,plugins,configFile:false,logLevel,define:flags,build:{...base.build,outDir}});
@@ -59,9 +60,11 @@ export async function buildArcadeRelease({clientId,outDir=resolve('dist-arcade')
     build:{...base.build,outDir:resolve(outDir,'.'+prefix),emptyOutDir:false,
       rollupOptions:{input:resolve(entry)}},
   });
-  await buildEntry('lobby.html','/arcade/',[launchScreenMarkup,lobbyIsolation]);
-  await buildEntry('play.html','/arcade/feature/',[]);
-  copyFileSync('images/lobby/yakyuken-cover-v3.webp',join(outDir,'arcade/feature/cover.webp'));
+  if(!slotOnly){
+    await buildEntry('lobby.html','/arcade/',[launchScreenMarkup,lobbyIsolation]);
+    await buildEntry('play.html','/arcade/feature/',[]);
+    copyFileSync('images/lobby/yakyuken-cover-v3.webp',join(outDir,'arcade/feature/cover.webp'));
+  }
 
   // Old open tabs still request hashed assets from their own bundle.
   for(const [name,source] of legacyAssets){
@@ -75,5 +78,6 @@ export async function buildArcadeRelease({clientId,outDir=resolve('dist-arcade')
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
   const args=process.argv.slice(2);
   if(args.length&&!(args.length===2&&args[0]==='--legacy'))throw new Error('Usage: npm run arcade:build -- [--legacy PREVIOUS_DIST]');
-  await buildArcadeRelease({clientId:process.env.VITE_DISCORD_CLIENT_ID,legacy:args[1]?resolve(args[1]):null});
+  const clientId=process.env.VITE_DISCORD_CLIENT_ID;
+  await buildArcadeRelease({clientId,target:clientId===TEST_DISCORD_APP?'test':'production',legacy:args[1]?resolve(args[1]):null});
 }
