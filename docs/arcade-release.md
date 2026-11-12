@@ -31,6 +31,8 @@
 
 正式設定使用 `./dist`，不啟用 `ARCADE_RELEASE_ENABLED`。把 `/operator`、`/__operator/*`、`/game-entry.json` 加到現有 `assets.run_worker_first` 路由。正式 Worker 保留既有 Discord App、聊天室機器人、@ 通知、DO、Firestore 及既有 Secrets。首次接入後台時新增正式服專用 Worker Secret `ARCADE_CONSOLE_TOKEN`（64 字元十六進位）。
 
+只發布後台時，部署 Worker 使用正式服現行版的完整靜態檔案與 `_headers`，並核對檔案雜湊。發布後先等 `/__ops/status` 回報新版本，再驗收後台登入。使用中的 DO 預設可延後最多五分鐘更新，以便完成進行中的請求。[Cloudflare Durable Objects 更新方式](https://developers.cloudflare.com/durable-objects/deployments/durable-objects-code-updates/)
+
 發布後核對 `/readyz`、`/operator`、`/game-entry.json?controls=1` 和 Discord 直接進入老虎機。老虎機預設開放；`/api/arcade` 以及野球拳頁面、素材與 API 應收到 404。
 
 測試服素材經 Worker 路由，方便攔截未揭曉的遊戲素材。測試大廳只在可見時更新狀態，並在回大廳時立即刷新。營運狀態查詢只讀 DO。揭曉後已載入的雜湊素材可由瀏覽器快取。 [Cloudflare 靜態素材路由與用量](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)

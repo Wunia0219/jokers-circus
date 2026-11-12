@@ -3,59 +3,85 @@ export default String.raw`<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>營運後台 · Joker’s Circus</title>
+  <title>__OPERATOR_TITLE__營運後台 · Joker’s Circus</title>
   <style>
-    :root { color-scheme: light; font-family: "DM Sans", "Noto Sans TC", system-ui, sans-serif; color: #222d28; background: #f5f5ef; }
+    :root {
+      color-scheme: dark;
+      font-family: "Noto Sans TC", system-ui, sans-serif;
+      --stage: #211426;
+      --panel: #352039;
+      --panel-deep: #25172c;
+      --field: #201426;
+      --gold: #f5d28c;
+      --gold-hover: #ffe4ab;
+      --ink: #24142b;
+      --text: #fff0d5;
+      --muted: #dfc9d4;
+      --frame: #856047;
+      --field-line: #9c7588;
+      --test-bg: #6b273f;
+      --test-line: #e2a0a9;
+      --positive-bg: #26372d;
+      --positive: #bcf0cb;
+      --warning-bg: #4d302c;
+      --warning: #ffdea9;
+      --error: #ffb7bb;
+      color: var(--text);
+      background: var(--stage);
+    }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
-    body { margin: 0; line-height: 1.55; }
-    header { background: #203a30; color: #fffaf0; }
+    body { margin: 0; min-height: 100vh; line-height: 1.55; background: radial-gradient(ellipse at 50% 0%, #49253e, var(--stage) 36rem); }
+    header { background: linear-gradient(105deg, #432039, #261529); border-bottom: 1px solid var(--frame); }
     header > div, main { width: min(100% - 2rem, 68rem); margin-inline: auto; }
-    header > div { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4.75rem; }
-    .brand { font: 600 1.25rem/1.2 "Instrument Serif", Georgia, serif; }
-    .environment { border: 1px solid #a6b6a9; border-radius: 999px; padding: .15rem .65rem; font-size: .875rem; }
+    header > div { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 4.75rem; }
+    .brand { font: 600 clamp(1.25rem, 4vw, 1.65rem)/1.15 Georgia, serif; color: var(--gold); }
+    .environment { flex: none; border: 1px solid var(--frame); border-radius: .35rem; padding: .3rem .65rem; color: var(--gold); font-size: .875rem; font-weight: 700; }
+    .environment[data-environment="test"] { background: var(--test-bg); border-color: var(--test-line); color: var(--text); letter-spacing: .035em; }
     main { padding-block: clamp(1.5rem, 4vw, 3rem); }
     h1, h2, h3, p { margin: 0; }
-    h1 { font-size: clamp(1.65rem, 4vw, 2.2rem); letter-spacing: -.04em; }
-    h2 { font-size: 1.2rem; }
+    h1 { color: var(--gold); font-size: clamp(1.65rem, 4vw, 2.2rem); }
+    h2 { color: var(--gold); font-size: 1.2rem; }
     h3 { font-size: 1.06rem; }
     .heading, .card-heading, .actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .65rem; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .entry-grid:has(#feature-card[hidden]) { grid-template-columns: 1fr; }
     section, .grid, .health { margin-top: 1rem; }
-    .card, dialog { background: #fffefa; border: 1px solid #cbd1c9; border-radius: .9rem; padding: clamp(1rem, 2.5vw, 1.5rem); }
+    .card, dialog { background: linear-gradient(145deg, var(--panel), var(--panel-deep)); border: 1px solid var(--frame); border-radius: .75rem; padding: clamp(1rem, 2.5vw, 1.5rem); box-shadow: 0 .65rem 1.5rem #100a1a40; }
     .card > * + *, form > * + * { margin-top: .85rem; }
-    .muted, small { color: #45554c; }
+    .muted, small { color: var(--muted); }
     small { display: block; font-size: .875rem; }
-    .health { padding: .75rem 1rem; background: #e5eee5; border-radius: .65rem; color: #253f32; }
-    .health[data-warning="true"] { background: #f8ead4; color: #704710; }
-    .pill { background: #edf1ec; color: #31463b; border-radius: 999px; padding: .2rem .65rem; font-size: .875rem; }
-    .pill[data-open="true"] { background: #deeddf; color: #244a35; }
+    .health { padding: .75rem 1rem; background: var(--positive-bg); border-radius: .65rem; color: var(--positive); }
+    .health[data-warning="true"] { background: var(--warning-bg); color: var(--warning); }
+    .pill { background: #4c334f; color: var(--text); border-radius: 999px; padding: .2rem .65rem; font-size: .875rem; }
+    .pill[data-open="true"] { background: var(--positive-bg); color: var(--positive); }
     label { display: block; font-weight: 600; }
     input, select, textarea { display: block; width: 100%; margin-top: .3rem; }
-    button, input, select, textarea { min-height: 44px; border: 1px solid #89988d; border-radius: .5rem; padding: .55rem .75rem; font: inherit; }
-    input, select, textarea { background: #fff; color: #222d28; }
+    button, input, select, textarea { min-height: 44px; border: 1px solid var(--field-line); border-radius: .5rem; padding: .55rem .75rem; font: inherit; }
+    input, select, textarea { background: var(--field); color: var(--text); }
+    input::placeholder { color: var(--muted); opacity: 1; }
     textarea { resize: vertical; min-height: 6rem; }
-    button { background: #274837; color: #fff; cursor: pointer; }
-    button:hover:not(:disabled) { background: #1a3629; }
-    button.secondary { background: #fffefa; color: #274837; }
-    button.secondary:hover:not(:disabled) { background: #e8eee8; }
-    button:disabled { background: #e4e9e3; color: #4b584e; cursor: default; }
-    :focus-visible { outline: 3px solid #975500; outline-offset: 2px; }
+    button { background: var(--gold); color: var(--ink); border-color: var(--gold); cursor: pointer; font-weight: 650; }
+    button:hover:not(:disabled) { background: var(--gold-hover); }
+    button.secondary { background: var(--panel-deep); color: var(--gold); border-color: var(--field-line); }
+    button.secondary:hover:not(:disabled) { background: #493047; }
+    button:disabled { background: var(--panel-deep); color: var(--muted); border-color: var(--field-line); cursor: default; opacity: .68; }
+    :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
     .actions { justify-content: flex-start; }
-    .feedback { margin-top: .6rem; color: #405347; overflow-wrap: anywhere; }
-    .feedback[data-error="true"] { color: #932c24; }
+    .feedback { margin-top: .6rem; color: var(--muted); overflow-wrap: anywhere; }
+    .feedback[data-error="true"] { color: var(--error); }
     .feedback:empty { display: none; }
     #login { max-width: 28rem; margin: 2rem auto; }
-    #result { border-top: 1px solid #cbd1c9; padding-top: .9rem; }
+    #result { border-top: 1px solid var(--frame); padding-top: .9rem; }
     #result p { margin-bottom: .65rem; white-space: pre-line; overflow-wrap: anywhere; }
     dialog { width: min(100% - 2rem, 26rem); color: inherit; }
     dialog p, dialog .actions { margin-top: 1rem; }
-    dialog::backdrop { background: #17291fb3; }
+    dialog::backdrop { background: #13081dd9; }
     @media (max-width: 42rem) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <header><div><span class="brand">Joker’s Circus</span><span id="environment" class="environment" hidden></span></div></header>
+  <header><div><span class="brand">Joker’s Circus</span><span class="environment" data-environment="__OPERATOR_ENV__">__OPERATOR_LABEL__</span></div></header>
   <main>
     <section id="login" class="card">
       <h1>營運後台</h1>
@@ -75,7 +101,7 @@ export default String.raw`<!doctype html>
       <p id="entry-message" class="feedback" role="status"></p>
       <section aria-labelledby="entry-heading">
         <h2 id="entry-heading">遊戲入口</h2>
-        <div class="grid">
+        <div class="grid entry-grid">
           <article class="card">
             <div class="card-heading"><h3>老虎機</h3><span id="slot-state" class="pill"></span></div>
             <p class="muted">關閉入口後停止新回合，已受理的轉輪仍可確認。</p>
@@ -167,7 +193,6 @@ export default String.raw`<!doctype html>
     function render(value){
       const previousBackup=snapshot?.backup;
       snapshot=value;
-      $('environment').textContent=value.environment==='production'?'正式環境':'測試環境';
       $('health').textContent=value.ready?'服務可接受新回合':value.mode==='active'?'服務保護中，請核對備份及服務狀態。':'遊戲服務尚未啟用';
       $('health').dataset.warning=String(!value.ready);
       const {slot,feature,featureTitle,updatedAt}=value.entry;
@@ -203,7 +228,6 @@ export default String.raw`<!doctype html>
       clearTimeout(pollTimer);
       $('confirm').close();
       $('console').hidden=true;
-      $('environment').hidden=true;
       $('feature-title').textContent='';
       $('result').hidden=true;
       $('reply').hidden=true;
@@ -242,7 +266,6 @@ export default String.raw`<!doctype html>
         const value=await request('status',null,active);
         render(value);
         $('login').hidden=true;
-        $('environment').hidden=false;
         $('console').hidden=false;
         $('refresh').focus();
         message('login-message','');

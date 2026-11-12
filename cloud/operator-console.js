@@ -13,11 +13,15 @@ const script=page.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n?/g,'\n'
 const scriptHash=createHash('sha256').update(script).digest('base64');
 const responseHeaders={...securityHeaders,'Cache-Control':'no-store'};
 const json=(value,status=200)=>Response.json(value,{status,headers:responseHeaders});
+const operatorPages={
+  test:page.replace('__OPERATOR_TITLE__','TEST · ').replace('__OPERATOR_ENV__','test').replace('__OPERATOR_LABEL__','TEST · 測試服'),
+  production:page.replace('__OPERATOR_TITLE__','').replace('__OPERATOR_ENV__','production').replace('__OPERATOR_LABEL__','正式服'),
+};
 
 export function serveOperator(request,env){
-  if(!operatorEnabled(env))return json({error:'找不到此頁面。'},404);
+  if(!operatorEnabled(env)||!Object.hasOwn(operatorPages,env.APP_ENV))return json({error:'找不到此頁面。'},404);
   if(!['GET','HEAD'].includes(request.method))return json({error:'不支援此操作。'},405);
-  return new Response(request.method==='HEAD'?null:page,{headers:{
+  return new Response(request.method==='HEAD'?null:operatorPages[env.APP_ENV],{headers:{
     ...responseHeaders,'Content-Type':'text/html; charset=utf-8','X-Robots-Tag':'noindex, nofollow',
     'Content-Security-Policy':`default-src 'none'; script-src 'sha256-${scriptHash}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
   }});

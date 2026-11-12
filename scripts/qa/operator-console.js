@@ -7,15 +7,16 @@ import {browserOptions} from './helpers/browser.js';
 
 const key=randomBytes(32).toString('hex');
 const guild='100000000000000001',player='100000000000000002';
-const mf=new Miniflare(convertV4MiniflareOptions({
+const fixture=environment=>new Miniflare(convertV4MiniflareOptions({
   modules:true,scriptPath:process.env.TEST_CLOUD_BUNDLE||'test-results/cloud-bundle/worker.js',compatibilityDate:'2026-07-30',
   compatibilityFlags:['nodejs_compat'],
-  bindings:{ARCADE_RELEASE_ENABLED:'true',ARCADE_CONSOLE_TOKEN:key},
+  bindings:{APP_ENV:environment,ARCADE_RELEASE_ENABLED:String(environment==='test'),ARCADE_CONSOLE_TOKEN:key},
   outboundService:()=>{throw new Error('Console UI fixture only uses loopback');},
 }));
+const test=fixture('test'),production=fixture('production');
 let browser;
 try{
-  const origin=(await mf.ready).origin;
+  const [testUrl,productionUrl]=await Promise.all([test.ready,production.ready]);
   browser=await chromium.launch(browserOptions());
   const context=await browser.newContext({viewport:{width:1200,height:930},permissions:['clipboard-read','clipboard-write']});
   const page=await context.newPage(),errors=[];
@@ -52,15 +53,21 @@ try{
     if(action==='verify-backup')return route.fulfill({json:{verified:true,at:status.backup.at}});
     return route.fulfill({json:status});
   });
-  const response=await page.goto(origin+'/operator');
+  const response=await page.goto(testUrl.origin+'/operator');
   assert.equal(response.status(),200);
   assert.match(response.headers()['content-security-policy'],/frame-ancestors 'none'/);
+  const testBadge=page.getByText('TEST · 測試服',{exact:true});
+  assert.equal(await testBadge.isVisible(),true);
+  assert.match(await page.title(),/^TEST/);
+  mkdirSync('test-results/operator-console',{recursive:true});
+  await page.screenshot({path:'test-results/operator-console/test-login.png',fullPage:true});
   await page.getByLabel('管理金鑰').fill('f'.repeat(64));
   await page.getByRole('button',{name:'登入',exact:true}).click();
   await page.getByText('管理金鑰有誤，請重新登入。').waitFor();
   await page.getByLabel('管理金鑰').fill(key);
   await page.getByRole('button',{name:'登入',exact:true}).click();
-  await page.getByText('測試環境',{exact:true}).waitFor();
+  await page.locator('#console').waitFor();
+  assert.equal(await testBadge.isVisible(),true);
   assert.equal(await page.locator('#guild-field').isVisible(),false);
   await page.locator('#slot-button').click();
   await page.getByRole('button',{name:'取消',exact:true}).click();
@@ -86,28 +93,36 @@ try{
   await page.getByText('備份已更新並通過驗帳。').waitFor();
   await page.getByRole('button',{name:'核對備份'}).click();
   await page.getByText(/備份核對通過/).waitFor();
-  mkdirSync('test-results/operator-console',{recursive:true});
   await page.screenshot({path:'test-results/operator-console/desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:'test-results/operator-console/mobile.png',fullPage:true});
   await page.getByRole('button',{name:'登出'}).click();
   await page.getByLabel('管理金鑰').waitFor();
+  assert.equal(await testBadge.isVisible(),true);
   assert.equal(await page.getByLabel('管理金鑰').inputValue(),'');
   assert.equal(await page.locator('#player').inputValue(),'');
   assert.equal(await page.locator('#result').isVisible(),false);
   status.environment='production';
   delete status.entry.feature;
   delete status.entry.featureTitle;
+  await page.setViewportSize({width:1200,height:930});
+  await page.goto(productionUrl.origin+'/operator');
+  const productionBadge=page.getByText('正式服',{exact:true});
+  assert.equal(await productionBadge.isVisible(),true);
+  assert.equal(await testBadge.count(),0);
+  assert.doesNotMatch(await page.title(),/^TEST/);
   await page.getByLabel('管理金鑰').fill(key);
   await page.getByRole('button',{name:'登入',exact:true}).click();
-  await page.getByText('正式環境',{exact:true}).waitFor();
+  await page.locator('#console').waitFor();
+  assert.equal(await productionBadge.isVisible(),true);
   assert.equal(await page.locator('#feature-card').isVisible(),false);
   assert.equal(await page.getByLabel('回報碼',{exact:true}).getAttribute('placeholder'),'S- 開頭');
   assert.equal(await page.locator('#slot-button').isEnabled(),true);
+  await page.screenshot({path:'test-results/operator-console/production.png',fullPage:true});
   assert.deepEqual(errors,[]);
   console.log('Operator console login, entry changes, report lookup, backup and mobile layout passed.');
 }finally{
   await browser?.close();
-  await mf.dispose();
+  await Promise.all([test.dispose(),production.dispose()]);
 }
