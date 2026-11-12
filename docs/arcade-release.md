@@ -4,15 +4,15 @@
 
 1. 在隔離環境執行 `npm run verify:ci` 與 `node scripts/qa/arcade-release.js`。用有舊餘額、簽到和轉輪紀錄的測試帳號演練換版、原請求重送與備份還原。舊頁面轉動時切換入口，確認已受理的轉輪可以收尾，結算只發生一次。
 2. 留存前一版實際部署的 `dist`。以正式 Discord Application ID 設定 `VITE_DISCORD_CLIENT_ID`，執行 `npm run arcade:build -- --legacy <前一版 dist 路徑>`。輸出在 `dist-arcade`，並保留舊版雜湊素材供仍開著的老虎機頁面使用。原本的 `dist` 仍供單遊戲建置使用。
-3. 沿用既有的正式 Discord App、Worker、DO 和 Firestore v2 命名空間。在本機正式 Wrangler 設定加入 `ARCADE_RELEASE_ENABLED="true"` 與 `ARCADE_OPERATOR_IDS`，後者填入逗號分隔的 Discord 使用者 ID。這些人仍須有 Discord 管理員權限或已授權的戲籌管理角色，並在指定頻道操作。
+3. 沿用既有的正式 Discord App、Worker、DO 和 Firestore v2 命名空間。在本機正式 Wrangler 設定加入 `ARCADE_RELEASE_ENABLED="true"`。為營運後台建立一把獨立的 32 位元組隨機金鑰，將 64 字元的十六進位值存入 Worker 的 Secret `ARCADE_CONSOLE_TOKEN`，並由維護者保管。
 4. 將正式 `assets.directory` 設為 `./dist-arcade`、`assets.run_worker_first` 設為 `true`，`html_handling` 和 `not_found_handling` 設為 `"none"`。揭曉前必須由 Worker 先拒絕玩法頁面、程式與素材，包含變形路徑。正式大廳與野球拳分開建置，預告階段只載入預先模糊化的 WebP。
-5. 依序執行 `npm run cloud:build` 與 `node scripts/qa/production-release.js --arcade`，核對正式與測試綁定及部署設定。先備妥最新可還原快照，發布後核對 `/readyz`、`/api/arcade` 和實際 Discord 大廳。全新接入的營運狀態是老虎機開放、野球拳隱藏。此時直開野球拳頁面、素材和 API 應收到 404。
+5. 依序執行 `npm run cloud:build`、`node scripts/qa/operator-console.js` 與 `node scripts/qa/production-release.js --arcade`，驗證後台操作並核對部署設定。先備妥最新可還原快照，發布後核對 `/readyz`、`/api/arcade` 和實際 Discord 大廳。全新接入的營運狀態是老虎機開放、野球拳隱藏。此時直開野球拳頁面、素材和 API 應收到 404。
 
 同源素材在正式配置下先經 Worker 路由，這些請求會計入 Worker 用量。大廳只在可見時更新狀態，並在回大廳時立即刷新。營運狀態查詢只讀 DO。揭曉後已載入的雜湊素材可由瀏覽器快取。 [Cloudflare 靜態素材路由與用量](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)
 
 ## 營運面板
 
-從指定頻道輸入 `/戲籌管理`，點選 **遊戲營運**。每次變更先顯示確認卡，並核對狀態版本。多人操作時，舊的確認卡會被拒絕。
+在一般瀏覽器開啟 Worker 網址的 `/operator`，貼上專用管理金鑰。頁首會顯示正式或測試環境。每次變更前可先閱讀玩家會受到的影響，確認後由伺服器核對入口狀態。
 
 | 遊戲 | 選項 | 玩家行為 |
 |---|---|---|
@@ -29,7 +29,7 @@
 
 1. 請玩家保留原畫面。老虎機再按 SPIN 確認上一局，野球拳按畫面上的重試，或重新載入同一活動視窗讓遊戲恢復原請求。
 2. 記下玩家、台灣時間和畫面上的 `S-`（老虎機）或 `D-`（野球拳）回報碼。請透過私訊或私下支援管道收集。
-3. 開啟 `/戲籌管理` → **查詢玩家回報**，選擇本群玩家並貼上完整回報碼。若顯示已確認，以原紀錄、時間及結算前後餘額核對。若查無結果，請先確認身分、時間和回報碼，讓玩家以同一操作再次確認。
-4. 若同時有多名玩家回報，先在面板暫停受影響遊戲的新操作，再查 `/readyz`、備份時間與原請求。停用營運功能或切回野球拳接入前的 Worker 會中斷已付費場次的復原路徑。若需要回退前端，保留支援野球拳收據的後端與備份程式。
+3. 在後台的 **查詢玩家回報** 貼上使用者 ID 和回報碼，再按 **取回原結果**。查到結果時可核對原紀錄、時間和前後餘額，並複製回覆給玩家。查無紀錄時，先確認身分、時間和回報碼，讓玩家以同一操作再次確認。 [Discord 使用者 ID 說明](https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID)
+4. 若同時有多名玩家回報，先關閉受影響遊戲的入口。到 **備份與服務恢復** 查看上次成功時間，可手動更新備份並核對完整性。看到服務就緒後可重新開放入口。
 
-玩家重試會沿用原請求 ID。管理員查詢只讀。需要人工更正時，先以帳本或備份核對原操作。
+玩家重試會沿用原請求 ID。後台查詢、核對備份皆為唯讀。需要更換資料來源或還原整份帳本時，依正式的 [備份與恢復流程](recovery.md) 進行。

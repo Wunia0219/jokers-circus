@@ -25,7 +25,7 @@ if(arcade){
   assert.equal(production.assets.run_worker_first,true);
   assert.equal(production.assets.html_handling,'none');
   assert.equal(production.vars.ARCADE_RELEASE_ENABLED,'true');
-  assert.match(production.vars.ARCADE_OPERATOR_IDS??'',/^\d{17,20}(?:,\s*\d{17,20})*$/);
+  if(production.vars.ARCADE_OPERATOR_IDS)assert.match(production.vars.ARCADE_OPERATOR_IDS,/^\d{17,20}(?:,\s*\d{17,20})*$/);
   const clientId=production.vars.DISCORD_CLIENT_ID;
   assert.match(clientId??'',/^\d{17,20}$/);
   assert.ok(files.some(([name,bytes])=>/^arcade\/assets\/lobby-.*\.js$/.test(name)&&String(bytes).includes(JSON.stringify(clientId))),

@@ -22,6 +22,7 @@ import {arcadeEnabled,readArcade} from './arcade-controls.js';
 import {ARCADE_STATUS,arcadeStatus,arcadeAsset,arcadeLobby} from './arcade-routes.js';
 import {duelPaths} from '../server/http/app-handler.js';
 import {duelDigest} from '../server/wallet/duel-settlement.js';
+import {authorizeOperator,handleOperator,operatorApi,operatorPage,serveOperator} from './operator-console.js';
 
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const apiPaths=new Set(['/healthz','/readyz','/api/token','/api/interactions','/api/wallet','/api/spin','/api/checkin','/api/ledger','/api/rounds','/api/casino-visit']);
@@ -41,6 +42,14 @@ export class CircusProject extends DurableObject {
   async schedule(delay){const now=Date.now(),due=now+delay,old=await this.ctx.storage.getAlarm();if(!old||old>due)await this.ctx.storage.setAlarm(due);}
   async fetch(request){
     const url=new URL(request.url);
+    if(url.pathname.startsWith(operatorApi)){
+      const refused=authorizeOperator(request,this.env);
+      if(refused)return refused;
+      if(request.method==='GET')return handleOperator(this,request,url.pathname);
+      const operation=this.opsTail.then(()=>handleOperator(this,request,url.pathname));
+      this.opsTail=operation.catch(()=>{});
+      return operation;
+    }
     if(url.pathname.startsWith('/__ops/')){
       const monitorRead=url.pathname==='/__ops/status'&&request.method==='GET'&&authorized(request,this.env,'CLOUD_MONITOR_TOKEN');
       if(!authorized(request,this.env)&&!monitorRead)return json({error:'Forbidden'},403);
@@ -183,7 +192,7 @@ export class CircusProject extends DurableObject {
 async function routeRequest(request,env){
   const path=new URL(request.url).pathname;
   const project=()=>{const settings=cloudIdentity(env);return env.CIRCUS_PROJECT.get(env.CIRCUS_PROJECT.idFromName(settings.projectId));};
-  if(path.startsWith('/api/')||path.startsWith('/__ops/')||apiPaths.has(path)){
+  if(path.startsWith('/api/')||path.startsWith('/__ops/')||path.startsWith(operatorApi)||apiPaths.has(path)){
     try{return await project().fetch(request);}catch{return json({error:'服務尚未就緒。'},503);}
   }
   if(!['GET','HEAD'].includes(request.method))return json({error:'不支援此操作。'},405);
@@ -194,5 +203,6 @@ async function routeRequest(request,env){
 }
 
 export default {async fetch(request,env){
+  if(new URL(request.url).pathname===operatorPage)return serveOperator(request,env);
   return secureResponse(await routeRequest(request,env),{sameOriginFrame:arcadeLobby(new URL(request.url),env)});
 }};

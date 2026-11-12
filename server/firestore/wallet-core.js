@@ -309,8 +309,9 @@ export class FirestoreWalletCore {
     const receipt=await this.read(this.root.collection('operations').doc(digest(guild+'\0'+`${kind}:${user}:${requestId}`)));
     if(!receipt)return {status:'unconfirmed'};
     const {entry,round,matchId}=receipt.result;
-    return {status:'committed',...(round?{recordCode:round.recordCode??round.id,time:round.time,before:round.before,after:round.after,delta:round.net}:
-      {recordCode:String(entry.id),time:entry.time,before:entry.before,after:entry.after,delta:entry.delta,matchId})};
+    return {status:'committed',...(round?{recordCode:round.recordCode??round.id,time:round.time,before:round.before,after:round.after,
+      delta:round.net,bet:round.bet,payout:round.payout}:
+      {recordCode:String(entry.id),time:entry.time,before:entry.before,after:entry.after,delta:entry.delta,matchId,reason:entry.reason})};
   }
   grant(guild,actor,user,amount,reason,requestId){
     this.validate(guild,actor);this.validate(guild,user);this.reason(reason);this.requestId(requestId);
