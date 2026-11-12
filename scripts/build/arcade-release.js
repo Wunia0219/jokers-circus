@@ -4,6 +4,7 @@ import {pathToFileURL} from 'node:url';
 import {build} from 'vite';
 import {productionBoundary,TEST_DISCORD_APP} from './production-boundary.js';
 import {arcadeAssetDirs,assertArcadeAssets,readReleaseFiles} from './arcade-artifact.js';
+import {launchScreenMarkup} from './launch-screen-markup.js';
 import base from '../../vite.config.js';
 
 const rejectTestContent=allowTestApp=>({
@@ -58,7 +59,7 @@ export async function buildArcadeRelease({clientId,outDir=resolve('dist-arcade')
     build:{...base.build,outDir:resolve(outDir,'.'+prefix),emptyOutDir:false,
       rollupOptions:{input:resolve(entry)}},
   });
-  await buildEntry('lobby.html','/arcade/',[lobbyIsolation]);
+  await buildEntry('lobby.html','/arcade/',[launchScreenMarkup,lobbyIsolation]);
   await buildEntry('play.html','/arcade/feature/',[]);
   copyFileSync('images/lobby/yakyuken-cover-v3.webp',join(outDir,'arcade/feature/cover.webp'));
 

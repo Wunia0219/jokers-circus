@@ -25,15 +25,15 @@ addEventListener('pageshow',()=>music?.setVisible(!document.hidden),{signal:abor
 document.addEventListener('visibilitychange',()=>music?.setVisible(!document.hidden),{signal:abort.signal});
 try{
   // Paint the independent launch screen before downloading/handshaking SDK.
-  const [{connectDiscordTestActivity},{createDiscordTestHost},{createDiscordTestMusic}]=await Promise.all([
-    import('./discord-test-activity.js'),import('./discord-test-host.js'),import('./discord-test-music.js'),
+  const [{connectDiscordTestActivity},{createDiscordTestHost},{createActivityMusic}]=await Promise.all([
+    import('./discord-test-activity.js'),import('./discord-test-host.js'),import('./activity-music.js'),
   ]);
   // A new outer document establishes one SDK connection. Only inner game
   // documents navigate, keeping commands and reauthorization available.
   const activity=await connectDiscordTestActivity({storage:null,host:null,lockMobileOrientation:false});
   if(abort.signal.aborted)throw new Error('Activity closed');
   restoreMobilePortrait=activity.restoreMobilePortrait;
-  music=createDiscordTestMusic();music.setVisible(!document.hidden);
+  music=createActivityMusic();music.setVisible(!document.hidden);
   Object.defineProperty(window,'__discordTestHost',{value:createDiscordTestHost({activity,location,clientId:import.meta.env.VITE_DISCORD_CLIENT_ID,music:music.controls})});
   awaitingLobby=true;frame.src=activityPath(location,'/yakyuken-preview.html');
   const safeAreas=()=>{try{for(const edge of ['top','bottom','left','right']){const key='--discord-safe-area-inset-'+edge,value=getComputedStyle(document.documentElement).getPropertyValue(key).trim(),style=frame.contentDocument.documentElement.style;if(value)style.setProperty(key,value);else style.removeProperty(key);}}catch{}};

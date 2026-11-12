@@ -2,7 +2,7 @@ import {Sound} from '../ui/audio/audio.js';
 import {MUSIC_SOURCE} from '../ui/audio/audio-cues.js';
 
 // The shell lives through child navigation and owns the only music player.
-export function createDiscordTestMusic(){
+export function createActivityMusic(){
   const sound=new Sound({musicUrl:MUSIC_SOURCE});
   const listeners=new Set();
   let enabled=true,started=false,visible=true,disposed=false;

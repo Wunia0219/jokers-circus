@@ -2,7 +2,7 @@ import {Container,FillGradient,Graphics,Sprite} from 'pixi.js';
 import {CHARACTERS,ENTRY_FEE,characterRule} from '../characters.js';
 import {label,PALETTE,PixiButton} from './ui.js';
 import {lobbyLayout} from './lobby-layout.js';
-import {createGameCover} from './game-cover.js';
+import {buildGameLobby} from '../../../ui/lobby/game-lobby.js';
 import {LOBBY_COVERS} from '../lobby-art.js';
 import {CHARACTER_INTROS} from '../assets.js';
 
@@ -13,7 +13,6 @@ function portrait(texture,parent,area,fullHeight){
   const mask=new Graphics().rect(area.x,area.y,area.width,area.height).fill(0xffffff);mask.eventMode='none';
   parent.addChild(art,mask);art.mask=mask;return art;
 }
-function logo(scene,parent,x,y,width){const sprite=new Sprite(scene.logoTexture);sprite.anchor.set(.5,0);sprite.width=width;sprite.scale.y=sprite.scale.x;return at(sprite,x,y,parent);}
 function title(text,x,y,parent,size=19,color=PALETTE.gold,options={}){return at(label(text,size,color,options),x,y,parent);}
 
 export function buildLobby(scene){
@@ -21,15 +20,9 @@ export function buildLobby(scene){
   const root=new Container({label:`lobby:${scene.screen}`});root.scale.set(1/scale);scene.world.addChild(root);
   const l=lobbyLayout(width,height,scene.layout.contentTop??headerHeight);scene.lobbyLayout=l;
   if(scene.screen==='games'){
-    logo(scene,root,width/2,l.logoY,l.logoWidth);
-    title('選擇你的舞台',width/2,l.headingY,root,l.headingSize,PALETTE.cream,{fontWeight:'500'});
-    title('經典轉輪，或一場與荷官的對決。',width/2,l.subtitleY,root,height<500?12:13,PALETTE.muted);
-    title('聚光燈已亮起，好戲等你入場。',width/2,l.footerY,root,12,PALETTE.muted);
-    for(const [index,cover] of LOBBY_COVERS.entries()){
-      root.addChild(createGameCover({texture:scene.lobbyTextures[index],name:cover.name,area:l.games[index],
-        onPress:()=>index?scene.visitScreen('characters'):scene.openSlot()}));
-    }
-
+    buildGameLobby(root,{width,height,layout:l,logoTexture:scene.logoTexture,
+      games:LOBBY_COVERS.map((cover,index)=>({name:cover.name,texture:scene.lobbyTextures[index],
+        onPress:()=>index?scene.visitScreen('characters'):scene.openSlot()}))});
   }else{
     const c=l.character,s=c.contentScale,rule=characterRule(scene.selectedCharacter);
     const mobileIntro=c.vertical&&rule.id==='guest-4';

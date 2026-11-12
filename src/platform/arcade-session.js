@@ -10,10 +10,11 @@ export function arcadeHost(){
   return null;
 }
 
-export function createArcadeHost(activity,renew,frame){
+export function createArcadeHost(activity,renew,frame,music){
   let renewal;
   const owns=child=>child===frame.contentWindow&&child.location.origin===location.origin&&child.location.pathname===new URL(frame.src).pathname;
   return Object.freeze({
+    music,
     connect(child){
       if(!owns(child))throw new Error('遊戲連線範圍不符。');
       return activity;

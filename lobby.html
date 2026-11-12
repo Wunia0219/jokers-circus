@@ -7,26 +7,17 @@
     <title>Joker’s Circus · 遊戲大廳</title>
   </head>
   <body>
-    <main id="lobby" class="lobby">
-      <h1>Joker’s Circus</h1>
-      <div class="cards">
-        <article class="card">
-          <img id="slot-cover" alt="">
-          <div class="card-label"><h2>老虎機</h2><button id="slot" disabled>進入遊戲</button></div>
-        </article>
-        <article class="card">
-          <img id="teaser-cover" alt="">
-          <img id="feature-cover" alt="">
-          <div class="card-label">
-            <h2 id="feature-title" aria-live="polite">即將揭曉</h2>
-            <button id="feature" hidden>進入遊戲</button>
-          </div>
-        </article>
+    <!-- launch-screen -->
+    <main id="lobby" aria-label="Joker’s Circus 遊戲大廳" inert>
+      <div id="lobby-stage"></div>
+      <button class="lobby-music" type="button" aria-label="背景音樂"></button>
+      <div id="lobby-feedback">
+        <p id="lobby-status" role="status"></p>
+        <button id="lobby-retry" type="button" hidden>重新連線</button>
       </div>
-      <p id="lobby-status" role="status">正在連線…</p>
-      <button id="lobby-retry" hidden>重新連線</button>
+      <p class="sr-only" id="feature-status" aria-live="polite"></p>
     </main>
-    <iframe id="arcade-game" title="Joker’s Circus 遊戲" hidden></iframe>
+    <iframe id="arcade-game" title="Joker’s Circus 遊戲" allow="autoplay; fullscreen" hidden></iframe>
     <script type="module" src="/src/platform/arcade-lobby.js"></script>
   </body>
 </html>

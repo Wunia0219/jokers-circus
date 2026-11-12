@@ -70,7 +70,7 @@ const arcade=location.pathname===ARCADE_SLOT_PATH?arcadeHost():null;
 const entryEnabled=import.meta.env.PROD&&!arcade&&!discordTestBuild&&!loopbackWalletTest&&
   import.meta.env.VITE_DISCORD_WALLET_ENABLED==='true';
 let entryClosing=false, maintenanceShown=false, entryCheck=null, activityIdentity, casinoPresence;
-const activityMusic=discordTestBuild?discordTestMusic():null;
+const activityMusic=arcade?.music??(discordTestBuild?discordTestMusic():null);
 const scene=new SlotScene(), sound=new Sound({effectsEnabled:true,musicUrl:activityMusic?null:MUSIC_SOURCE,onStateChange:renderAudio});
 const bigWin=new BigWinPresentation($('#app'));
 let activityMode='browser', activityUser=null, walletClient=null, claiming=false, historySync=null, checkinPanel=null, checkinRetry=false;

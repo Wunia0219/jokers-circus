@@ -10,7 +10,7 @@ try{
   const activity=host.connect(window);
   const wallet=new ProductionDuelWallet(activity.session,host.fetch);
   await wallet.refresh();
-  scene=new YakyukenScene({wallet,onLobby:()=>host.back(window)});
+  scene=new YakyukenScene({wallet,music:host.music,onLobby:()=>host.back(window)});
   scene.activity=activity;
   addEventListener('pagehide',event=>event.persisted?scene.pause():void scene.destroy());
   addEventListener('pageshow',event=>{if(event.persisted)scene.resume();});
