@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
-import {resolve,extname} from 'node:path';
+import {resolve,extname,dirname} from 'node:path';
 import {buildArcadeRelease} from '../build/arcade-release.js';
+import {TEST_DISCORD_APP} from '../build/production-boundary.js';
 import {arcadeAsset,arcadeLobby,arcadeStatus} from '../../cloud/arcade-routes.js';
 import {secureResponse} from '../../server/http/security-headers.js';
 import {WalletStore} from '../../server/wallet/wallet.js';
@@ -10,7 +11,7 @@ import {duelView} from '../../server/wallet/duel-settlement.js';
 import {launchBrowser} from './helpers/browser.js';
 
 const output=resolve('test-results/arcade-release'),dist=resolve(output,'dist');
-const clientId='100000000000000003',guild='100000000000000001',user='100000000000000002';
+const clientId=TEST_DISCORD_APP,guild='100000000000000001',user='100000000000000002';
 const session={token:'isolated-session',guildId:guild,userId:user,environment:'test'};
 const env={DISCORD_CLIENT_ID:clientId,ARCADE_RELEASE_ENABLED:'false'};
 let mode={slot:'open',feature:'hidden',revision:0};
@@ -50,9 +51,13 @@ const host=(platform)=>`<!doctype html><meta name="viewport" content="width=devi
   </script>`;
 
 const legacy=resolve(output,'legacy'),oldAsset='/assets/legacy-fixture-12345678.js';
-mkdirSync(resolve(legacy,'assets'),{recursive:true});
-writeFileSync(resolve(legacy,'.'+oldAsset),'/* retained old slot bundle */');
-await buildArcadeRelease({clientId,outDir:dist,legacy,logLevel:'warn'});
+const oldLobby='/arcade/assets/legacy-lobby-12345678.js',oldFeature='/arcade/feature/assets/legacy-game-12345678.js';
+for(const [path,content] of [[oldAsset,'slot'],[oldLobby,'lobby'],[oldFeature,'game']]){
+  const filename=resolve(legacy,'.'+path);
+  mkdirSync(dirname(filename),{recursive:true});
+  writeFileSync(filename,`/* retained old ${content} bundle */`);
+}
+await buildArcadeRelease({clientId,target:'test',outDir:dist,legacy,logLevel:'warn'});
 const wallet=new WalletStore({filename:':memory:',environment:'test',guildIds:[guild]});
 const spinAccepted=Promise.withResolvers(),releaseSpin=Promise.withResolvers();
 let spins=0,featureRequests=0;
@@ -107,6 +112,7 @@ try{
   assert.equal(spins,1);
   assert.equal(wallet.state(guild,user).history[0].id,original.round.id);
   assert.match(await (await old.request.get(origin+oldAsset)).text(),/retained old slot bundle/);
+  assert.match(await (await old.request.get(origin+oldLobby)).text(),/retained old lobby bundle/);
 
   const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
   const requests=[];
@@ -117,7 +123,7 @@ try{
   assert.equal(await lobby.locator('#feature').isVisible(),false);
   assert.equal(featureRequests,0);
   assert.ok(!requests.some(url=>/feature\/|yakyuken|cg-download/i.test(url)));
-  for(const path of ['/arcade/feature/play.html','/arcade/%66eature/cover.webp','/arcade/feature/cover.webp'])
+  for(const path of ['/arcade/feature/play.html','/arcade/%66eature/cover.webp','/arcade/feature/cover.webp',oldFeature])
     assert.equal((await page.request.get(origin+path)).status(),404,path);
   const checkLayout=()=>lobby.locator('.cards').evaluate(node=>{
     const bounds=node.getBoundingClientRect();
@@ -136,6 +142,7 @@ try{
   await lobby.locator('body').evaluate(()=>dispatchEvent(new Event('focus')));
   await lobby.locator('.card.revealed #feature:enabled').waitFor();
   assert.equal(await lobby.locator('#feature-title').innerText(),'野球拳');
+  assert.match(await (await page.request.get(origin+oldFeature)).text(),/retained old game bundle/);
   await lobby.locator('#feature').tap();
   await game.locator('canvas[data-phase="characters"]').waitFor({timeout:45000});
   assert.equal(await page.evaluate(()=>window.handshakes),1,'child game shares the original Discord connection');
@@ -152,7 +159,7 @@ try{
   assert.equal(spins,1);
   mkdirSync(output,{recursive:true});
   writeFileSync(resolve(output,'report.json'),JSON.stringify({ok:true,oldSpinSurvived:true,hiddenAssetGate:true,
-    mobileReveal:true,portraitAndLandscape:true,sharedDiscordConnection:true,independentPause:true},null,2)+'\n');
+    retainedLegacyAssets:true,mobileReveal:true,portraitAndLandscape:true,sharedDiscordConnection:true,independentPause:true},null,2)+'\n');
   console.log('Arcade rollout, hidden assets, same-session reveal and pause verified.');
 }finally{
   releaseSpin.resolve();

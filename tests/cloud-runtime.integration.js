@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {Miniflare,convertV4MiniflareOptions,Response as MFResponse} from 'miniflare';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
@@ -284,6 +285,14 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   const replay=await rollback.duelAction(guild,user,'hand',winningHand);
   assert.equal(replay.duplicate,true);assert.equal(replay.entry.delta,2500);
   assert.equal(replay.wallet.unlocks.dealer,2);assert.equal(replay.wallet.balance,10007);
+  const archivePath=join(dir,'drill-archive.json'),keyPath=join(dir,'drill-key.txt'),out=join(dir,'drill');
+  writeFileSync(archivePath,JSON.stringify(archive.data),{mode:0o600});
+  writeFileSync(keyPath,key,{mode:0o600});
+  execFileSync(process.execPath,['scripts/admin/wallet-recovery.js','drill','--archive',archivePath,'--key-file',keyPath,'--environment','test','--out',out],{windowsHide:true});
+  const drill=JSON.parse(readFileSync(join(out,'local-drill','report.json'),'utf8'));
+  assert.ok(drill.ok&&drill.sourceUnchanged&&drill.allSevenTablesUnchanged);
+  assert.equal(drill.challengeReceiptsVerified,restored.tables.operations.filter(op=>op.key.startsWith('duel:')).length);
+  assert.ok(drill.challengeReceiptsVerified>0);
  }
  assert.ok(released.data.quota.scopes.global.usage.reduce((n,x)=>n+x.reads,0)>37);writeFileSync('test-results/cloud-runtime-report.json',JSON.stringify({emulatorOnly:true,realWorkerd:true,persistentSessions:true,originalQuotaCarried:true,cloudBackupRestored:true,newProgressSurvivesRollback:true,privateCommandReply:true,alarmRecoversOutbox:true,backupResumesAfterRestart:true,consistentReadTime:true,staleExportRefused:true,actualCloudDeployment:false},null,2));
 });

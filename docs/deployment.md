@@ -6,7 +6,7 @@
 
 `main` 可以同時保存正式與測試功能的原始碼；合併不代表全部功能發布正式服。1.0.3 起，一般 `npm run build` 以 `productionBoundary` 排除野球拳、Discord 測試會話與大廳導航模組，並只複製明確核准的政策頁與公告圖片，不複製 `public/downloads/yakyuken/`。模組圖或產物含野球拳／測試雲端識別即拒絕建置。獨立測試建置使用自己的插件、多入口及輸出目錄，保留所有測試玩法、CG 與開場素材。
 
-老虎機單遊戲發布前執行 `npm run build`、`npm run cloud:build` 及 `node scripts/qa/production-release.js`，核對正式 `dist`、Worker bundle、正式／測試的 Worker、DO、Firestore 與通知頻道。雙遊戲版本採獨立建置與明確啟用設定，見[雙遊戲正式服接入](arcade-release.md)。稽核只讀設定。原野球拳測試活動仍使用專用 `jokers-circus-yakyuken-test`、`slot-game-203db`／`yakyuken-playtest-20261105-test`，見[獨立 Discord 測試活動](discord-test-activity.md)。
+老虎機單遊戲發布前執行 `npm run build`、`npm run cloud:build` 及 `node scripts/qa/production-release.js`，核對正式 `dist`、Worker bundle、正式／測試的 Worker、DO、Firestore 與通知頻道。雙遊戲版本分別以 `npm run arcade:preflight -- test` 和 `npm run arcade:preflight -- production` 建置及預檢。參見[雙遊戲測試與正式發布](arcade-release.md)。原野球拳測試活動仍使用專用 `jokers-circus-yakyuken-test`、`slot-game-203db`／`yakyuken-playtest-20261105-test`，見[獨立 Discord 測試活動](discord-test-activity.md)。
 
 Netlify 的建置預覽由根目錄 `netlify.toml` 指定 `NPM_VERSION=12.2.1`，在自動安裝依賴前切換 npm；Node 仍依 `.node-version`。`packageManager`／`engines` 不會替 Netlify 升級 npm，放在 build command 裡才升級也來不及。保留 `.npmrc` 的版本與安裝腳本限制。參考 [Netlify 相依管理](https://docs.netlify.com/build/configure-builds/manage-dependencies/#npm)。
 
@@ -17,7 +17,8 @@ Netlify 的建置預覽由根目錄 `netlify.toml` 指定 `NPM_VERSION=12.2.1`�
 | 正式維運設定 | `.env.cloud.production.local`；Discord CLI 使用 `.env.server.production.local`（本機 live writer 關閉） |
 | 保留測試 Firestore | 專案 `slot-game-203db`，namespace `jokers-circus-v2-20261024-test`，`APP_ENV=test`；舊服務未刪除，Discord 共用應用程式入口已切正式 |
 | 測試群／頻道 | 群 `760012177326997544`，頻道 `1564243344857632818` |
-| 測試 Worker | `wrangler.jsonc`；私密覆寫為忽略 Git 的 `wrangler.cloud.local.jsonc`，不要用於正式更新 |
+| 保留的測試 Worker | `wrangler.jsonc`；私密覆寫為忽略 Git 的 `wrangler.cloud.local.jsonc` |
+| 雙遊戲測試 Worker | `wrangler.arcade-test.jsonc`；`slot-game-203db`／`jokers-circus-arcade-test`，私有維運範本為 `deploy/arcade-test.env.example` |
 | 執行設定 | `CLOUD_PLAN`（`free`／`paid`，核對實際方案）、`APP_ENV`、`FIRESTORE_PROJECT_ID`、`FIRESTORE_NAMESPACE`、`FIRESTORE_ENDPOINT` |
 | Discord 範圍 | `DISCORD_CLIENT_ID`、`DISCORD_PUBLIC_KEY`、`ALLOWED_GUILD_IDS`、`DISCORD_COMMAND_CHANNEL_IDS`、`CHIP_ADMIN_ROLE_IDS`（相容舊 Worker 的 `ADMIN_ROLE_IDS`） |
 | 遊戲限制 | `WEEKLY_CHECKIN_REWARDS`、`ADMIN_GRANT_MAX`、`ADMIN_DAILY_MAX` |

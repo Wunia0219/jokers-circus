@@ -3,6 +3,7 @@ import {readFileSync,readdirSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {assertProductionArtifact} from '../build/production-boundary.js';
+import {assertArcadeArtifact} from '../build/arcade-artifact.js';
 import {APP_VERSION} from '../../src/version.js';
 const arcade=process.argv.includes('--arcade');
 const dist=resolve(arcade?'dist-arcade':'dist');
@@ -26,19 +27,8 @@ if(arcade){
   assert.equal(production.assets.html_handling,'none');
   assert.equal(production.vars.ARCADE_RELEASE_ENABLED,'true');
   if(production.vars.ARCADE_OPERATOR_IDS)assert.match(production.vars.ARCADE_OPERATOR_IDS,/^\d{17,20}(?:,\s*\d{17,20})*$/);
-  const clientId=production.vars.DISCORD_CLIENT_ID;
-  assert.match(clientId??'',/^\d{17,20}$/);
-  assert.ok(files.some(([name,bytes])=>/^arcade\/assets\/lobby-.*\.js$/.test(name)&&String(bytes).includes(JSON.stringify(clientId))),
-    'Arcade build must use the configured Discord Application ID');
-  for(const name of ['arcade/lobby.html','arcade/feature/play.html','arcade/feature/cover.webp'])
-    assert.ok(files.some(([path])=>path===name),name+' missing');
-  for(const [name,bytes] of files.filter(([path])=>path.startsWith('arcade/'))){
-    assert.match(name,/^arcade\/(?:lobby\.html|feature\/(?:play\.html|cover\.webp)|(?:feature\/)?assets\/[\w.-]+-[\w-]{8}\.[a-z0-9]+)$/);
-    if(/\.(?:js|css|html)$/.test(name)){
-      assert.doesNotMatch(String(bytes),/slot-game-203db|yakyuken-playtest|1567875182792544256|\/api\/playtest/i);
-      if(!name.startsWith('arcade/feature/'))assert.doesNotMatch(String(bytes),/野球拳|yakyuken|cg-download|\/arcade\/feature\//i);
-    }
-  }
+  assert.notEqual(production.vars.DISCORD_CLIENT_ID,'1567875182792544256');
+  assertArcadeArtifact(files,production.vars.DISCORD_CLIENT_ID);
 }else assert.notEqual(production.vars.ARCADE_RELEASE_ENABLED,'true');
 assert.equal(production.vars.APP_ENV,'production');assert.equal(production.vars.FIRESTORE_PROJECT_ID,'jokers-circus-production');assert.equal(production.vars.FIRESTORE_NAMESPACE,'jokers-circus-v2-20261030-production');
 assert.equal(production.vars.DISCORD_COMMAND_CHANNEL_IDS,'1565731918107115690');assert.equal(production.vars.DISCORD_CASINO_CHANNEL_ID,'1565731918107115690');
@@ -49,5 +39,6 @@ assert.equal(test.name,'jokers-circus-yakyuken-test');assert.equal(test.main,'cl
 assert.ok(test.durable_objects.bindings.every(b=>b.name!=='CIRCUS_PROJECT'));
 const report={version:APP_VERSION,ok:true,arcade,productionWorker:production.name,productionProject:production.vars.FIRESTORE_PROJECT_ID,testWorker:test.name,testProject:test.vars.FIRESTORE_PROJECT_ID,productionHasTestGame:false,
   files:files.map(([path,bytes])=>({path,sha256:createHash('sha256').update(bytes).digest('hex')})),workerSha256:createHash('sha256').update(code).digest('hex')};
-mkdirSync('test-results/release-1.0.3',{recursive:true});writeFileSync('test-results/release-1.0.3/isolation.json',JSON.stringify(report,null,2)+'\n');
+const output=arcade?'test-results/arcade-production':'test-results/release-1.0.3';
+mkdirSync(output,{recursive:true});writeFileSync(join(output,'isolation.json'),JSON.stringify(report,null,2)+'\n');
 console.log(JSON.stringify({ok:true,version:APP_VERSION,files:files.length,productionHasTestGame:false,separateCloudAndDatabase:true}));

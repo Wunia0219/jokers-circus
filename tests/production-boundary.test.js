@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {productionBoundary,assertProductionArtifact} from '../scripts/build/production-boundary.js';
+import {productionBoundary,assertProductionArtifact,TEST_DISCORD_APP} from '../scripts/build/production-boundary.js';
+import {assertArcadeArtifact} from '../scripts/build/arcade-artifact.js';
 import {resolve} from 'node:path';
 
 test('production artifacts reject test downloads, game text, cloud identities and unexpected entries',()=>{
@@ -15,4 +16,23 @@ test('production build removes test modules and cannot be switched to the test w
   assert.equal(id,plugin.resolveId('./platform/game-navigation.js',importer));assert.match(plugin.load(id),/discordTestBuild=false/);
   assert.throws(()=>plugin.generateBundle.call({getModuleIds:()=>[resolve('src/games/yakyuken/main.js')]},{},{}),/Test module/);
   const dev=productionBoundary();assert.equal(dev.config({}, {command:'serve'}),undefined);assert.equal(dev.resolveId('./platform/game-navigation.js',importer),undefined);
+});
+
+test('arcade audit verifies the loaded entry and keeps the test App out of production',()=>{
+  const productionApp='1561284960986599626';
+  const files=[
+    ['index.html','<script src="/assets/index-12345678.js"></script>'],
+    ['assets/index-12345678.js',JSON.stringify(TEST_DISCORD_APP)],
+    ['arcade/lobby.html','<script src="/arcade/assets/lobby-12345678.js"></script>'],
+    ['arcade/assets/lobby-12345678.js',JSON.stringify(TEST_DISCORD_APP)],
+    ['arcade/feature/play.html','野球拳'],
+    ['arcade/feature/cover.webp','cover'],
+  ];
+  assert.doesNotThrow(()=>assertArcadeArtifact(files,TEST_DISCORD_APP));
+  assert.throws(()=>assertArcadeArtifact(files,productionApp),/Test content/);
+  assert.throws(()=>assertArcadeArtifact([...files,['arcade/assets/old-12345678.js','/arcade/feature/play.html']],TEST_DISCORD_APP),/expected to not match/i);
+  const stale=[...files.filter(([name])=>name!=='arcade/lobby.html'),
+    ['arcade/lobby.html','<script src="/arcade/assets/lobby-87654321.js"></script>'],
+    ['arcade/assets/lobby-87654321.js',JSON.stringify(productionApp)]];
+  assert.throws(()=>assertArcadeArtifact(stale,TEST_DISCORD_APP),/configured Discord Application ID/);
 });

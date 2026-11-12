@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-arcade/
+dist-arcade-test/
 .env
 .env.*
 !.env.example
