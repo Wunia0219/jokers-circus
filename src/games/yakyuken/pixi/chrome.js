@@ -1,6 +1,6 @@
 import {Container,FillGradient,Graphics,Sprite} from 'pixi.js';
 import {icon} from '../../../ui/shared/icons.js';
-import {label,PALETTE,PixiButton,slotIcon} from './ui.js';
+import {label,PALETTE,PixiButton,slotIcon} from '../../../ui/pixi/ui.js';
 import {TABLE_MOVE_NAMES,resultActionLayout} from './layout.js';
 import {yakyukenHeaderLayout} from './header-layout.js';
 import {characterRule} from '../characters.js';

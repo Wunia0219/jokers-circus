@@ -1,5 +1,5 @@
 import {BlurFilter,Container,FillGradient,Graphics,Rectangle,RenderTexture,Sprite,Texture} from 'pixi.js';
-import {label,PALETTE} from './ui.js';
+import {label,PALETTE} from '../../../ui/pixi/ui.js';
 import {WARDROBE_DURATION,wardrobeFrame} from '../duel-presentation.js';
 
 // Scene-owned textures remain alive until the renderer closes its bindings.

@@ -26,6 +26,8 @@ test('each CI suite retains its prerequisites without sharing an emulator or bro
     assert.equal(seen.has('worker'),suite==='services');
     assert.equal(seen.has('monitor-build'),suite==='services');
     assert.equal(seen.has('yakyuken-reward'),suite==='browser','the award ordering regression runs in browser CI');
+    assert.equal(seen.has('arcade-production'),suite==='browser','production rollout and normal CG locks run in browser CI');
+    assert.equal(seen.has('arcade-preflight'),suite==='services','production configuration is checked without cloud credentials');
     assert.equal(seen.has('discord-test-ui'),suite==='discord','the complete dual-account Discord fixture runs independently');
     if(suite==='services'){
       assert.deepEqual(steps.find(step=>step.id==='worker').dependsOn,['build']);
@@ -47,7 +49,7 @@ test('each CI suite retains its prerequisites without sharing an emulator or bro
 test('local full verification retains its coverage and invalid suite selections fail closed',()=>{
   assert.equal(verificationPlan().length,10);
   assert.equal(verificationPlan({full:true}).length,12);
-  assert.equal(verificationPlan({ci:true}).length,16);
+  assert.equal(verificationPlan({ci:true}).length,18);
   for(const options of [{ci:true,suite:''},{ci:true,suite:'typo'},{suite:'wallet'}])assert.throws(()=>verificationPlan(options),/Use --suite/);
   for(const arg of ['--suite=','--suite=typo']){
     const result=spawnSync(process.execPath,['scripts/qa/verify.js','--ci','--list',arg],{encoding:'utf8',windowsHide:true});

@@ -1,6 +1,6 @@
 import {Container,FillGradient,Graphics,Rectangle} from 'pixi.js';
 import {characterRule} from '../characters.js';
-import {label,PALETTE,PixiButton} from './ui.js';
+import {label,PALETTE,PixiButton} from '../../../ui/pixi/ui.js';
 
 const addText=(parent,value,size,x,y,color=PALETTE.cream,options={},anchor=.0)=>{
   const node=label(value,size,color,options);node.anchor.x=anchor;node.position.set(x,y);parent.addChild(node);return node;

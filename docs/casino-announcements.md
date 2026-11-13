@@ -53,14 +53,14 @@
 
 ## 部署與驗收
 
-使用 `deploy/casino-bot.env.example`，啟用前核對 Bot 安裝、私密 Token、群與頻道。公告頻道需要檢視頻道、傳送訊息、嵌入連結及附加檔案（52224）。已安裝的正式 Bot 如只具備舊的 19456 權限，發布黑金收據前須先在公告頻道補上「附加檔案」。沿用既有 Worker、DO、namespace、Secrets 與額度。
+正式服使用 `deploy/casino-bot.env.example`，啟用前核對 Bot 安裝、私密 Token、群與頻道。公告頻道需要檢視頻道、傳送訊息、嵌入連結及附加檔案（52224）。已安裝的正式 Bot 如只具備舊的 19456 權限，發布黑金收據前須先在公告頻道補上「附加檔案」。沿用既有 Worker、DO、namespace、Secrets 與額度。
 
 ### Discord 測試服
 
 - 在 [#工程師的專屬地](https://discord.com/channels/760012177326997544/1564243344857632818) 執行 `/推播預覽` 並選擇樣式。這是測試 App 專用的私人回覆，使用示例數據，可看入場、未下注離場、三種結算、三種大獎及獲得戲籌。卡片上的按鈕會開啟測試版遊戲。註冊入口為 `node scripts/discord/register-casino-preview.js`。
 - 「獲得戲籌」預覽沿用大獎卡的附件做法，採黑金收據外框並顯示範例金額、發放原因與紀錄編號。卡片不附遊戲按鈕。私密回覆顯示執行者的 @ 樣式，不會觸發提及通知或發放戲籌。
-- 驗證遊戲自動推播時，用同一個測試 App 的 Bot。伺服器管理員以 `bot` scope 將它安裝至小丑俱樂部，並在上述私人頻道授予四項公告權限。測試 App 擁有者在 Developer Portal 取得測試 Bot Token，存為 `jokers-circus-arcade-test` 的 `DISCORD_BOT_TOKEN` Worker Secret。
-- 啟用前以測試 Token 驗證 Bot 身分是 `1567875182792544256` 且頻道確屬測試群。測試 Worker 的公告變數為 `DISCORD_CASINO_ENABLED=true`、`DISCORD_CASINO_GUILD_ID=760012177326997544`、`DISCORD_CASINO_CHANNEL_ID=1564243344857632818`。測試後依需要停用公告。正式頻道 `1565731918107115690` 不供演練。
+- 測試服固定只提供私人推播預覽，不安裝公告 Bot、不建立或配置 Bot Token，也不啟用真實入場、離場、大獎或發放戲籌的公開通知，避免額外的公告傳送與背景處理用量。維持 `DISCORD_COMMAND_PROFILE=test-simple`，發放表單不提供公開通知選項。
+- 測試 Worker 不加入 `DISCORD_BOT_TOKEN`、`DISCORD_CASINO_*` 或 `DISCORD_HIGHLIGHTS_*` 公告設定；現有 `arcade:preflight -- test` 的公告隔離檢查應保留。通知傳送、限流、去重及恢復邏輯由隔離自動測試驗證，不連線到真實 Discord 頻道。正式頻道 `1565731918107115690` 不供演練。
 
 出入場整合在 Cloudflare runtime，本機 Node／SQLite QA 不對真實頻道發送。以隔離資料驗證得獎、去重與恢復；正式環境唯讀檢查健康、指令與圖片。真人確認登入、入離場與手機提醒，不以正式下注製造測試大獎。部署現況見[客戶交付](customer-handoff.md)，測試見[驗收文件](testing.md)。
 

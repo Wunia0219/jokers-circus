@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {createServer} from 'vite';
 import {launchBrowser} from './helpers/browser.js';
-import {buildCGGallery} from '../game/build-cg-gallery.js';
+import {buildCGGallery} from '../build/cg-gallery.js';
 import {CG_ART,DEALER_CG} from '../../src/games/yakyuken/cg-catalog.js';
 import {securityHeaders,contentSecurityPolicy} from '../../server/http/security-headers.js';
 

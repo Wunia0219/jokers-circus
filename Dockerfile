@@ -6,6 +6,7 @@ COPY scripts/security ./scripts/security
 RUN npm install --global npm@12.2.1 && npm ci
 COPY index.html ./
 COPY vite.config.js ./
+COPY scripts/build ./scripts/build
 COPY server/http/security-headers.js ./server/http/security-headers.js
 COPY src ./src
 COPY images ./images
@@ -24,7 +25,9 @@ COPY .node-version ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY server ./server
+COPY cloud/snapshot-audit.js cloud/snapshot.js cloud/storage.js cloud/quota.js ./cloud/
 COPY src/game ./src/game
+COPY src/games/yakyuken/challenge.js src/games/yakyuken/characters.js src/games/yakyuken/rules.js src/games/yakyuken/settlement-rules-v1.js ./src/games/yakyuken/
 COPY src/version.js ./src/version.js
 COPY scripts/admin ./scripts/admin
 COPY scripts/lib ./scripts/lib

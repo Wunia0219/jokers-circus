@@ -1,7 +1,7 @@
 import {Container,Graphics,Rectangle} from 'pixi.js';
 import {icon} from '../../../ui/shared/icons.js';
-import {label,panel,PALETTE,PixiButton} from './ui.js';
-import {SLOT_UI} from './slot-theme.js';
+import {label,panel,PALETTE,PixiButton} from '../../../ui/pixi/ui.js';
+import {SLOT_UI} from '../../../ui/pixi/slot-theme.js';
 import {buildArchiveDialog} from './archive-dialogs.js';
 
 export function buildSlotDialog(scene,type){

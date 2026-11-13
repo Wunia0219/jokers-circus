@@ -1,6 +1,6 @@
 import {Container,Graphics,Rectangle} from 'pixi.js';
 import {Motion} from './motion.js';
-import {label,PixiButton} from './ui.js';
+import {label,PixiButton} from '../../../ui/pixi/ui.js';
 import {ENTRY_TIMING} from './entry-state.js';
 
 // Screen changes have no branding, progress meter or decorative scene movement.

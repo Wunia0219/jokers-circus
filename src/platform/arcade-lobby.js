@@ -202,6 +202,8 @@ try{
   }
 }catch(error){
   clearTimeout(timeout);
+  clearInterval(refreshTimer);
+  lifetime.abort();safeAreaObserver.disconnect();music.dispose();
   console.error('無法開啟遊戲大廳。',error);
   launch.fail();
 }

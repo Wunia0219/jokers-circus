@@ -8,12 +8,14 @@
 |---|---|
 | 啟動 | `src/main.js`：登入與舞台並行準備、操作狀態及失敗清理 |
 | 遊戲規則 | `src/game/`：輪帶、下注、算獎與歷史模型；前後端共用 |
-| 野球拳 | `src/games/yakyuken/`：角色規則、共用勝敗推進、Pixi 場景、本機紀錄及測試錢包 client；[流程與模組](yakyuken-preview.md) |
-| 野球拳測試後端 | `cloud/yakyuken-playtest-core.js`／`yakyuken-playtest-worker.js`：每玩家 DO 序列化、Firestore 測試錢包及請求恢復，獨立於正式帳本 |
+| 野球拳 | `src/games/yakyuken/`：角色規則、共用勝敗推進、Pixi 場景、本機紀錄及正式／舊測試錢包 client；[流程與模組](yakyuken-preview.md) |
+| 舊野球拳測試後端（隔離 QA／回退） | `cloud/yakyuken-playtest-core.js`／`yakyuken-playtest-worker.js`：每玩家 DO 序列化、Firestore 測試錢包及請求恢復，獨立於正式帳本 |
 | 平台與同步 | `src/platform/`：Discord 登入、原請求恢復、錢包與歷史分頁 |
 | 轉輪與演出 | `src/ui/reels/`、`dealer/`、`audio/`、`wins/`：動畫、荷官、聲音、派彩 |
 | 玩家介面 | `src/ui/player/`、`dialogs/`、`shared/`：資訊、視窗、共用元件 |
 | HTTP／Discord | `server/http/`、`server/discord/`：路由、簽章、群／頻道／角色授權、指令與公告 |
+| 雙遊戲發布 | `scripts/build/arcade-release.js`、`cloud/arcade-routes.js`：三種建置目標、同源大廳、素材閘道；正式與測試共用 `cloud/worker.js`，身分與資料分開 |
+| 野球拳權威結算 | `server/wallet/duel-settlement.js`、`server/firestore/wallet-core.js`：v2 錢包、操作收據、通關進度與備份重播 |
 | 共用錢包 | `server/wallet/`：下注／簽到／發獎／收回規則、session、結算佇列；`settings.js` 統一後端設定 |
 | Firestore 結算 | `server/firestore/wallet-core.js`：交易、去重、近期狀態快取及讀寫預留 |
 | Firestore 查詢 | `wallet-history.js`：新舊回合、帳本、每日摘要；`admin-wallets.js`：玩家列表與重設 |
@@ -63,13 +65,14 @@
 | 根目錄、`.github/`、`deploy/` | 工具／部署設定、CI、公開環境範本及 Firestore 規則；CI 只驗證，不部署 |
 | `scripts/cloud/`、`firestore/`、`database/`、`discord/` | 各平台操作 CLI；既有 npm 指令名稱保留 |
 | `scripts/admin/` | 跨後端狀態、可攜備份與 wallet recovery |
+| `scripts/build/`、`scripts/preview/` | 發布產物建置與手動本機預覽；預覽腳本不與發布 CLI 混放 |
 | `scripts/setup/`、`qa/`、`qa/helpers/` | 安裝 Node／模擬器、隔離驗證、共用啟動流程 |
 | `scripts/assets/`、`audio/`、`game/` | 素材工具、音效預覽、數學驗算與模型輸出 |
 | `scripts/lib/`、`security/` | CLI runtime 與鎖定版本的安全修補，不進產品 bundle |
-| `docs/`、`docs/data/`、`output/` | 主題文件、數學報告與可重建的模型交付 JSON；文件入口在 README |
+| `docs/`、`docs/data/`、`output/` | 主題文件、數學報告與可重建的模型交付 JSON；`docs/history/` 保存舊環境，`docs/releases/` 保存具日期的發布準備；文件入口在 README |
 | `images/`、`audio/`、`public/` | 執行素材；保留既有資源 URL |
 | `art/` | 原畫、原幀、設計與來源證據，非前端 runtime |
 | `tests/`、`tests/helpers/`、`tests/fixtures/` | 一般回歸、整合情境、獨立 oracle 與固定像素基準 |
-| `node_modules/`、`dist/`、`.wrangler/` | 已忽略的相依、建置及 Worker 產物 |
+| `node_modules/`、`dist*/`、`.wrangler/`、`.netlify/` | 已忽略的相依、建置、Worker 與 Netlify 本機狀態；Docker context 同步排除 |
 | `.tools/`、`test-results/` | 已忽略的工具、一次性腳本與驗證證據，非正式來源 |
 | `.env*.local`、`wrangler.*.local.jsonc`、`data/`、`backups/` | 私密設定、帳本與備份，不加入 Git、不批次清空 |

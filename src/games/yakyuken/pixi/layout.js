@@ -1,4 +1,4 @@
-import {slotChrome,BALANCE_ROW_HEIGHT} from './slot-theme.js';
+import {slotChrome,BALANCE_ROW_HEIGHT} from '../../../ui/pixi/slot-theme.js';
 
 const smooth=(from,to,value)=>{const t=Math.max(0,Math.min(1,(value-from)/(to-from)));return t*t*(3-2*t);};
 

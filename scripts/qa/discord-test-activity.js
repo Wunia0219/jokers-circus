@@ -4,7 +4,7 @@ import {createServer} from 'node:http';
 import {resolve} from 'node:path';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {build} from 'vite';
-import {discordTestBuildOptions} from '../game/discord-test-build.js';
+import {discordTestBuildOptions} from '../build/discord-test.js';
 import {createActivityHandler} from '../../server/http/app-handler.js';
 import {PlaytestService,discordTestPlayer,slotTestState,slotTestCheckinResult} from '../../cloud/yakyuken-playtest-core.js';
 import {TEST_GUILD,TEST_CHANNEL} from '../../cloud/discord-test-auth.js';

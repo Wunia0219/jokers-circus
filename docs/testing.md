@@ -8,7 +8,7 @@
 |---|---|
 | `npm run verify` | 固定順序：一般回歸、前端／Worker dry-run、啟動／荷官／數字／停輪／CSP 瀏覽器驗證 |
 | `npm run verify:full` | 上述全部，再跑官方 emulator、REST／workerd、備份恢復、重設與監控 |
-| `npm run verify:ci` | 完整驗證＋Discord 測試活動雙遊戲＋野球拳領獎順序＋慢幀／輸入延遲＋CSP 延遲通知，共 16 項；彙整獨立失敗 |
+| `npm run verify:ci` | 完整驗證＋Discord 測試活動雙遊戲＋野球拳領獎順序＋正式雙遊戲隔離／預檢＋慢幀／輸入延遲＋CSP 延遲通知，共 18 項；彙整獨立失敗 |
 | `node scripts/qa/check-toolchain.js` | 安裝相依前核對 Node／npm、lockfile、Netlify、Docker 與 CI 的版本設定 |
 | `npm test` | 算獎、介面契約、Discord 權限、SQLite、備份、同步與防重送 |
 | `npm run test:bot` | 指令、HTTP、帳本與維運 |
@@ -18,19 +18,21 @@
 | `npm run test:reset` | 測試帳本清除、未知提交結果、重啟續作、舊登入拒絕 |
 | `npm run test:experience` | Edge：正常／快停、慢結果、慢歷史、慢幀與手機觸控 |
 | `npm run test:dealer` | Edge：荷官完整影格、短期重用、背景／到期釋放及故障清理 |
-| `npm run test:startup` | Edge：六種啟動失敗、立即停止渲染、晚到素材回收與重試畫面 |
+| `npm run test:startup` | Edge：六種老虎機啟動失敗與五種大廳資源生命週期：部分圖片失敗、解碼／renderer 初始化中止、正常離開及封面回收 |
 | `node scripts/qa/game-entry.js` | 先用 Discord 登入與錢包開關建置；隔離驗證維修海報、帳號放行、重新開放與結算途中關閉，包含回應中斷及原請求保留 |
 | `npm run test:numbers` | 數字、符號、空值與後備文字的像素／尺寸／無障礙基準，以及 Canvas 重設次數 |
 | `npm run test:security` | 先 build；Edge：CSP、腳本注入阻擋、SQLite 結算 |
 | `npm run test:discord-sdk` | 隔離父頁／iframe：真實 SDK 握手、OAuth、方向鎖定及大型非法集合拒絕 |
 | `npm run test:monitor` | scheduled handler、持久去重、故障與恢復通知 |
 | `node --test tests/yakyuken*.test.js` | 野球拳規則、紀錄、測試錢包邊界、原請求恢復與去重 |
-| `node scripts/qa/yakyuken-cloud-test.js` | 隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道 |
+| `node scripts/qa/yakyuken-cloud-test.js` | 早期獨立測試引擎的隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道；不代表現行正式權威後端的存取保證 |
 | `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸及 3 組短視窗／安全區、共用外框、等尺寸縮圖、全畫面檢視、手機翻頁與 PNG 下載 |
 | `node scripts/qa/yakyuken-reward.js` | 隔離錢包：造型先於領獎、金額與音效同步、獨立靜音、縮放／背景恢復、重載不重播、勝敗再次挑戰／返回、新場只扣一次費，以及預取後 330ms 翻牌規劃、暫扣結算、原拳重試、缺票券與跨裝置進度衝突 |
 | `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：依本機 CG 目錄驗證原圖下載、位元組、CSP 與同源請求，需先部署對應版本的圖庫 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
 | `node scripts/qa/discord-test-activity.js` | 使用已建置前端、真正的 Embedded App SDK 與隔離帳號。三主題各跑 13 種尺寸，驗證橫直切換、人物裁切、文字安全區、開場故障與來源，再跑桌機／手機雙遊戲及共用簽到 |
+| `node scripts/qa/arcade-release.js --production` | 正式 App 雙遊戲建置；正常 CG 解鎖、測試 PNG 拒絕、正式收藏下載路徑，以及隱藏、維護、更新中原局恢復 |
+| `npm run arcade:preflight -- production-arcade` | 不需雲端憑證；核對正式綁定、前端與 Worker dry-run，絕不部署 |
 | `node scripts/qa/arcade-release.js` | 4206 埠，隔離雙遊戲測試建置與真實 SDK。驗證預告階段封鎖、手機直橫版、共用 Discord 連線、野球拳單一品牌載入畫面、兩款遊戲即時中斷與返回大廳，以及重開後取回原轉輪。`cloud-runtime.integration.js` 另驗證兩個野球拳開關、維護期間阻擋新操作、重新開放續局及備份還原 |
 | `node scripts/qa/test-firestore.js tests/discord-test.integration.js` | 官方 emulator＋真正 workerd：Discord 簽章／頻道、OAuth、每位玩家、共用錢包／簽到與重啟 |
 | `node --test tests/cloudflare-usage.test.js tests/monitor.test.js` | Free 門檻／Paid 觀測、方案切換、跨日、通知意圖、429／未知送出、可信附件恢復；不聯絡正式服務 |
@@ -61,7 +63,7 @@ CSP 注入測試等待非同步違規通知，確認 `script-src-elem` 對 `inli
 
 `node scripts/qa/verify.js --full --list` 或 `--ci --list` 只列出步驟。檢查清單與依賴集中在 `scripts/qa/helpers/verification-plan.js`；一般驗證第一個失敗即停止，CI 模式則繼續獨立檢查。建置失敗時，依賴它的 CSP／Worker／整合測試標為受阻，絕不當成通過。每一步結束都更新 `test-results/verification.json`；任何失敗／受阻都保留非零結束碼。Windows ARM 的 workerd 步驟使用 `.tools/node-x64/` 中與 `.node-version` 一致的 Node；其他步驟使用啟動驗證的 Node。
 
-手動 `yakyuken-preview.js` 與 `dealer-resources.js` 共用 4196 埠；先結束前者，再執行後者或完整 CI，不要與 CI 同時啟動。
+手動 `scripts/preview/yakyuken.js` 與 `scripts/qa/dealer-resources.js` 共用 4196 埠；先結束前者，再執行後者或完整 CI，不要與 CI 同時啟動。
 `cg-responsive.js` 與數字繪製像素檢查共用 4198 埠，也應循序執行。
 
 GitHub Actions 使用四個獨立 runner 並行驗證，各組內仍循序執行：
@@ -75,7 +77,7 @@ GitHub Actions 使用四個獨立 runner 並行驗證，各組內仍循序執行
 
 重現單組使用 `npm run verify:ci -- --suite=browser`（或 `discord`／`wallet`／`services`）；漏洞稽核由 workflow 另跑 `npm audit --audit-level=high`。本機完整重驗仍用 `npm run verify:ci`，不可在同一個目錄同時啟動多組，因為會共用模擬器連接埠及輸出目錄。分組覆蓋測試會檢查完整清單不遺漏、所有整合測試檔均分配且不重複、workflow 啟動所有組；新增檢查請同步維護清單。Discord 測試仍完整執行並保留兩個帳號的隔離檢查，不改動畫、等待門檻或案例。任一組失敗仍讓其餘組完成診斷，最後的 `Verify / verify` 只有全部成功才通過。
 
-同一事件與分支的新執行會取消舊執行；PR、main 推送與手動執行使用不同取消群組，避免互相中斷。四組並行縮短等待時間，但不等於減少 GitHub Actions 累計用量，額外 runner 仍有安裝成本。流程不觸發 Netlify 或 Cloudflare 部署。
+同一事件與分支的新執行會取消舊執行；PR、main 推送與手動執行使用不同取消群組，避免互相中斷。四組並行縮短等待時間，但不等於減少 GitHub Actions 累計用量，額外 runner 仍有安裝成本。流程不觸發 Netlify 或 Cloudflare 部署。services 組另建置 Docker 映像並載入正式 HTTP／恢復模組；本機沒有 Docker 時，只能回報相依閉包檢查，不能宣稱容器已實測。
 
 CI 每組保留 7 天的 `verification-<suite>-<run_id>-<attempt>` 診斷附件，並在執行摘要列出各步驟結果與耗時。附件只包含指定的 QA JSON 與 Discord 隔離測試失敗畫面，不包含 SQLite、真實玩家資料、備份或環境檔。一般停輪報告在 `test-results/reel-experience/`，壓力測試在 `test-results/reel-experience-stress/`；CSP 每次使用獨立 `run-*` 目錄，互不覆蓋。
 

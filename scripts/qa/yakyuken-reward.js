@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {launchBrowser} from './helpers/browser.js';
-import {PLAYTEST_FS_DENY} from '../game/yakyuken-test-gateway.js';
+import {PLAYTEST_FS_DENY} from '../preview/yakyuken-test-gateway.js';
 import {PlaytestService} from '../../cloud/yakyuken-playtest-core.js';
 import {WARDROBE_DURATION} from '../../src/games/yakyuken/duel-presentation.js';
 import {REWARD_SHOWCASE_MS,REWARD_COUNT_MS,REWARD_FADE_MS} from '../../src/games/yakyuken/reward-presentation.js';

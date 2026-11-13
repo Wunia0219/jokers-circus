@@ -1,7 +1,7 @@
 import {Container,Graphics,Sprite,Texture} from 'pixi.js';
 import {discordAvatarUrl} from '../../../platform/discord-avatar.js';
-import {label,PALETTE} from './ui.js';
-import {BALANCE_ROW_HEIGHT} from './slot-theme.js';
+import {label,PALETTE} from '../../../ui/pixi/ui.js';
+import {BALANCE_ROW_HEIGHT} from '../../../ui/pixi/slot-theme.js';
 
 export function playerIdentity(scene){
   const user=scene.activity?.user;

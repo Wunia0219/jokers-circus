@@ -1,6 +1,6 @@
 import {Container,FillGradient,Graphics,Rectangle,Sprite} from 'pixi.js';
 import {Motion} from './motion.js';
-import {label,PixiButton} from './ui.js';
+import {label,PixiButton} from '../../../ui/pixi/ui.js';
 import {ENTRY_TIMING,entryLoadingLayout} from './entry-state.js';
 
 // Reused within one Yakyuken renderer; released after its shader bindings close.

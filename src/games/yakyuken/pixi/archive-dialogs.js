@@ -7,7 +7,7 @@ import {DIALOG_BRAND,DIALOG_FOOTER,PROGRAMME,programmeScrollbarWidth} from '../.
 import {downloadCG} from '../cg-download.js';
 import {buildMatchHistory} from './match-history.js';
 import {cgGridLayout,cgGridPage,cgViewerLayout} from './cg-layout.js';
-import {label,PALETTE,PixiButton,slotIcon} from './ui.js';
+import {label,PALETTE,PixiButton,slotIcon} from '../../../ui/pixi/ui.js';
 
 const lock='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1"/></svg>';
 const downloadGlyph='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v10.75m-3.75-3.5L12 14.5l3.75-3.75"/><path d="M4.5 15.5V19a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-3.5"/></svg>';

@@ -1,6 +1,6 @@
 # 舊 Discord 測試活動
 
-此文件保存舊測試 Worker 與帳本的設定，供回退與查閱歷史使用。現行測試 App 的活動根映射和互動端點請依[測試服與正式服發布](arcade-release.md)設定。維護現行測試服時請勿執行本頁的舊部署或指令設定流程。老虎機沿用[停輪基準](reel-timing-baseline.md)。野球拳流程、角色與 CG 規格見[玩法文件](yakyuken-preview.md)。
+此文件保存舊測試 Worker 與帳本的設定，供回退與查閱歷史使用。現行測試 App 的活動根映射和互動端點請依[測試服與正式服發布](../arcade-release.md)設定。維護現行測試服時請勿執行本頁的舊部署或指令設定流程。老虎機沿用[停輪基準](../reel-timing-baseline.md)。野球拳流程、角色與 CG 規格見[玩法文件](../yakyuken-preview.md)。
 
 ## 固定環境邊界
 
@@ -21,13 +21,13 @@
 
 測試 App 已保存 OAuth Redirect `https://127.0.0.1`、根映射 `/` 至專用 Worker、Activity 啟用、網頁／iOS／Android 與手機直向設定。
 
-私有 App 設定保存在忽略版控的 `.tools/discord-test-app.json`，包含 `purpose: "discord-test"`、`clientId`、`clientSecret`、`publicKey`、固定 `guildId`／`channelId` 及可選 `testerIds`。Client Secret 不放入 Vite 環境變數、網頁、網址、聊天或報告。需要用內建瀏覽器保存時，可啟動只限本機的 `node scripts/game/discord-test-configure.js`；表單只寫入上述本機檔案。
+私有 App 設定保存在忽略版控的 `.tools/discord-test-app.json`，包含 `purpose: "discord-test"`、`clientId`、`clientSecret`、`publicKey`、固定 `guildId`／`channelId` 及可選 `testerIds`。Client Secret 不放入 Vite 環境變數、網頁、網址、聊天或報告。需要用內建瀏覽器保存時，可啟動只限本機的 `node scripts/discord/configure-test.js`；表單只寫入上述本機檔案。
 
 ```sh
-node scripts/game/discord-test.js build
-node scripts/game/discord-test.js deploy
-node scripts/game/discord-test.js configure-entry
-node scripts/game/discord-test.js check
+node scripts/cloud/discord-test.js build
+node scripts/cloud/discord-test.js deploy
+node scripts/cloud/discord-test.js configure-entry
+node scripts/cloud/discord-test.js check
 ```
 
 建置輸出為 `test-results/discord-test-dist`；部署設定為忽略版控的 `wrangler.discord-test.local.jsonc`。建立多入口的測試建置，不覆蓋正式 `dist`；新流程接管後，舊 `yakyuken-test-deploy.js` 會拒絕部署，以免移除 Discord 的前端與登入設定。前端、後端、加密會話與原測試玩家 DO 均在同一專用 Worker，保留既有測試資料。
@@ -44,13 +44,13 @@ Portal 的 Interactions Endpoint 已保存為該來源的 `/api/interactions`，
 - 現行外框持有 SDK 與短期錢包會話，內頁切換時透過 `/api/session` 重新驗證身分。舊無外框入口保留以 App、frame、instance 分區的 sessionStorage 相容路徑，不保存 OAuth access token；該路徑失效時清除暫存並要求重開。身分驗證使用 Auth DO，不讀寫 Firestore，未確認遊戲操作保留原 ID。
 - 玩家鍵固定由後端產生 `d_<guildId>_<userId>`。Discord 入口禁止指定 `player` 查詢參數；只有本機閘道持有的私有權杖可使用合成 `qa-*` 帳號。
 - 同一玩家的兩款遊戲共用測試餘額、同一份每日／七日簽到與權威 revision。野球拳、老虎機紀錄分開顯示，扣發款、最新紀錄及去重憑證在同一玩家文件交易完成。
-- 野球拳入場扣 1,000，通關獎金依[角色規則](yakyuken-probability.md)；暖機後平手不讀寫 Firestore、不累計平手數。老虎機沿用原條帶、算獎、下注額與兩秒冷卻，結果只由伺服器產生。
+- 野球拳入場扣 1,000，通關獎金依[角色規則](../yakyuken-probability.md)；暖機後平手不讀寫 Firestore、不累計平手數。老虎機沿用原條帶、算獎、下注額與兩秒冷卻，結果只由伺服器產生。
 - 切換遊戲保留 `frame_id`、`instance_id`、`platform`、`guild_id`、`channel_id`、`location_id`、`discord_shim` 及手機版本等必要啟動資訊，會話、OAuth token 與 proxy ticket 不複製至切換網址。外框持有唯一 SDK，內頁經同來源握手與 `/api/session` 恢復授權；過期時使用同一 SDK 重新授權，拒絕身分變更。桌機／手機瀏覽器外框刻意拒絕第二次握手，防止這類回歸。簽到跨遊戲只領一次；未確認請求保留原 ID，不重新扣款或重抽結果。
 - 此 Worker 沒有 Discord 公告／維運推播工作，也沒有免費額度 80% 通知或持續 Firestore 輪詢。
 
 ## 測試服共用管理指令
 
-`DISCORD_TEST_COMMANDS_ENABLED=true` 後，既有測試 App 提供與正式服共用的 `/戲籌`、`/戲籌管理`、原生表單、紀錄分頁與重設確認卡。以 `node scripts/game/discord-test.js register-commands` 註冊，只使用測試 App 的 client credentials 與指定測試群；保留 Activity Launch，不安裝 Bot、不建立或要求 Bot Token、不發送公開通知。測試發放表單省略公開通知選項，竄改提交通知選項也會拒絕。
+`DISCORD_TEST_COMMANDS_ENABLED=true` 後，既有測試 App 提供與正式服共用的 `/戲籌`、`/戲籌管理`、原生表單、紀錄分頁與重設確認卡。以 `node scripts/cloud/discord-test.js register-commands` 註冊，只使用測試 App 的 client credentials 與指定測試群；保留 Activity Launch，不安裝 Bot、不建立或要求 Bot Token、不發送公開通知。測試發放表單省略公開通知選項，竄改提交通知選項也會拒絕。
 
 所有指令與元件重新驗證簽章、App、測試群 `760012177326997544`、頻道 `1564243344857632818`、面板開啟者及管理權限。預設只有 Discord 管理員可操作；可另設定 `DISCORD_TEST_ADMIN_ROLE_IDS`。資料與雲端固定為既有專用測試 Worker、`slot-game-203db`、`yakyuken-playtest-20261105-test`，不使用正式 App、正式 DO 或正式資料庫。表單原請求也綁定操作、目標、金額及原因，不能以同一表單改發給第二位玩家。
 
@@ -64,7 +64,7 @@ Portal 的 Interactions Endpoint 已保存為該來源的 `/api/interactions`，
 
 - 外框先顯示讀取層，再準備 SDK、登入、錢包與大廳。每次活動只選一次主題；橫直切換使用同主題對應構圖，遊戲切換不重新選圖。三張橫式核准來源與雜湊見 `art/launch-screen/approved-assets.json`；直式圖位於 `images/launch/portrait-*.webp`。
 - 橫式保留完整構圖，直式／正方形使用直圖，依 Discord／裝置安全區排版。開場允許手機旋轉，完成後恢復遊戲直向設定。`LOADING...` 逐字波紋與背景光波在背景暫停，減少動態時靜止。
-- 外框核對同來源及真正內頁 window 的就緒事件，待大廳實際繪製後才淡出並解除輸入鎖定。裝飾圖失敗退回深色底；登入／大廳失敗保留遮罩與重開提示。純美術預覽：`node scripts/game/launch-preview.js`，入口 `http://127.0.0.1:4205/`，以 `?art=1..3` 指定主題。
+- 外框核對同來源及真正內頁 window 的就緒事件，待大廳實際繪製後才淡出並解除輸入鎖定。裝飾圖失敗退回深色底；登入／大廳失敗保留遮罩與重開提示。純美術預覽：`node scripts/preview/launch.js`，入口 `http://127.0.0.1:4205/`，以 `?art=1..3` 指定主題。
 - CG 下載透過 SDK `openExternalLink` 開啟 [獨立下載站](https://jokers-circus-gallery.pages.dev)，不攜帶 OAuth、錢包或啟動資訊。舊 `/cg-download.html?stage=0..2` 保持相容。圖庫為公開靜態素材；遊戲內解鎖檢查不等於下載站的伺服器授權。
 - 私有 `.tools/discord-test-app.json` 可設定單一 `cgPreviewUserId`。只有已通過測試群授權且 ID 相符的帳號可預覽全數 CG；不寫入收藏、勝場或錢包，移除設定並重新部署後恢復原進度。
 - 荷官恢復僅在獨立測試建置啟用：最多同時載入四張圖集；網路／408、429、500、502、503、504 最多重試兩次，間隔 300ms、1000ms。404／解碼錯誤不重試。失敗動畫保留待機，初始待機失敗嘗試靜態原畫；同一失敗動畫冷卻 30 秒。
@@ -72,7 +72,7 @@ Portal 的 Interactions Endpoint 已保存為該來源的 `/api/interactions`，
 
 ## 驗證與已記錄發布
 
-自動驗證入口、連接埠及 CI 分組集中於[測試文件](testing.md)。`tests/discord-test.test.js` 與整合測試覆蓋簽章、頻道、OAuth、玩家隔離、共用錢包及重啟；`scripts/qa/discord-test-activity.js` 使用真正 SDK 與模擬 Discord 外框驗證桌機／手機雙遊戲。這些隔離檢查不取代真正 Discord 客戶端驗收。
+自動驗證入口、連接埠及 CI 分組集中於[測試文件](../testing.md)。`tests/discord-test.test.js` 與整合測試覆蓋簽章、頻道、OAuth、玩家隔離、共用錢包及重啟；`scripts/qa/discord-test-activity.js` 使用真正 SDK 與模擬 Discord 外框驗證桌機／手機雙遊戲。這些隔離檢查不取代真正 Discord 客戶端驗收。
 
 | 最近記錄 | 版本／證據 |
 |---|---|

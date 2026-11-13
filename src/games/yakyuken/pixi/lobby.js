@@ -1,6 +1,6 @@
 import {Container,FillGradient,Graphics,Sprite} from 'pixi.js';
 import {CHARACTERS,ENTRY_FEE,characterRule} from '../characters.js';
-import {label,PALETTE,PixiButton} from './ui.js';
+import {label,PALETTE,PixiButton} from '../../../ui/pixi/ui.js';
 import {lobbyLayout} from './lobby-layout.js';
 import {buildGameLobby} from '../../../ui/lobby/game-lobby.js';
 import {LOBBY_COVERS} from '../lobby-art.js';

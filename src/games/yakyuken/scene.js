@@ -17,12 +17,12 @@ import {earnedPose,resultDialogue} from './duel-presentation.js';
 import {createChallenge,playChallengeRound,applyChallengeDuel} from './challenge.js';
 import {PlayerArchive} from './player-archive.js';
 import {createTable} from './pixi/table.js';
-import {label,PALETTE,PixiButton} from './pixi/ui.js';
+import {label,PALETTE,PixiButton} from '../../ui/pixi/ui.js';
 import {buildSlotHud,updateSlotHud} from './pixi/chrome.js';
 import {buildSlotDialog} from './pixi/dialogs.js';
 import {buildLobby} from './pixi/lobby.js';
 import {CHARACTERS,canEnterCharacter,characterRule} from './characters.js';
-import {installPointerFeedback} from './pixi/pointer-feedback.js';
+import {installPointerFeedback} from '../../ui/pixi/pointer-feedback.js';
 import {YakyukenEntryLoading,createYakyukenEntryGradients} from './pixi/entry-loading.js';
 import {YakyukenScreenFade} from './pixi/screen-fade.js';
 import {waitForEntryTask} from './pixi/entry-state.js';
@@ -34,7 +34,7 @@ import {createCheckinButton} from '../../ui/player/checkin-button.js';
 import {checkinClaimFeedback,playerError} from '../../ui/player/player-copy.js';
 import {icon} from '../../ui/shared/icons.js';
 
-// Local previews use an archive; cloud and Discord tests inject a test wallet.
+// Local previews use an archive; deployed games inject their authenticated wallet.
 export class YakyukenScene {
   app = new Application();
   motion = new Motion();

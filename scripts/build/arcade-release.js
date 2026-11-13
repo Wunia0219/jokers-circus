@@ -2,7 +2,7 @@ import {copyFileSync,existsSync,readFileSync,realpathSync,writeFileSync} from 'n
 import {resolve,join,relative,isAbsolute,sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {build} from 'vite';
-import {productionBoundary,TEST_DISCORD_APP} from './production-boundary.js';
+import {productionBoundary,TEST_DISCORD_APP,PRODUCTION_DISCORD_APP} from './production-boundary.js';
 import {arcadeAssetDirs,assertArcadeAssets,readReleaseFiles} from './arcade-artifact.js';
 import {launchScreenMarkup} from './launch-screen-markup.js';
 import base from '../../vite.config.js';
@@ -15,7 +15,7 @@ const rejectTestContent=allowTestApp=>({
     for(const entry of Object.values(bundle)){
       const source=entry.type==='chunk'?entry.code:entry.source;
       if(typeof source==='string'&&(/slot-game-203db|\/api\/playtest|discord-test-session/.test(source)||
-        !allowTestApp&&source.includes(TEST_DISCORD_APP)))
+        !allowTestApp&&(source.includes(TEST_DISCORD_APP)||/jokers-circus-arcade-test|youran-finale\.png/.test(source))))
         throw new Error('Test credentials or routes in arcade release');
     }
   },
@@ -33,11 +33,11 @@ const lobbyIsolation={
     }
   },
 };
-export async function buildArcadeRelease({clientId,legacy=null,logLevel,target='test',outDir=resolve(target==='production'?'dist':'dist-arcade-test')}){
+export async function buildArcadeRelease({clientId,legacy=null,logLevel,target='test',outDir=resolve(target==='production'?'dist':target==='production-arcade'?'dist-arcade-production':'dist-arcade-test')}){
   if(!/^\d{17,20}$/.test(clientId??''))throw new Error('Set VITE_DISCORD_CLIENT_ID to the target Discord Application ID');
   const allowTestApp=target==='test';
-  const slotOnly=!allowTestApp;
-  if(!['test','production'].includes(target)||allowTestApp!==(clientId===TEST_DISCORD_APP))
+  const slotOnly=target==='production';
+  if(!['test','production','production-arcade'].includes(target)||clientId!==(allowTestApp?TEST_DISCORD_APP:PRODUCTION_DISCORD_APP))
     throw new Error('Discord Application ID does not match the arcade build target');
   const flags={
     'import.meta.env.VITE_DISCORD_CLIENT_ID':JSON.stringify(clientId),
@@ -63,12 +63,12 @@ export async function buildArcadeRelease({clientId,legacy=null,logLevel,target='
   });
   if(!slotOnly){
     await buildEntry('lobby.html','/arcade/',[launchScreenMarkup,lobbyIsolation]);
-    await buildEntry('play.html','/arcade/feature/',[],{
+    await buildEntry('play.html','/arcade/feature/',[],allowTestApp?{
       define:{'import.meta.env.VITE_ARCADE_TEST_TOWEL':'"true"'},
       resolve:{alias:{'../../../images/yakyuken/youran/stage-3.webp':resolve('images/yakyuken/youran/stage-3-towel.webp')}},
-    });
+    }:{define:{'import.meta.env.VITE_ARCADE_TEST_TOWEL':'"false"'}});
     copyFileSync('images/lobby/yakyuken-cover-v3.webp',join(outDir,'arcade/feature/cover.webp'));
-    copyFileSync('art/yakyuken/youran/redesign/youran-stage-3-towel.png',join(outDir,'arcade/feature/youran-finale.png'));
+    if(allowTestApp)copyFileSync('art/yakyuken/youran/redesign/youran-stage-3-towel.png',join(outDir,'arcade/feature/youran-finale.png'));
   }
 
   // Old open tabs still request hashed assets from their own bundle.
@@ -81,8 +81,11 @@ export async function buildArcadeRelease({clientId,legacy=null,logLevel,target='
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
-  const args=process.argv.slice(2);
-  if(args.length&&!(args.length===2&&args[0]==='--legacy'))throw new Error('Usage: npm run arcade:build -- [--legacy PREVIOUS_DIST]');
+  const args=process.argv.slice(2),options={};
+  for(let i=0;i<args.length;i+=2){
+    if(!['--target','--legacy'].includes(args[i])||!args[i+1]||options[args[i]])throw new Error('Usage: npm run arcade:build -- [--target test|production|production-arcade] [--legacy PREVIOUS_DIST]');
+    options[args[i]]=args[i+1];
+  }
   const clientId=process.env.VITE_DISCORD_CLIENT_ID;
-  await buildArcadeRelease({clientId,target:clientId===TEST_DISCORD_APP?'test':'production',legacy:args[1]?resolve(args[1]):null});
+  await buildArcadeRelease({clientId,target:options['--target']??(clientId===TEST_DISCORD_APP?'test':'production'),legacy:options['--legacy']?resolve(options['--legacy']):null});
 }

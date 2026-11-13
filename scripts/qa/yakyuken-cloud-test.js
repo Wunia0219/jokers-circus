@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {createServer} from 'vite';
 import {launchBrowser} from './helpers/browser.js';
-import {playtestGateway,PLAYTEST_FS_DENY} from '../game/yakyuken-test-gateway.js';
+import {playtestGateway,PLAYTEST_FS_DENY} from '../preview/yakyuken-test-gateway.js';
 import {PlaytestService} from '../../cloud/yakyuken-playtest-core.js';
 
 const live=process.argv.slice(2).join(' ')==='--live';

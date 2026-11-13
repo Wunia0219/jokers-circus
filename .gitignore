@@ -2,6 +2,8 @@ node_modules/
 dist/
 dist-arcade/
 dist-arcade-test/
+dist-arcade-production/
+.netlify/
 .env
 .env.*
 !.env.example

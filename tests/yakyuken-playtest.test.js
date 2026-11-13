@@ -5,7 +5,7 @@ import {testCGUnlocks} from '../cloud/yakyuken-playtest-worker.js';
 import {TEST_GUILD} from '../cloud/discord-test-auth.js';
 import {PlayerArchive} from '../src/games/yakyuken/player-archive.js';
 import {TestWalletClient} from '../src/games/yakyuken/test-wallet-client.js';
-import {playtestGateway} from '../scripts/game/yakyuken-test-gateway.js';
+import {playtestGateway} from '../scripts/preview/yakyuken-test-gateway.js';
 
 function fixture(){
   const docs=new Map(),values=new Map(),weights=[];let reads=0,writes=0,weight=0,unknown=false,randomCalls=0,failReceipt=false,lostReceipt=false;

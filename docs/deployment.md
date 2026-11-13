@@ -6,7 +6,7 @@
 
 `main` 可以同時保存正式與測試功能的原始碼；合併不代表全部功能發布正式服。1.0.3 起，一般 `npm run build` 以 `productionBoundary` 排除野球拳、Discord 測試會話與大廳導航模組，並只複製明確核准的政策頁與公告圖片，不複製 `public/downloads/yakyuken/`。模組圖或產物含野球拳／測試雲端識別即拒絕建置。獨立測試建置使用自己的插件、多入口及輸出目錄，保留所有測試玩法、CG 與開場素材。
 
-以 `npm run arcade:preflight -- test` 建置雙遊戲測試服，以 `npm run arcade:preflight -- production` 建置單一老虎機正式服。共用預檢會核對前端產物、Worker bundle、環境綁定與 Discord 設定。參見[測試服與正式服發布](arcade-release.md)。舊野球拳測試 Worker 和帳本保留供回退，見[舊 Discord 測試活動](discord-test-activity.md)。
+以 `npm run arcade:preflight -- test` 建置雙遊戲測試服，以 `npm run arcade:preflight -- production` 建置單一老虎機正式服，以 `npm run arcade:preflight -- production-arcade` 準備正式雙遊戲。最後一項使用獨立的 `dist-arcade-production`／`wrangler.arcade-production.jsonc`，不覆寫現行正式設定，也不執行部署。共用預檢會核對前端產物、Worker bundle、環境綁定與 Discord 設定。參見[測試服與正式服發布](arcade-release.md)。舊野球拳測試 Worker 和帳本保留供回退，見[舊 Discord 測試活動](history/discord-test-activity.md)。
 
 Netlify 的建置預覽由根目錄 `netlify.toml` 指定 `NPM_VERSION=12.2.1`，在自動安裝依賴前切換 npm；Node 仍依 `.node-version`。`packageManager`／`engines` 不會替 Netlify 升級 npm，放在 build command 裡才升級也來不及。保留 `.npmrc` 的版本與安裝腳本限制。參考 [Netlify 相依管理](https://docs.netlify.com/build/configure-builds/manage-dependencies/#npm)。
 

@@ -3,17 +3,20 @@ import {createServer} from 'node:http';
 import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {resolve,extname,dirname} from 'node:path';
 import {buildArcadeRelease} from '../build/arcade-release.js';
-import {TEST_DISCORD_APP} from '../build/production-boundary.js';
+import {TEST_DISCORD_APP,PRODUCTION_DISCORD_APP} from '../build/production-boundary.js';
+import {CG_ORIGIN,CG_ART} from '../../src/games/yakyuken/cg-catalog.js';
 import {arcadeAsset,arcadeLobby,arcadeStatus} from '../../cloud/arcade-routes.js';
 import {secureResponse} from '../../server/http/security-headers.js';
 import {WalletStore} from '../../server/wallet/wallet.js';
 import {duelView} from '../../server/wallet/duel-settlement.js';
 import {launchBrowser} from './helpers/browser.js';
 
-const output=resolve('test-results/arcade-release'),dist=resolve(output,'dist');
-const clientId=TEST_DISCORD_APP,guild='100000000000000001',user='100000000000000002';
-const session={token:'isolated-session',guildId:guild,userId:user,environment:'test'};
-const env={APP_ENV:'test',DISCORD_CLIENT_ID:clientId,ARCADE_RELEASE_ENABLED:'false'};
+assert.ok(process.argv.slice(2).every(arg=>arg==='--production'),'Only --production is supported');
+const production=process.argv.includes('--production'),environment=production?'production':'test';
+const output=resolve(production?'test-results/arcade-production':'test-results/arcade-release'),dist=resolve(output,'dist');
+const clientId=production?PRODUCTION_DISCORD_APP:TEST_DISCORD_APP,guild='100000000000000001',user='100000000000000002';
+const session={token:'isolated-session',guildId:guild,userId:user,environment};
+const env={APP_ENV:environment,DISCORD_CLIENT_ID:clientId,ARCADE_RELEASE_ENABLED:'false'};
 let mode={slot:'open',feature:'hidden',revision:0};
 const state={get:()=>mode};
 const watchers=new Set();
@@ -63,8 +66,8 @@ for(const [path,content] of [[oldAsset,'slot'],[oldLobby,'lobby'],[oldFeature,'g
   mkdirSync(dirname(filename),{recursive:true});
   writeFileSync(filename,`/* retained old ${content} bundle */`);
 }
-await buildArcadeRelease({clientId,target:'test',outDir:dist,legacy,logLevel:'warn'});
-const wallet=new WalletStore({filename:':memory:',environment:'test',guildIds:[guild]});
+await buildArcadeRelease({clientId,target:production?'production-arcade':'test',outDir:dist,legacy,logLevel:'warn'});
+const wallet=new WalletStore({filename:':memory:',environment,guildIds:[guild]});
 const spinAccepted=Promise.withResolvers(),releaseSpin=Promise.withResolvers();
 const secondSpinAccepted=Promise.withResolvers(),releaseSecondSpin=Promise.withResolvers();
 const featureStateRequested=Promise.withResolvers(),releaseFeatureState=Promise.withResolvers();
@@ -98,8 +101,10 @@ const server=createServer(async(req,res)=>{
       }else if(url.pathname==='/api/feature/state'&&mode.feature!=='hidden'){
         featureStateRequested.resolve();await releaseFeatureState.promise;
         const account=wallet.state(guild,user);
-        response=Response.json({...duelView({guild,user,balance:account.balance,revision:account.revision},account,'test'),
-          admissionOpen:mode.featureMaintenance!=='maintenance',previewAllCG:true});
+        // Production fixture: this player previously entered Wanshi, but has no wins.
+        const duel=production?{records:[],unlocks:{'guest-4':0},active:null}:undefined;
+        response=Response.json({...duelView({guild,user,balance:account.balance,revision:account.revision,duel},account,environment),
+          admissionOpen:mode.featureMaintenance!=='maintenance',previewAllCG:!production});
       }else response=Response.json({error:'Unknown fixture route'},{status:404});
     }else{
       const request=new Request(url,{method:req.method,headers:req.headers});
@@ -112,8 +117,16 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});
 let browser;
-const inspect=async(page,platform)=>{
-  await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
+const inspect=async(page,platform,loginFailure)=>{
+  await page.route('**/*',async route=>{
+    const url=new URL(route.request().url());
+    if(url.origin!==origin)return route.abort();
+    if(loginFailure&&url.pathname==='/api/token'){
+      await loginFailure;
+      return route.fulfill({status:503,json:{error:'isolated login failure'}});
+    }
+    return route.continue();
+  });
   await page.goto(origin+'/__host?platform='+platform);
   return page.frameLocator('iframe[title="Discord 活動"]');
 };
@@ -131,6 +144,15 @@ try{
   assert.equal(wallet.state(guild,user).history[0].id,original.round.id);
   assert.match(await (await old.request.get(origin+oldAsset)).text(),/retained old slot bundle/);
   assert.match(await (await old.request.get(origin+oldLobby)).text(),/retained old lobby bundle/);
+
+  const failedLogin=Promise.withResolvers(),failedPage=await browser.newPage({viewport:{width:1280,height:800}});
+  try{
+    const failedLobby=await inspect(failedPage,'desktop',failedLogin.promise);
+    await failedLobby.locator('#lobby-stage canvas').waitFor({state:'attached'});
+    failedLogin.resolve();
+    await failedLobby.locator('#launch-screen.has-error').waitFor();
+    await failedLobby.locator('#lobby-stage canvas').waitFor({state:'detached'});
+  }finally{failedLogin.resolve();await failedPage.close();}
 
   const desktop=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'reduce'});
   const desktopLobby=await inspect(desktop,'desktop');
@@ -165,11 +187,27 @@ try{
     const bounds=node.getBoundingClientRect();
     return bounds.left>=0&&bounds.right<=innerWidth&&bounds.height>=44;
   });
+  const resizeLobby=async size=>{
+    await page.setViewportSize(size);
+    // setViewportSize completes before ResizeObserver and Pixi's accessibility
+    // pass. Wait for the canvas to adopt its host size, then the next render.
+    await lobby.locator('#lobby-stage canvas').evaluate(canvas=>new Promise((resolve,reject)=>{
+      const deadline=performance.now()+5000;
+      const resized=()=>{
+        const host=canvas.parentElement,resolution=Math.min(devicePixelRatio||1,2);
+        if(canvas.width===Math.round(host.clientWidth*resolution)&&canvas.height===Math.round(host.clientHeight*resolution))
+          return requestAnimationFrame(()=>requestAnimationFrame(resolve));
+        if(performance.now()>=deadline)return reject(new Error('Lobby canvas did not resize to its host'));
+        requestAnimationFrame(resized);
+      };
+      requestAnimationFrame(resized);
+    }));
+  };
   assert.ok(await checkLayout());
   await page.screenshot({path:resolve(output,'lobby-mobile.png')});
-  await page.setViewportSize({width:844,height:390});
+  await resizeLobby({width:844,height:390});
   assert.ok(await checkLayout());
-  await page.setViewportSize({width:390,height:844});
+  await resizeLobby({width:390,height:844});
   await slotCard.tap();
   const game=lobby.frameLocator('#arcade-game');
   await game.locator('#spin:enabled').waitFor({timeout:45000});
@@ -190,6 +228,18 @@ try{
   await lobby.getByRole('progressbar',{name:'遊戲載入進度',exact:true}).waitFor({state:'detached'});
   assert.equal(await page.evaluate(()=>window.handshakes),1,'child game shares the original Discord connection');
   const towel=await page.request.get(origin+towelPath);
+  if(production){
+    assert.equal(towel.status(),404,'Test-only download stays unavailable in production even after reveal');
+    await game.getByRole('button',{name:'CG 收藏',exact:true}).tap();
+    for(const [name,count] of [['命運荷官',3],['優然',4],['夏澄',6],['瑟洛',8],['萬世',10]])
+      await game.getByRole('button',{name:new RegExp(`^${name}收藏，已解鎖 ${name==='萬世'?1:0} / ${count}`)}).waitFor();
+    await game.getByRole('button',{name:/^萬世收藏，已解鎖 1 \/ 10/}).tap();
+    await game.getByRole('button',{name:'回顧藍蝶赴約 CG',exact:true}).tap();
+    await game.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).tap();
+    await page.waitForFunction(()=>window.externalLinks.length===1);
+    assert.deepEqual(await page.evaluate(()=>window.externalLinks),[CG_ORIGIN+CG_ART['guest-4'][0].path]);
+    await page.screenshot({path:resolve(output,'wanshi-production-cg.png')});
+  }else{
   assert.equal(towel.status(),200);
   assert.match(towel.headers()['content-disposition'],/^attachment;.*Youran-finale\.png/);
   assert.deepEqual(await towel.body(),readFileSync('art/yakyuken/youran/redesign/youran-stage-3-towel.png'));
@@ -206,6 +256,7 @@ try{
   assert.deepEqual(await page.evaluate(()=>window.externalLinks),[
     'https://jokers-circus-arcade-test.nini900219.workers.dev'+towelPath,
   ]);
+  }
   const notice=lobby.getByRole('heading',{name:'維護中',exact:true});
   const back=lobby.getByRole('button',{name:'返回大廳',exact:true});
   setMode({featureMaintenance:'maintenance'});
@@ -239,7 +290,8 @@ try{
   mkdirSync(output,{recursive:true});
   writeFileSync(resolve(output,'report.json'),JSON.stringify({ok:true,oldSpinSurvived:true,hiddenAssetGate:true,
     retainedLegacyAssets:true,mobileReveal:true,portraitAndLandscape:true,sharedDiscordConnection:true,
-    singleEntryLoader:true,allTestCGsVisible:true,youranTowelDownload:true,liveMaintenance:true,interruptedSpinRecovered:true},null,2)+'\n');
+    singleEntryLoader:true,environment,normalUnlocks:production,allTestCGsVisible:!production,
+    testDownloadIsolated:true,loginFailureCleanup:true,liveMaintenance:true,interruptedSpinRecovered:true},null,2)+'\n');
   console.log('Arcade rollout, branded loading, live maintenance and original spin recovery verified.');
 }finally{
   releaseSpin.resolve();
