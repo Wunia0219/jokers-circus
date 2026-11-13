@@ -180,7 +180,8 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
             result=duelAction==='checkin'?await wallet.store.checkin(guild,user,{compact:true,duel:true,day:input?.day??'',allowPlay:admissionOpen}):
               await wallet.store.duelAction(guild,user,duelAction,input,{allowNew:admissionOpen,allowPlay:admissionOpen});
           }
-          return json(res,200,{...result,admissionOpen:admissionOpen()});
+          const previewAllCG=wallet.store.environment==='test'&&wallet.previewAllCG===true;
+          return json(res,200,{...result,admissionOpen:admissionOpen(),...(previewAllCG?{previewAllCG:true}:{})});
         }
         if(path==='/api/wallet')return json(res,200,{state:await wallet.store.state(guild,user,view)});
         if(path==='/api/rounds'){

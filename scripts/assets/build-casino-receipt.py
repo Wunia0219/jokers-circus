@@ -16,7 +16,7 @@ def pack(data):
     return base64.b64encode(zlib.compress(data, 9)).decode("ascii")
 
 
-def frame():
+def frame(grant=False):
     image = Image.new("RGB", (WIDTH, HEIGHT), "#33212a")
     draw = ImageDraw.Draw(image)
     for x in range(-HEIGHT, WIDTH, 15):
@@ -31,11 +31,19 @@ def frame():
 
         draw.line(corner([(0, 31), (5, 18), (11, 11), (18, 5), (31, 0)]), fill="#d3a575", width=2)
         draw.polygon(corner([(12, 7), (17, 12), (12, 17), (7, 12)]), fill="#d3a575")
-    for y in range(48, HEIGHT - 48, 9):
-        draw.line((450, y, 450, y + 3), fill="#85614c")
     font = ImageFont.truetype(str(FONTS / "msjhbd.ttc"), 26)
-    for point, text in [((57, 69), LABELS["amount"]), ((482, 69), LABELS["rounds"]), ((57, 219), "戲籌"), ((482, 219), "局")]:
-        draw.text(point, text, font=font, fill="#ecd8bf", anchor="lm")
+    if grant:
+        draw.text((57, 69), "這次獲得", font=font, fill="#ecd8bf", anchor="lm")
+        draw.text((57, 219), "戲籌", font=font, fill="#ecd8bf", anchor="lm")
+        draw.polygon([(527, 84), (586, 139), (527, 194), (468, 139)], outline="#815641", width=2)
+        draw.polygon([(527, 96), (573, 139), (527, 182), (481, 139)], outline="#bc9667", width=2)
+        draw.ellipse((501, 113, 553, 165), outline="#d3a575", width=2)
+        draw.polygon([(527, 123), (539, 139), (527, 155), (515, 139)], fill="#d3a575")
+    else:
+        for y in range(48, HEIGHT - 48, 9):
+            draw.line((450, y, 450, y + 3), fill="#85614c")
+        for point, text in [((57, 69), LABELS["amount"]), ((482, 69), LABELS["rounds"]), ((57, 219), "戲籌"), ((482, 219), "局")]:
+            draw.text(point, text, font=font, fill="#ecd8bf", anchor="lm")
     return pack(image.tobytes())
 
 
@@ -52,6 +60,7 @@ OUT.write_text(
     f"export const receiptLayout = {json.dumps(dict(width=WIDTH, height=HEIGHT, numberTop=109, glyphHeight=76))};\n"
     f"export const receiptLabels = {json.dumps(LABELS, ensure_ascii=False)};\n"
     f"export const receiptFrame = {json.dumps(frame())};\n"
+    f"export const grantFrame = {json.dumps(frame(grant=True))};\n"
     f"export const receiptGlyphs = {json.dumps(glyphs, ensure_ascii=False)};\n",
     encoding="utf-8",
 )

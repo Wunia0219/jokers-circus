@@ -39,8 +39,11 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
     if(interaction.type===2&&interaction.data.name===casinoPreviewCommand.name&&effects.casinoPreview===true&&
         store.environment==='test'&&store.backend==='firestore'&&commandChannelIds.length){
       const choice=interaction.data.options?.find(option=>option.name==='樣式')?.value;
-      const message=casinoPreviewMessage(choice);
-      if(message)return {type:4,data:{...withAnnouncementLaunch(message),flags:64,allowed_mentions:{parse:[]}}};
+      const message=casinoPreviewMessage(choice,{user});
+      if(message){
+        const preview=choice==='grant'?message:withAnnouncementLaunch(message);
+        return {type:4,data:{...preview,flags:64,allowed_mentions:{parse:[]}}};
+      }
       return reply('選一種推播來看看。','推播預覽');
     }
     if(interaction.data.name==='簽到'){

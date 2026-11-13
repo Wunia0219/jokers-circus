@@ -36,8 +36,10 @@ test('shipping dealer atlas contains complete authored idle/win sequences and ac
 });
 
 const downloadPNGs=ALL_CG.map(art=>'public'+art.download);
+const testCG='art/yakyuken/youran/redesign/youran-stage-3-towel.png';
 const reviewPNGs=JSON.parse(readFileSync(new URL('art/launch-screen/review-sources.json',root),'utf8')).images;
-const assertPNGInventory=files=>assert.deepEqual([...files].sort(),[...downloadPNGs,...reviewPNGs.map(r=>r.file)].sort());
+const cgPNGs=[...downloadPNGs,testCG];
+const assertPNGInventory=files=>assert.deepEqual([...files].sort(),[...cgPNGs,...reviewPNGs.map(r=>r.file)].sort());
 test('PNG inventory allows catalogued CG downloads and recorded offline review originals with exact provenance',()=>{
   const files=[];
   function scan(path){for(const entry of readdirSync(path,{withFileTypes:true})){
@@ -53,7 +55,7 @@ test('PNG inventory allows catalogued CG downloads and recorded offline review o
     assert.deepEqual([...bytes.subarray(0,8)],[137,80,78,71,13,10,26,10]);
     assert.deepEqual([bytes.readUInt32BE(16),bytes.readUInt32BE(20)],record.dimensions);
   }
-  for(const file of downloadPNGs){
+  for(const file of cgPNGs){
     const png=readFileSync(new URL(file,root));assert.deepEqual([...png.subarray(0,8)],[137,80,78,71,13,10,26,10]);
     assert.equal(png.toString('ascii',12,16),'IHDR');assert.equal(png.readUInt32BE(16),1024);assert.equal(png.readUInt32BE(20),1536);assert.equal(png[24],8);assert.equal(png[25],6,'full 8-bit RGBA');
     const data=[];for(let offset=8;offset<png.length;){const length=png.readUInt32BE(offset);assert.ok(offset+length+12<=png.length);if(png.toString('ascii',offset+4,offset+8)==='IDAT')data.push(png.subarray(offset+8,offset+8+length));offset+=length+12;}
@@ -71,7 +73,7 @@ test('PNG inventory allows catalogued CG downloads and recorded offline review o
   }
 });
 test('CG download exception still rejects new runtime PNGs and missing originals',()=>{
-  const expected=[...downloadPNGs,...reviewPNGs.map(r=>r.file)];
+  const expected=[...cgPNGs,...reviewPNGs.map(r=>r.file)];
   assert.throws(()=>assertPNGInventory([...expected,'images/dealer/unexpected.png']));
   assert.throws(()=>assertPNGInventory([...expected,'public/downloads/yakyuken/extra.png']));
   assert.throws(()=>assertPNGInventory([...expected,'art/launch-screen/review-v99/unregistered.png']));

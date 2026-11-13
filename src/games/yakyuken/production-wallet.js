@@ -19,7 +19,8 @@ export class ProductionDuelWallet {
         /^[-a-zA-Z0-9]{16,80}$/.test(pending.body.requestId))this.pending=pending;
     }catch{}
     this.archive={cloud:true,persistent:true,owns:()=>false,records:()=>this.wallet?.records||[],
-      isUnlocked:(character,pose)=>canUnlockPose(character,pose)&&(this.wallet?.unlocks[character]??-1)>=pose,
+      isUnlocked:(character,pose)=>canUnlockPose(character,pose)&&
+        (this.previewAllCG||(this.wallet?.unlocks[character]??-1)>=pose),
       begin:()=>this.wallet?.activeId,update:()=>{},leave:()=>{}};
   }
   persist(){
@@ -48,6 +49,7 @@ export class ProductionDuelWallet {
     if(!this.wallet||data.wallet.revision>=this.wallet.revision){
       this.wallet=data.wallet;this.nextHand=data.nextHand;
       this.admissionOpen=data.admissionOpen;
+      this.previewAllCG=this.environment==='test'&&data.previewAllCG===true;
     }
     return data;
   }

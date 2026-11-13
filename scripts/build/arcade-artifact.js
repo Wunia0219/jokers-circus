@@ -5,7 +5,7 @@ import {assertProductionArtifact,TEST_DISCORD_APP} from './production-boundary.j
 
 export const arcadeAssetDirs=['assets','arcade/assets','arcade/feature/assets'];
 const hashedAsset=/^[\w.-]+-[\w-]{8}\.[a-z0-9]+$/;
-const arcadePages=['arcade/lobby.html','arcade/feature/play.html','arcade/feature/cover.webp'];
+const arcadePages=['arcade/lobby.html','arcade/feature/play.html','arcade/feature/cover.webp','arcade/feature/youran-finale.png'];
 
 export function readReleaseFiles(root,path=''){
   return readdirSync(join(root,path),{withFileTypes:true}).flatMap(entry=>{

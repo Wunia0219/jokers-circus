@@ -38,9 +38,10 @@ export async function createCloudRuntime(project){
   const arcade=arcadeEnabled(project.env)&&store.schemaVersion===2?arcadeControls(project,store):null;
   const slotOpen=arcade||operatorEnabled(project.env)?()=>readArcade(project.state).slot==='open':undefined;
   const simpleTestCommands=settings.environment==='test'&&project.env.DISCORD_COMMAND_PROFILE==='test-simple';
+  const previewAllCG=settings.environment==='test'&&arcade!==null&&project.env.ARCADE_CG_PREVIEW_ALL==='true';
   if(simpleTestCommands)store.grantNotificationsEnabled=false;
   const commandEffects=simpleTestCommands?{arcade:null,panelPrefix:'jct',casinoPreview:true}:null;
-  const wallet={store,service,visits,arcade,slotOpen,commandEffects,commandChannelIds,notifyGrant:notices.notify.bind(notices),removeGrantNotice:notices.remove.bind(notices),retryGrantNotice:notices.retry.bind(notices),adminRoles,highlights:highlights?{enqueue:(session,id,round)=>{if(highlights.enqueue(session,id,round)){project.state.set('highlights-dirty',true);project.ctx.waitUntil(project.schedule(bot?1000:10000));}}}:null};
+  const wallet={store,service,visits,arcade,slotOpen,previewAllCG,commandEffects,commandChannelIds,notifyGrant:notices.notify.bind(notices),removeGrantNotice:notices.remove.bind(notices),retryGrantNotice:notices.retry.bind(notices),adminRoles,highlights:highlights?{enqueue:(session,id,round)=>{if(highlights.enqueue(session,id,round)){project.state.set('highlights-dirty',true);project.ctx.waitUntil(project.schedule(bot?1000:10000));}}}:null};
   const handler=createActivityHandler({fetchImpl:cloudFetch,clientId:project.env.DISCORD_CLIENT_ID,clientSecret:project.env.DISCORD_CLIENT_SECRET,publicKey:project.env.DISCORD_PUBLIC_KEY,wallet,loginLimiter:new CloudLoginLimit(project.state),defer:p=>project.ctx.waitUntil(project.track(p)),operations:{isReady:()=>project.ready(),recordRequest:()=>{}}});
   return {settings,store,service,highlights,visits,backup,vault,handler};
 }

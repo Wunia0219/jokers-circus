@@ -54,6 +54,7 @@ if(target==='test'){
     'Test Worker must have no Discord announcement configuration');
 }else{
   assert.ok(!vars.ARCADE_RELEASE_ENABLED||vars.ARCADE_RELEASE_ENABLED==='false');
+  assert.notEqual(vars.ARCADE_CG_PREVIEW_ALL,'true');
   assert.ok(!vars.DISCORD_COMMAND_PROFILE);
   assert.equal(vars.DISCORD_CASINO_ENABLED,'true');
   assert.equal(vars.DISCORD_CASINO_GUILD_ID,expected.guild);

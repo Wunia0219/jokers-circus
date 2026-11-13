@@ -25,7 +25,8 @@
     "ALLOWED_GUILD_IDS": "760012177326997544",
     "DISCORD_COMMAND_CHANNEL_IDS": "1564243344857632818",
     "DISCORD_COMMAND_PROFILE": "test-simple",
-    "ARCADE_RELEASE_ENABLED": "true"
+    "ARCADE_RELEASE_ENABLED": "true",
+    "ARCADE_CG_PREVIEW_ALL": "true"
   },
   "observability": {"enabled": false}
 }

@@ -13,7 +13,7 @@ import {launchBrowser} from './helpers/browser.js';
 const output=resolve('test-results/arcade-release'),dist=resolve(output,'dist');
 const clientId=TEST_DISCORD_APP,guild='100000000000000001',user='100000000000000002';
 const session={token:'isolated-session',guildId:guild,userId:user,environment:'test'};
-const env={DISCORD_CLIENT_ID:clientId,ARCADE_RELEASE_ENABLED:'false'};
+const env={APP_ENV:'test',DISCORD_CLIENT_ID:clientId,ARCADE_RELEASE_ENABLED:'false'};
 let mode={slot:'open',feature:'hidden',revision:0};
 const state={get:()=>mode};
 const watchers=new Set();
@@ -36,7 +36,7 @@ const host=(platform)=>`<!doctype html><meta name="viewport" content="width=devi
   <style>html,body,iframe{margin:0;width:100%;height:100%;border:0}</style>
   <iframe title="Discord 活動" sandbox="allow-pointer-lock allow-scripts allow-same-origin allow-forms"></iframe>
   <script>
-    const frame=document.querySelector('iframe');window.handshakes=0;
+    const frame=document.querySelector('iframe');window.handshakes=0;window.externalLinks=[];
     window.addEventListener('message',event=>{
       if(event.source!==frame.contentWindow||!Array.isArray(event.data))return;
       const [opcode,payload]=event.data;
@@ -50,6 +50,7 @@ const host=(platform)=>`<!doctype html><meta name="viewport" content="width=devi
       if(payload.cmd==='AUTHORIZE')data={code:'fixture-code'};
       if(payload.cmd==='AUTHENTICATE')data={access_token:'fixture-token',user:{id:'${user}',username:'fixture',discriminator:'0',public_flags:0},
         scopes:['identify','guilds.members.read'],expires:'2099-01-01T00:00:00Z',application:{id:'${clientId}',name:'fixture',description:''}};
+      if(payload.cmd==='OPEN_EXTERNAL_LINK'){window.externalLinks.push(payload.args.url);data={opened:true};}
       reply({cmd:payload.cmd,evt:null,nonce:payload.nonce,data});
     });
     frame.src='/?frame_id=fixture&instance_id=fixture-instance&platform=${platform}&guild_id=${guild}&discord_shim=1';
@@ -98,7 +99,7 @@ const server=createServer(async(req,res)=>{
         featureStateRequested.resolve();await releaseFeatureState.promise;
         const account=wallet.state(guild,user);
         response=Response.json({...duelView({guild,user,balance:account.balance,revision:account.revision},account,'test'),
-          admissionOpen:mode.featureMaintenance!=='maintenance'});
+          admissionOpen:mode.featureMaintenance!=='maintenance',previewAllCG:true});
       }else response=Response.json({error:'Unknown fixture route'},{status:404});
     }else{
       const request=new Request(url,{method:req.method,headers:req.headers});
@@ -157,7 +158,8 @@ try{
   assert.equal(await lobby.getByRole('button',{name:'進入遊戲',exact:true}).count(),0);
   assert.equal(featureRequests,0);
   assert.ok(!requests.some(url=>/feature\/|yakyuken|cg-download/i.test(url)));
-  for(const path of ['/arcade/feature/play.html','/arcade/%66eature/cover.webp','/arcade/feature/cover.webp',oldFeature])
+  const towelPath='/arcade/feature/youran-finale.png';
+  for(const path of ['/arcade/feature/play.html','/arcade/%66eature/cover.webp','/arcade/feature/cover.webp',towelPath,oldFeature])
     assert.equal((await page.request.get(origin+path)).status(),404,path);
   const checkLayout=()=>slotCard.evaluate(node=>{
     const bounds=node.getBoundingClientRect();
@@ -187,6 +189,23 @@ try{
   await game.locator('canvas[data-phase="characters"]').waitFor({timeout:45000});
   await lobby.getByRole('progressbar',{name:'遊戲載入進度',exact:true}).waitFor({state:'detached'});
   assert.equal(await page.evaluate(()=>window.handshakes),1,'child game shares the original Discord connection');
+  const towel=await page.request.get(origin+towelPath);
+  assert.equal(towel.status(),200);
+  assert.match(towel.headers()['content-disposition'],/^attachment;.*Youran-finale\.png/);
+  assert.deepEqual(await towel.body(),readFileSync('art/yakyuken/youran/redesign/youran-stage-3-towel.png'));
+  await game.getByRole('button',{name:'CG 收藏',exact:true}).tap();
+  for(const [name,count] of [['命運荷官',3],['優然',4],['夏澄',6],['瑟洛',8],['萬世',10]]){
+    await game.getByRole('button',{name:new RegExp(`^${name}收藏，已解鎖 ${count} / ${count}`)}).waitFor();
+  }
+  await game.getByRole('button',{name:/^優然收藏，已解鎖 4 \/ 4/}).tap();
+  await game.getByRole('button',{name:'回顧優然終幕 CG',exact:true}).tap();
+  await game.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).waitFor();
+  await page.screenshot({path:resolve(output,'youran-finale-cg.png')});
+  await game.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).tap();
+  await page.waitForFunction(()=>window.externalLinks.length===1);
+  assert.deepEqual(await page.evaluate(()=>window.externalLinks),[
+    'https://jokers-circus-arcade-test.nini900219.workers.dev'+towelPath,
+  ]);
   const notice=lobby.getByRole('heading',{name:'維護中',exact:true});
   const back=lobby.getByRole('button',{name:'返回大廳',exact:true});
   setMode({featureMaintenance:'maintenance'});
@@ -220,7 +239,7 @@ try{
   mkdirSync(output,{recursive:true});
   writeFileSync(resolve(output,'report.json'),JSON.stringify({ok:true,oldSpinSurvived:true,hiddenAssetGate:true,
     retainedLegacyAssets:true,mobileReveal:true,portraitAndLandscape:true,sharedDiscordConnection:true,
-    singleEntryLoader:true,liveMaintenance:true,interruptedSpinRecovered:true},null,2)+'\n');
+    singleEntryLoader:true,allTestCGsVisible:true,youranTowelDownload:true,liveMaintenance:true,interruptedSpinRecovered:true},null,2)+'\n');
   console.log('Arcade rollout, branded loading, live maintenance and original spin recovery verified.');
 }finally{
   releaseSpin.resolve();

@@ -76,7 +76,7 @@ test('framed previews launch for any member in the game channel without granting
       store,[],[channel],{casinoPreview:true});
     assert.equal(preview.data.flags,64);
     assert.deepEqual(preview.data.allowed_mentions,{parse:[]});
-    if(['enter','idle'].includes(choice)){
+    if(['enter','idle','grant'].includes(choice)){
       assert.equal(preview.data.components,undefined);
       continue;
     }
@@ -100,4 +100,22 @@ test('feature requires explicit bot configuration and defaults off',()=>{
   const store={guildIds:new Set([guild]),assertGuild:g=>assert.equal(g,guild)};
   assert.equal(casinoBotSettings({},store),null);assert.throws(()=>casinoBotSettings({DISCORD_CASINO_ENABLED:'true'},store));
   const settings=casinoBotSettings({DISCORD_CASINO_ENABLED:'true',DISCORD_CLIENT_ID:applicationId,DISCORD_CASINO_CHANNEL_ID:channel,DISCORD_BOT_TOKEN:token},store);assert.equal(settings.guild,guild);
+});
+test('the grant preview attaches the sample receipt to the private reply without a ping',async()=>{
+  const user='100000000000000009';
+  const interaction={type:2,application_id:applicationId,token:'isolated-interaction-token',guild_id:guild,
+    channel_id:channel,member:{user:{id:user}},data:{name:'推播預覽',options:[{name:'樣式',value:'grant'}]}};
+  const wallet={store:{environment:'test',backend:'firestore',validate:()=>{}},commandChannelIds:[channel],casinoPreview:true};
+  assert.equal(await completeDeferredCommand(interaction,wallet,{fetchImpl:async(url,options)=>{
+    assert.match(url,/\/messages\/@original$/);
+    assert.equal(options.method,'PATCH');
+    const data=JSON.parse(options.body.get('payload_json'));
+    assert.match(data.content,/^<@100000000000000009>/);
+    assert.deepEqual(data.allowed_mentions,{parse:[]});
+    assert.equal(data.embeds[0].image.url,'attachment://casino-grant.png');
+    assert.equal(data.attachments[0].description,'這次獲得 +500 戲籌');
+    assert.equal(data.components,undefined);
+    assert.equal(options.body.get('files[0]').type,'image/png');
+    return Response.json({});
+  }}),true);
 });

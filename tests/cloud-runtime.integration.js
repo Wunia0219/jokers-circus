@@ -63,7 +63,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    throw new Error('Unapproved external request in test');
  }};
  if(casino){
-  Object.assign(config.bindings,{CLOUD_PLAN:'paid',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'',DISCORD_CASINO_ENABLED:'true',DISCORD_CASINO_CHANNEL_ID:'100000000000000006',DISCORD_COMMAND_CHANNEL_IDS:'100000000000000006',DISCORD_BOT_TOKEN:'isolated-bot-token-not-real-0000000000',ARCADE_RELEASE_ENABLED:'true',ARCADE_OPERATOR_IDS:user,ARCADE_CONSOLE_TOKEN:operatorToken});
+  Object.assign(config.bindings,{CLOUD_PLAN:'paid',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'',DISCORD_CASINO_ENABLED:'true',DISCORD_CASINO_CHANNEL_ID:'100000000000000006',DISCORD_COMMAND_CHANNEL_IDS:'100000000000000006',DISCORD_BOT_TOKEN:'isolated-bot-token-not-real-0000000000',ARCADE_RELEASE_ENABLED:'true',ARCADE_CG_PREVIEW_ALL:'true',ARCADE_OPERATOR_IDS:user,ARCADE_CONSOLE_TOKEN:operatorToken});
   const directory=join(dir,'assets');
   mkdirSync(join(directory,'arcade','feature','assets'),{recursive:true});
   for(const path of ['index.html','arcade/lobby.html','arcade/feature/play.html','arcade/feature/cover.webp','arcade/feature/assets/character.webp'])
@@ -232,6 +232,10 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   const stale=await click('ap','|f|o|0');
   assert.equal(stale.data.embeds[0].title,'營運狀態已更新');
   assert.equal((await call('/api/feature/state')).status,401);
+  const cgPreview=await call('/api/feature/state',{token});
+  assert.equal(cgPreview.data.previewAllCG,true);
+  assert.deepEqual(cgPreview.data.wallet.unlocks,{});
+  assert.deepEqual((await sdk.duelState(guild,user)).wallet.unlocks,{});
   assert.equal(await (await mf.dispatchFetch('http://localhost/arcade/feature/cover.webp')).text(),'/arcade/feature/cover.webp');
   const original=await sdk.duelAction(guild,user,'begin',beginDuel,{allowNew:()=>true,makePlan:()=>['win','win']});
   const replay=await call('/api/feature/begin',{token,body:beginDuel});

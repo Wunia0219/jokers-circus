@@ -55,15 +55,20 @@ export async function buildArcadeRelease({clientId,legacy=null,logLevel,target='
   assertArcadeAssets(legacyAssets,{allowTestApp});
   const plugins=allowTestApp?base.plugins.map(plugin=>plugin.name==='production-slot-only'?productionBoundary({allowTestApp}):plugin):base.plugins;
   await build({...base,plugins,configFile:false,logLevel,define:flags,build:{...base.build,outDir}});
-  const buildEntry=(entry,prefix,plugins)=>build({
-    configFile:false,envDir:false,publicDir:false,logLevel,base:prefix,define:flags,plugins:[rejectTestContent(allowTestApp),...plugins],
+  const buildEntry=(entry,prefix,plugins,{define={},resolve:resolveOptions}={})=>build({
+    configFile:false,envDir:false,publicDir:false,logLevel,base:prefix,define:{...flags,...define},resolve:resolveOptions,
+    plugins:[rejectTestContent(allowTestApp),...plugins],
     build:{...base.build,outDir:resolve(outDir,'.'+prefix),emptyOutDir:false,
       rollupOptions:{input:resolve(entry)}},
   });
   if(!slotOnly){
     await buildEntry('lobby.html','/arcade/',[launchScreenMarkup,lobbyIsolation]);
-    await buildEntry('play.html','/arcade/feature/',[]);
+    await buildEntry('play.html','/arcade/feature/',[],{
+      define:{'import.meta.env.VITE_ARCADE_TEST_TOWEL':'"true"'},
+      resolve:{alias:{'../../../images/yakyuken/youran/stage-3.webp':resolve('images/yakyuken/youran/stage-3-towel.webp')}},
+    });
     copyFileSync('images/lobby/yakyuken-cover-v3.webp',join(outDir,'arcade/feature/cover.webp'));
+    copyFileSync('art/yakyuken/youran/redesign/youran-stage-3-towel.png',join(outDir,'arcade/feature/youran-finale.png'));
   }
 
   // Old open tabs still request hashed assets from their own bundle.

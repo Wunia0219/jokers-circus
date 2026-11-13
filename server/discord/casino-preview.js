@@ -1,6 +1,7 @@
 import {visitMessage} from './casino-visits.js';
 import {highlightAnnouncement} from './highlight-card.js';
 import {grantAnnouncement} from './grant-notification.js';
+import {GRANT_RECEIPT_NAME,receiptColors} from './casino-receipt.js';
 
 export const casinoPreviewCommand = {
   name: '推播預覽', description: '看看命運荷官的推播，只有你看得到', type: 1,
@@ -26,9 +27,14 @@ const results = {
 };
 const wins = {big: 15, super: 48, mega: 128};
 
-export function casinoPreviewMessage(choice) {
+export function casinoPreviewMessage(choice,{user}={}) {
   if (choice === 'enter') return visitMessage(visit);
-  if (choice === 'grant') return grantAnnouncement({name: visit.name, amount: 500, reason: '活動獎勵', recordCode: '測試範例'});
+  if (choice === 'grant') {
+    const amount=500;
+    const message=grantAnnouncement({name:visit.name,user,amount,reason:'活動獎勵',recordCode:'測試範例'});
+    return {...message,embeds:[{...message.embeds[0],color:receiptColors.even,image:{url:'attachment://'+GRANT_RECEIPT_NAME}}],
+      grantReceipt:{amount}};
+  }
   if (Object.hasOwn(results, choice)) return visitMessage(visit, results[choice], 'closed');
   if (Object.hasOwn(wins, choice)) {
     return highlightAnnouncement({name: visit.name, tier: choice, multiplier: wins[choice]});

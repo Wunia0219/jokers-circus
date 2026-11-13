@@ -1,8 +1,9 @@
 import {inflateSync} from 'node:zlib';
-import {receiptFrame, receiptGlyphs, receiptLabels, receiptLayout} from './casino-receipt-art.js';
+import {grantFrame, receiptFrame, receiptGlyphs, receiptLabels, receiptLayout} from './casino-receipt-art.js';
 import {rgbPng} from './rgb-png.js';
 
 export const RECEIPT_NAME = 'casino-receipt.png';
+export const GRANT_RECEIPT_NAME = 'casino-grant.png';
 export const receiptColors = {gain: 0xf17b85, loss: 0x65be98, even: 0xba8d61};
 const {width, height, numberTop, glyphHeight} = receiptLayout;
 const stride = width * 3;
@@ -51,6 +52,20 @@ export function renderCasinoReceipt(net, rounds) {
   const pixels = inflateSync(Buffer.from(receiptFrame, 'base64'));
   writeNumber(pixels, amount, 55, numberTop, 372, ink[tone]);
   writeNumber(pixels, games, 480, numberTop, 143, ink.even);
+  return encodeReceipt(pixels);
+}
+
+export function grantReceiptAmount(amount) {
+  return '+' + format.format(amount);
+}
+
+export function renderGrantReceipt(amount) {
+  const pixels = inflateSync(Buffer.from(grantFrame, 'base64'));
+  writeNumber(pixels, grantReceiptAmount(amount), 55, numberTop, 393, ink.gain);
+  return encodeReceipt(pixels);
+}
+
+function encodeReceipt(pixels) {
   const rows = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y++) {
     pixels.copy(rows, y * (stride + 1) + 1, y * stride, (y + 1) * stride);

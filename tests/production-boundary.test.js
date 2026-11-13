@@ -6,7 +6,7 @@ import {resolve} from 'node:path';
 
 test('production artifacts reject test downloads, game text, cloud identities and unexpected entries',()=>{
   assert.doesNotThrow(()=>assertProductionArtifact([['index.html','slot'],['assets/index-12345678.js','slot'],['privacy.html','privacy']]));
-  for(const file of [['downloads/yakyuken/dealer-stage-0.png','image'],['yakyuken-preview.html','game'],['cg-download.html','cg'],['assets/dealer-12345678.js','野球拳'],['assets/app-12345678.js','slot-game-203db'],['assets/app-12345678.js','1567875182792544256'],['assets/app-12345678.js','/yakyuken-preview.html']])assert.throws(()=>assertProductionArtifact([file]));
+  for(const file of [['downloads/yakyuken/dealer-stage-0.png','image'],['arcade/feature/youran-finale.png','image'],['yakyuken-preview.html','game'],['cg-download.html','cg'],['assets/dealer-12345678.js','野球拳'],['assets/app-12345678.js','slot-game-203db'],['assets/app-12345678.js','1567875182792544256'],['assets/app-12345678.js','/yakyuken-preview.html']])assert.throws(()=>assertProductionArtifact([file]));
 });
 
 test('production build removes test modules and cannot be switched to the test wallet by env flags',()=>{
@@ -27,6 +27,7 @@ test('arcade audit verifies the loaded entry and keeps the test App out of produ
     ['arcade/assets/lobby-12345678.js',JSON.stringify(TEST_DISCORD_APP)],
     ['arcade/feature/play.html','野球拳'],
     ['arcade/feature/cover.webp','cover'],
+    ['arcade/feature/youran-finale.png','test CG original'],
   ];
   assert.doesNotThrow(()=>assertArcadeArtifact(files,TEST_DISCORD_APP));
   assert.throws(()=>assertArcadeArtifact(files,productionApp),/Test content/);
