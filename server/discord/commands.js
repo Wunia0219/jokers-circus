@@ -5,6 +5,7 @@ import {adminPanel,handlePanel,launchControls,parsePanel,panelId} from './discor
 import {recordLabel} from '../firestore/record-codes.js';
 import {revokeNotificationStatus} from './grant-notification.js';
 import {casinoPreviewCommand, casinoPreviewMessage} from './casino-preview.js';
+import {ANNOUNCEMENT_LAUNCH_ID, withAnnouncementLaunch} from './announcement-launch.js';
 
 export const commandDefinitions = [
   {name:'戲籌',description:'查看戲籌或開啟遊戲',type:1,options:[]},
@@ -27,7 +28,10 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
     if(![2,3,5].includes(interaction.type)||interaction.member?.user?.bot||!interaction.guild_id||!interaction.member?.user?.id)throw problem(403,'請在已啟用的伺服器內使用指令。','COMMAND_SCOPE');
     const guild=interaction.guild_id,user=interaction.member.user.id;
     store.validate(guild,user);
-    if(commandChannelIds.length&&!commandChannelIds.includes(interaction.channel_id||interaction.channel?.id))throw Object.assign(problem(403,'請到指定頻道使用指令。','COMMAND_CHANNEL'),{channel:commandChannelIds[0]});
+    const channel=interaction.channel_id||interaction.channel?.id;
+    if(commandChannelIds.length&&!commandChannelIds.includes(channel))throw Object.assign(problem(403,'請到指定頻道使用指令。','COMMAND_CHANNEL'),{channel:commandChannelIds[0]});
+    if(interaction.type===3&&interaction.data?.component_type===2&&interaction.data.custom_id===ANNOUNCEMENT_LAUNCH_ID&&
+        commandChannelIds.includes(channel))return {type:12};
     const panel=[3,5].includes(interaction.type)?parsePanel(interaction):null;
     if(panel?.action==='go')return {type:12};
     // APP_HANDLER opens the Activity without Discord's automatic channel invite.
@@ -36,7 +40,7 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
         store.environment==='test'&&store.backend==='firestore'&&commandChannelIds.length){
       const choice=interaction.data.options?.find(option=>option.name==='樣式')?.value;
       const message=casinoPreviewMessage(choice);
-      if(message)return {type:4,data:{...message,flags:64,allowed_mentions:{parse:[]}}};
+      if(message)return {type:4,data:{...withAnnouncementLaunch(message),flags:64,allowed_mentions:{parse:[]}}};
       return reply('選一種推播來看看。','推播預覽');
     }
     if(interaction.data.name==='簽到'){

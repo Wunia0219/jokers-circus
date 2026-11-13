@@ -1,5 +1,6 @@
 import {visitMessage} from './casino-visits.js';
 import {highlightAnnouncement} from './highlight-card.js';
+import {grantAnnouncement} from './grant-notification.js';
 
 export const casinoPreviewCommand = {
   name: '推播預覽', description: '看看命運荷官的推播，只有你看得到', type: 1,
@@ -10,6 +11,7 @@ export const casinoPreviewCommand = {
       {name: '這次賺了', value: 'gain'}, {name: '這次賠了', value: 'loss'},
       {name: '這次打平', value: 'even'}, {name: 'BIG WIN', value: 'big'},
       {name: 'SUPER WIN', value: 'super'}, {name: 'MEGA WIN', value: 'mega'},
+      {name: '獲得戲籌', value: 'grant'},
     ],
   }],
 };
@@ -27,6 +29,7 @@ const testImageOrigin = 'https://jokers-circus-arcade-test.nini900219.workers.de
 
 export function casinoPreviewMessage(choice) {
   if (choice === 'enter') return visitMessage(visit);
+  if (choice === 'grant') return grantAnnouncement({name: visit.name, amount: 500, reason: '活動獎勵', recordCode: '測試範例'});
   if (Object.hasOwn(results, choice)) return visitMessage(visit, results[choice], 'closed');
   if (Object.hasOwn(wins, choice)) {
     return highlightAnnouncement({name: visit.name, tier: choice, multiplier: wins[choice]}, {imageOrigin: testImageOrigin});

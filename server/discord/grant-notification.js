@@ -1,7 +1,15 @@
 import {BOT_COLORS} from './bot-replies.js';
-import {playerMention,playerMentions} from './player-display.js';
+import {playerMention,playerMentions,playerName} from './player-display.js';
 
 const escapeText=value=>String(value).replace(/@/g,'＠').replace(/[\\`*_{}\[\]()<>~|#]/g,'\\$&');
+
+export function grantAnnouncement({name, user, amount, reason, recordCode}) {
+  return {
+    content:`${playerMention(user)??playerName(name)}，你收到 **${amount.toLocaleString('en-US')} 戲籌**！`,
+    embeds:[{title:'戲籌已發放',description:`發放原因：${escapeText(reason)}`,color:BOT_COLORS.success,footer:{text:'紀錄編號：'+recordCode}}],
+    allowed_mentions:playerMentions([user]),
+  };
+}
 
 // Reuse the verified casino bot and its configured game channel. The form can
 // choose whether to notify, but cannot choose a destination or message payload.
@@ -20,11 +28,9 @@ export class GrantNotifications {
       const saved=this.state.get(key);if(saved)return {kind:saved.revoked?'cancelled':'uncertain'};
       const notice={guild:entry.guild,entryId:entry.id,user:entry.user,channel:bot.channel,applicationId:bot.applicationId,status:'sending',revoked:false};
       this.state.set(key,notice); // Persist intent before POST; never blindly repost after a crash.
-      let delivery;try{delivery=await bot.send({
-      content:`${playerMention(entry.user)}，你收到 **${entry.delta.toLocaleString('en-US')} 戲籌**！`,
-      embeds:[{title:'戲籌已發放',description:`發放原因：${escapeText(entry.reason)}`,color:BOT_COLORS.success,footer:{text:'紀錄編號：'+(result.recordCode||'#'+entry.id)}}],
-      allowed_mentions:playerMentions([entry.user]),
-      },`grant:${entry.guild}:${requestId}`);}catch{delivery={kind:'uncertain'};}
+      let delivery;try{delivery=await bot.send(grantAnnouncement({
+        user:entry.user,amount:entry.delta,reason:entry.reason,recordCode:result.recordCode||'#'+entry.id,
+      }),`grant:${entry.guild}:${requestId}`);}catch{delivery={kind:'uncertain'};}
       this.state.set(key,{...notice,status:delivery.kind,...(delivery.kind==='sent'?{messageId:delivery.messageId}:{})});return delivery;
     });
   }

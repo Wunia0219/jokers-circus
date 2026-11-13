@@ -197,6 +197,14 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   for(let i=0;i<150&&!replies.some(p=>p.embeds?.[0]?.title==='戲籌已發放');i++)await delay(100);
   const delivered=replies.find(p=>p.embeds?.[0]?.title==='戲籌已發放');assert.ok(delivered);assert.match(delivered.embeds[0].description,/已在遊玩文字頻道發送通知/);assert.deepEqual(delivered.allowed_mentions,{parse:[]});
   const notices=()=>announcements.filter(p=>p.embeds?.[0]?.title==='戲籌已發放');assert.equal(notices().length,1);assert.match(notices()[0].content,/500 戲籌/);assert.deepEqual(notices()[0].allowed_mentions,{parse:[],users:[user]});
+  const launchButton=notices()[0].components.at(-1).components[0];
+  assert.equal(launchButton.label,'開啟遊戲');
+  const launchRaw=JSON.stringify({...interaction,type:3,data:{component_type:2,custom_id:launchButton.custom_id}});
+  const launchTimestamp=String(Math.floor(Date.now()/1000));
+  const launchSignature=sign(null,Buffer.from(launchTimestamp+launchRaw),ed.privateKey).toString('hex');
+  const launchReply=await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',
+    headers:{'x-signature-timestamp':launchTimestamp,'x-signature-ed25519':launchSignature,'Content-Type':'application/json'},body:launchRaw});
+  assert.deepEqual(await launchReply.json(),{type:12});
   await mf.dispose();mf=new Miniflare(convertV4MiniflareOptions(config));
   assert.deepEqual(await sendGrant(),{type:5,data:{flags:64}});
   for(let i=0;i<150&&!replies.some(p=>p.embeds?.[0]?.title==='這筆已經發放過');i++)await delay(100);
