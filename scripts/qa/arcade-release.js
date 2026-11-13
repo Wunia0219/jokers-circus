@@ -16,6 +16,11 @@ const session={token:'isolated-session',guildId:guild,userId:user,environment:'t
 const env={DISCORD_CLIENT_ID:clientId,ARCADE_RELEASE_ENABLED:'false'};
 let mode={slot:'open',feature:'hidden',revision:0};
 const state={get:()=>mode};
+const watchers=new Set();
+function setMode(changes){
+  mode={...mode,...changes,revision:mode.revision+1};
+  for(const send of watchers)send(Response.json(arcadeStatus(state)));
+}
 const project=()=>({fetch:()=>Response.json(arcadeStatus(state))});
 const port=4206,origin='http://127.0.0.1:'+port;
 const types={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'text/javascript','.webp':'image/webp',
@@ -60,6 +65,8 @@ for(const [path,content] of [[oldAsset,'slot'],[oldLobby,'lobby'],[oldFeature,'g
 await buildArcadeRelease({clientId,target:'test',outDir:dist,legacy,logLevel:'warn'});
 const wallet=new WalletStore({filename:':memory:',environment:'test',guildIds:[guild]});
 const spinAccepted=Promise.withResolvers(),releaseSpin=Promise.withResolvers();
+const secondSpinAccepted=Promise.withResolvers(),releaseSecondSpin=Promise.withResolvers();
+const featureStateRequested=Promise.withResolvers(),releaseFeatureState=Promise.withResolvers();
 let spins=0,featureRequests=0;
 const server=createServer(async(req,res)=>{
   const url=new URL(req.url,origin);
@@ -68,7 +75,15 @@ const server=createServer(async(req,res)=>{
     if(url.pathname==='/__host')response=new Response(host(url.searchParams.get('platform')==='mobile'?'mobile':'desktop'),{headers:{'Content-Type':'text/html; charset=utf-8'}});
     else if(url.pathname==='/game-entry.json'&&env.ARCADE_RELEASE_ENABLED==='false')response=Response.json({mode:'open',previewUserIds:[]});
     else if(url.pathname==='/api/token')response=Response.json({access_token:'fixture-token',session});
-    else if(url.pathname==='/api/arcade')response=Response.json(arcadeStatus(state));
+    else if(url.pathname==='/api/arcade'){
+      response=url.searchParams.get('after')!==String(mode.revision)?Response.json(arcadeStatus(state)):
+        await new Promise(resolve=>{
+          const end=()=>send(new Response(null,{status:204}));
+          const send=value=>{clearTimeout(timer);watchers.delete(send);res.off('close',end);resolve(value);};
+          const timer=setTimeout(end,12000);
+          watchers.add(send);res.once('close',end);
+        });
+    }
     else if(url.pathname.startsWith('/api/')){
       if(req.headers.authorization!=='Bearer '+session.token)response=Response.json({error:'Login required'},{status:401});
       else if(url.pathname==='/api/wallet')response=Response.json({state:wallet.state(guild,user)});
@@ -76,12 +91,14 @@ const server=createServer(async(req,res)=>{
         const chunks=[];for await(const chunk of req)chunks.push(chunk);
         const {bet,requestId}=JSON.parse(Buffer.concat(chunks).toString());
         const result=wallet.spin(guild,user,bet,requestId);spins++;
-        spinAccepted.resolve(result);await releaseSpin.promise;
+        if(spins===1){spinAccepted.resolve(result);await releaseSpin.promise;}
+        if(spins===2){secondSpinAccepted.resolve(result);await releaseSecondSpin.promise;}
         response=Response.json(result);
       }else if(url.pathname==='/api/feature/state'&&mode.feature!=='hidden'){
+        featureStateRequested.resolve();await releaseFeatureState.promise;
         const account=wallet.state(guild,user);
         response=Response.json({...duelView({guild,user,balance:account.balance,revision:account.revision},account,'test'),
-          admissionOpen:mode.feature==='open'});
+          admissionOpen:mode.featureMaintenance!=='maintenance'});
       }else response=Response.json({error:'Unknown fixture route'},{status:404});
     }else{
       const request=new Request(url,{method:req.method,headers:req.headers});
@@ -156,31 +173,59 @@ try{
   await game.locator('#spin:enabled').waitFor({timeout:45000});
   await game.getByRole('button',{name:'返回遊戲大廳',exact:true}).tap();
   await slotCard.waitFor();
-  mode={...mode,feature:'open',revision:1};
+  setMode({feature:'open'});
   await lobby.locator('body').evaluate(()=>dispatchEvent(new Event('focus')));
   await featureCard.waitFor();
   assert.equal(await lobby.locator('#feature-status').textContent(),'野球拳');
   assert.match(await (await page.request.get(origin+oldFeature)).text(),/retained old game bundle/);
   await featureCard.tap();
+  await featureStateRequested.promise;
+  await lobby.getByRole('progressbar',{name:'遊戲載入進度',exact:true}).waitFor();
+  assert.equal(await game.getByText('正在準備野球拳…',{exact:true}).count(),0);
+  assert.equal(await game.locator('#yakyuken-app').textContent(),'');
+  releaseFeatureState.resolve();
   await game.locator('canvas[data-phase="characters"]').waitFor({timeout:45000});
+  await lobby.getByRole('progressbar',{name:'遊戲載入進度',exact:true}).waitFor({state:'detached'});
   assert.equal(await page.evaluate(()=>window.handshakes),1,'child game shares the original Discord connection');
-  await game.getByRole('button',{name:'返回遊戲大廳',exact:true}).tap();
-  await featureCard.waitFor();
-  mode={...mode,feature:'paused',slot:'maintenance',revision:2};
-  await lobby.locator('body').evaluate(()=>dispatchEvent(new Event('focus')));
-  await lobby.getByText('暫停開放 · 續局／紀錄',{exact:true}).waitFor();
+  const notice=lobby.getByRole('heading',{name:'維護中',exact:true});
+  const back=lobby.getByRole('button',{name:'返回大廳',exact:true});
+  setMode({featureMaintenance:'maintenance'});
+  await notice.waitFor({timeout:5000});
+  assert.equal(await lobby.locator('#arcade-game').getAttribute('src'),null);
+  await back.tap();
+  await slotCard.waitFor();
+  assert.equal(await lobby.locator('#feature-status').textContent(),'維護中');
+  assert.equal(await featureCard.count(),0);
+  await slotCard.tap();
+  await game.locator('#spin:enabled').waitFor({timeout:45000});
+  await game.locator('#spin').tap();
+  const interrupted=await secondSpinAccepted.promise;
+  setMode({slot:'maintenance'});
+  await notice.waitFor({timeout:5000});
+  assert.equal(await lobby.locator('#arcade-game').getAttribute('src'),null);
+  await back.tap();
   assert.equal(await slotCard.count(),0);
-  await featureCard.tap();
-  await game.locator('canvas[data-phase="characters"]').waitFor({timeout:45000});
-  assert.match(await game.locator('canvas').getAttribute('aria-label'),/暫停新場次/);
-  assert.equal(await game.getByRole('button',{name:'進入野球拳',exact:true}).count(),0);
-  assert.equal(spins,1);
+  releaseSecondSpin.resolve();
+  setMode({slot:'open'});
+  await lobby.locator('body').evaluate(()=>dispatchEvent(new Event('focus')));
+  await slotCard.tap();
+  await game.locator('#spin:enabled').waitFor({timeout:45000});
+  const retryResponse=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/spin');
+  await game.getByRole('button',{name:'旋轉一次',exact:true}).tap();
+  assert.equal((await (await retryResponse).json()).round.id,interrupted.round.id);
+  await game.getByRole('button',{name:'旋轉一次',exact:true}).waitFor({timeout:45000});
+  assert.equal(spins,3);
+  assert.equal(wallet.state(guild,user).history.length,2);
+  assert.equal(wallet.state(guild,user).history[0].id,interrupted.round.id);
   mkdirSync(output,{recursive:true});
   writeFileSync(resolve(output,'report.json'),JSON.stringify({ok:true,oldSpinSurvived:true,hiddenAssetGate:true,
-    retainedLegacyAssets:true,mobileReveal:true,portraitAndLandscape:true,sharedDiscordConnection:true,independentPause:true},null,2)+'\n');
-  console.log('Arcade rollout, hidden assets, same-session reveal and pause verified.');
+    retainedLegacyAssets:true,mobileReveal:true,portraitAndLandscape:true,sharedDiscordConnection:true,
+    singleEntryLoader:true,liveMaintenance:true,interruptedSpinRecovered:true},null,2)+'\n');
+  console.log('Arcade rollout, branded loading, live maintenance and original spin recovery verified.');
 }finally{
   releaseSpin.resolve();
+  releaseSecondSpin.resolve();
+  releaseFeatureState.resolve();
   await browser?.close();
   await new Promise(resolve=>server.close(resolve));
   wallet.close();

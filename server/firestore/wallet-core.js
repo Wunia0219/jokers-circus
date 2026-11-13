@@ -165,7 +165,7 @@ export class FirestoreWalletCore {
     const task=()=>this.settle(guild,user,operation,options);
     return this.settlementQueue?this.settlementQueue.run(task):task();
   }
-  async settle(guild,user,operation,{compact=false,profileName,duel=false,day:requestedDay}={}){
+  async settle(guild,user,operation,{compact=false,profileName,duel=false,day:requestedDay,allowPlay}={}){
     this.validate(guild,user);if(this.closed)throw this.safe({});
     const ref=this.walletRef(guild,user);
     try{
@@ -182,6 +182,7 @@ export class FirestoreWalletCore {
         let wallet=savedWallet;
         if(existing){if(existing.fingerprint!==operation.fingerprint)throw problem(409,'此請求編號已用於其他操作。','REQUEST_CONFLICT');
           return {...existing.result,duplicate:true,state:wallet?this.snapshot(wallet,now):undefined,wallet};}
+        if(allowPlay&&!allowPlay())throw problem(409,'野球拳維護中，請返回大廳。','DUEL_MAINTENANCE');
         const fresh=!wallet;
         wallet ||= {guild,user,balance:0,last_spin:0,milestone:false,claimedDay:null,revision:0,
           ...(this.schemaVersion===2?{historyRevision:0,historyCache:encodeHistory([])}:{history:[]}),summary:zeroSummary()};
@@ -298,10 +299,10 @@ export class FirestoreWalletCore {
     const wallet=this.cache.get(`${guild}:${user}`)?.wallet??await this.read(this.walletRef(guild,user));
     return duelView(wallet,this.snapshot(wallet),this.environment);
   }
-  duelAction(guild,user,action,input,{allowNew,makePlan}={}){
+  duelAction(guild,user,action,input,{allowNew,allowPlay,makePlan}={}){
     if(this.schemaVersion!==2)throw problem(503,'遊戲帳本尚未就緒。','DUEL_SCHEMA');
     const intent=duelIntent(action,input);
-    return this.transact(guild,user,{kind:DUEL_LEDGER_KIND,intent,allowNew,makePlan,requestId:intent.requestId,fingerprint:duelFingerprint(intent)},{compact:true});
+    return this.transact(guild,user,{kind:DUEL_LEDGER_KIND,intent,allowNew,makePlan,requestId:intent.requestId,fingerprint:duelFingerprint(intent)},{compact:true,allowPlay});
   }
   async findWager(guild,user,kind,requestId){
     this.validate(guild,user);this.requestId(requestId);

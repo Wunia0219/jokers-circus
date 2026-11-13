@@ -104,7 +104,7 @@ export class YakyukenScene {
     this.app.canvas.setAttribute('aria-label','野球拳：正在準備牌桌');
     this.root = new Container({label:'yakyuken-scene'});this.app.stage.addChild(this.root);
     const loading = label('正在準備舞台…',13,PALETTE.gold);
-    loading.visible=!lobbyArrival;
+    loading.visible=!lobbyArrival&&!this.onLobby;
     loading.position.set(this.app.screen.width/2,this.app.screen.height/2);this.app.stage.addChild(loading);this.app.render();
     const resources = await Promise.allSettled([backgroundUrl,CHARACTER_ART.dealer[0],mainUrl,...LOBBY_COVERS.map(art=>art.url)].map(async url => {
       const texture = await Assets.load(url);this.loaded.add(url);return texture;
@@ -128,9 +128,9 @@ export class YakyukenScene {
     const short=mainAtlas.frames['logo-short.png'].frame;
     this.entryLogoTexture=new Texture({source:resources[2].value.source,frame:new Rectangle(short.x,short.y,short.w,short.h)});
     this.media = matchMedia('(prefers-reduced-motion: reduce)');this.motion.reduced = this.media.matches;
-    this.media.addEventListener('change',() => {this.motion.reduced = this.media.matches || !!this.reducePreference;if(this.motion.reduced){this.motion.finish();this.wardrobe?.finish();}if(this.entryOverlay){this.entryOverlay.motion.reduced=this.motion.reduced;if(this.motion.reduced)this.entryOverlay.motion.finish();}},{signal:this.abort.signal});
+    this.media.addEventListener('change',() => {this.motion.reduced = this.media.matches || !!this.reducePreference;if(this.motion.reduced){this.motion.finish();this.wardrobe?.finish();}if(this.entryOverlay?.motion){this.entryOverlay.motion.reduced=this.motion.reduced;if(this.motion.reduced)this.entryOverlay.motion.finish();}},{signal:this.abort.signal});
     this.app.ticker.maxFPS = 60;
-    this.app.ticker.add(ticker => {this.motion.tick(ticker.elapsedMS);this.entryOverlay?.tick(ticker.elapsedMS);this.wardrobe?.tick(ticker.elapsedMS);this.tickReward(ticker.elapsedMS);});
+    this.app.ticker.add(ticker => {this.motion.tick(ticker.elapsedMS);this.entryOverlay?.tick?.(ticker.elapsedMS);this.wardrobe?.tick(ticker.elapsedMS);this.tickReward(ticker.elapsedMS);});
     this.observer = new ResizeObserver(() => {
       const width=Math.max(host.clientWidth,1),height=Math.max(host.clientHeight,1);
       if(this.disposed || this.resizeFrame || width===this.layout?.ui.width && height===this.layout?.ui.height)return;
@@ -172,7 +172,7 @@ export class YakyukenScene {
     this.buildHud();this.updateControls();
     if(this.modal)this.buildModal(this.modal);
     this.syncWorldInput();
-    this.entryOverlay?.resize(width,height);this.wardrobe?.resize(width,height);
+    this.entryOverlay?.resize?.(width,height);this.wardrobe?.resize(width,height);
     this.app.render();
     if(wasPresenting){
       this.playReveal(this.handTurn);
@@ -243,7 +243,7 @@ export class YakyukenScene {
     if(this.disposed||this.entering||this.entryOverlay||this.settling||this.wallet?.pending||this.changing||this.modal||this.rewardPresentation.busy||this.screen!=='table'||this.phase!=='confirmed'||!['won','lost'].includes(this.challenge?.status))return;
     return this.beginEntry('reselect');
   }
-  beginEntry(kind,{leaveConfirmed=false,resume=false}={}){
+  beginEntry(kind,{leaveConfirmed=false,resume=false,loading}={}){
     if(this.disposed)return Promise.resolve(false);
     if(this.entering)return this.entryPromise;
     if(this.rewardPresentation.busy)return Promise.resolve(false);
@@ -253,9 +253,11 @@ export class YakyukenScene {
     this.entryOverlay?.destroy();this.entering=true;
     this.world.interactiveChildren=false;this.world.accessibleChildren=false;this.updateControls();
     const branded=kind==='game'||kind==='table';
-    if(branded)this.entryGradients ??=createYakyukenEntryGradients();
+    if(branded&&!loading)this.entryGradients ??=createYakyukenEntryGradients();
     const Presentation=branded?YakyukenEntryLoading:YakyukenScreenFade;
-    const overlay=this.entryOverlay=new Presentation({app:this.app,logoTexture:this.entryLogoTexture,reduced:this.motion.reduced,gradients:this.entryGradients,covered:kind==='arrival',
+    const overlay=this.entryOverlay=loading?{
+      open:()=>true,update:loading.update,finish:()=>loading.finish(),fail:loading.fail,destroy:()=>{},
+    }:new Presentation({app:this.app,logoTexture:this.entryLogoTexture,reduced:this.motion.reduced,gradients:this.entryGradients,covered:kind==='arrival',
       table:kind==='table',
       onChange:state=>{
         if(this.disposed)return;
@@ -603,8 +605,8 @@ export class YakyukenScene {
     if(move){event.preventDefault();this.select(move);}
     else if(event.key==='Enter' && (event.target===document.body || event.target===this.app.canvas || this.selected && event.target?.getAttribute('aria-label')?.startsWith('選擇'))){event.preventDefault();void this.confirm();}
   }
-  pause() {if(this.disposed || !this.initialized)return;this.motion.suspended=true;this.motion.finish();this.wardrobe?.finish();if(this.entryOverlay){this.entryOverlay.motion.suspended=true;this.entryOverlay.motion.finish();}this.audio.pauseMusic();this.app.stop();}
-  resume() {if(!this.disposed && this.artTextures && !document.hidden){this.rewardSkipElapsed=true;this.motion.suspended=false;if(this.entryOverlay)this.entryOverlay.motion.suspended=false;this.audio.resumeMusic();this.app.start();}}
+  pause() {if(this.disposed || !this.initialized)return;this.motion.suspended=true;this.motion.finish();this.wardrobe?.finish();if(this.entryOverlay?.motion){this.entryOverlay.motion.suspended=true;this.entryOverlay.motion.finish();}this.audio.pauseMusic();this.app.stop();}
+  resume() {if(!this.disposed && this.artTextures && !document.hidden){this.rewardSkipElapsed=true;this.motion.suspended=false;if(this.entryOverlay?.motion)this.entryOverlay.motion.suspended=false;this.audio.resumeMusic();this.app.start();}}
   async unload() {const urls=[...this.loaded];this.loaded.clear();await Promise.allSettled(urls.map(url => Assets.unload(url)));}
   async destroy() {
     this.rewardPresentation.clear();

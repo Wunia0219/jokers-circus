@@ -1,6 +1,5 @@
 import { mainArt } from './main-art.js';
-export function createLoadingScreen() {
-  const screen = document.querySelector('#loading');
+export function createLoadingScreen({screen=document.querySelector('#loading'),app=document.querySelector('#app'),onRetry=()=>location.reload()}={}) {
   screen.querySelector('.loading-logo').innerHTML = mainArt('logo-short.png', 'loading-logo-art');
   const track = screen.querySelector('#loading-track');
   const status = screen.querySelector('#loading-status');
@@ -10,7 +9,7 @@ export function createLoadingScreen() {
   let progress = 0;
   let displayed = 0, frame = 0;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-  screen.querySelector('#loading-retry').addEventListener('click', () => location.reload());
+  screen.querySelector('#loading-retry').addEventListener('click', onRetry);
   function dismiss() {
     cancelAnimationFrame(frame);
     screen.remove();
@@ -37,8 +36,9 @@ export function createLoadingScreen() {
       await wait(reduced ? 0 : Math.max(600, 1400 - (performance.now() - started)));
       screen.classList.add('is-leaving');
       await wait(reduced ? 0 : 450);
+      if(!screen.isConnected)return;
       dismiss();
-      document.querySelector('#app').inert = false;
+      app.inert = false;
     },
     fail(message) {
       cancelAnimationFrame(frame);

@@ -72,6 +72,8 @@ export default String.raw`<!doctype html>
     .feedback[data-error="true"] { color: var(--error); }
     .feedback:empty { display: none; }
     #login { max-width: 28rem; margin: 2rem auto; }
+    #remember-option { display: flex; align-items: center; gap: .65rem; width: fit-content; min-height: 44px; cursor: pointer; }
+    #remember-key { width: 1.15rem; height: 1.15rem; min-height: 0; margin: 0; accent-color: var(--gold); }
     #result { border-top: 1px solid var(--frame); padding-top: .9rem; }
     #result p { margin-bottom: .65rem; white-space: pre-line; overflow-wrap: anywhere; }
     dialog { width: min(100% - 2rem, 26rem); color: inherit; }
@@ -80,7 +82,7 @@ export default String.raw`<!doctype html>
     @media (max-width: 42rem) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
-<body>
+<body data-remember-key="__OPERATOR_REMEMBER__">
   <header><div><span class="brand">Joker’s Circus</span><span class="environment" data-environment="__OPERATOR_ENV__">__OPERATOR_LABEL__</span></div></header>
   <main>
     <section id="login" class="card">
@@ -88,6 +90,7 @@ export default String.raw`<!doctype html>
       <form id="sign-in">
         <label for="key">管理金鑰</label>
         <input id="key" type="password" required autocomplete="current-password" spellcheck="false">
+        <label id="remember-option" for="remember-key" hidden><input id="remember-key" type="checkbox">記住管理金鑰</label>
         <button id="sign-in-button" type="submit">登入</button>
         <p id="login-message" class="feedback" role="alert"></p>
       </form>
@@ -104,13 +107,16 @@ export default String.raw`<!doctype html>
         <div class="grid entry-grid">
           <article class="card">
             <div class="card-heading"><h3>老虎機</h3><span id="slot-state" class="pill"></span></div>
-            <p class="muted">關閉入口後停止新回合，已受理的轉輪仍可確認。</p>
+            <p id="slot-description" class="muted"></p>
             <button id="slot-button"></button>
           </article>
           <article class="card" id="feature-card" hidden>
-            <div class="card-heading"><h3 id="feature-title"></h3><span id="feature-state" class="pill"></span></div>
+            <div class="card-heading"><h3 id="feature-title"></h3><span id="featureMaintenance-state" class="pill"></span></div>
             <p id="feature-description" class="muted"></p>
-            <button id="feature-button"></button>
+            <div class="actions">
+              <button id="feature-button" class="secondary"></button>
+              <button id="featureMaintenance-button"></button>
+            </div>
           </article>
         </div>
       </section>
@@ -153,15 +159,34 @@ export default String.raw`<!doctype html>
   </dialog>
   <script>
     const $=id=>document.getElementById(id);
-    const labels={open:'開放中',maintenance:'維護中',hidden:'預告隱藏',paused:'暫停新場次'};
+    const labels={open:'開放中',maintenance:'維護中'};
     const formatDate=new Intl.DateTimeFormat('zh-TW',{dateStyle:'medium',timeStyle:'medium',timeZone:'Asia/Taipei'});
     const date=value=>value?formatDate.format(new Date(value))+'（台灣時間）':'尚無紀錄';
     const number=new Intl.NumberFormat('zh-TW');
+    const rememberEnabled=document.body.dataset.rememberKey==='true';
     let session, snapshot, pendingChange, busy=false, pollTimer, reply='';
+    let remembered=false;
 
     function message(id,text,error=false){
       $(id).textContent=text;
       $(id).dataset.error=String(error);
+    }
+    function showRemembered(value){
+      remembered=value;
+      $('remember-key').checked=value;
+      $('key').required=!value;
+      $('key').placeholder=value?'已記住管理金鑰':'';
+    }
+    async function rememberedRequest(method,active){
+      const signal=AbortSignal.timeout(8000);
+      const response=await fetch('/__operator/sign-in',{
+        method,headers:active?.key?{Authorization:'Bearer '+active.key}:{},
+        cache:'no-store',credentials:'same-origin',redirect:'error',
+        signal:active?AbortSignal.any([active.abort.signal,signal]):signal,
+      });
+      const data=await response.json();
+      if(!response.ok)throw Object.assign(new Error(data.error),{status:response.status});
+      return data;
     }
     async function request(action,data,active=session){
       const response=await fetch('/__operator/'+action,{
@@ -178,6 +203,7 @@ export default String.raw`<!doctype html>
       $('refresh').disabled=busy;
       $('slot-button').disabled=busy||(!snapshot.ready&&snapshot.entry.slot!=='open');
       $('feature-button').disabled=busy||(!snapshot.ready&&snapshot.entry.feature!=='open');
+      $('featureMaintenance-button').disabled=busy||(!snapshot.ready&&snapshot.entry.featureMaintenance!=='open');
       $('report-button').disabled=busy||!snapshot.guilds.length;
       $('backup-button').disabled=busy||snapshot.mode!=='active'||snapshot.backup.running||snapshot.backup.retryAt>Date.now();
       $('verify-button').disabled=busy||!snapshot.backup.at;
@@ -195,18 +221,20 @@ export default String.raw`<!doctype html>
       snapshot=value;
       $('health').textContent=value.ready?'服務可接受新回合':value.mode==='active'?'服務保護中，請核對備份及服務狀態。':'遊戲服務尚未啟用';
       $('health').dataset.warning=String(!value.ready);
-      const {slot,feature,featureTitle,updatedAt}=value.entry;
+      const {slot,feature,featureMaintenance,featureTitle,updatedAt}=value.entry;
       $('feature-card').hidden=!feature;
       $('feature-title').textContent=featureTitle??'';
       $('code').placeholder=feature?'S- 或 D- 開頭':'S- 開頭';
       $('entry-heading').title=updatedAt?'最近更新 '+date(updatedAt):'';
-      for(const [game,state] of Object.entries(feature?{slot,feature}:{slot})){
-        $(game+'-state').textContent=labels[state];
+      for(const [game,state] of Object.entries(feature?{slot,featureMaintenance}:{slot})){
+        $(game+'-state').textContent=game==='featureMaintenance'&&feature==='hidden'&&state==='open'?'維護已關閉':labels[state];
         $(game+'-state').dataset.open=String(state==='open');
       }
-      $('slot-button').textContent=slot==='open'?'關閉入口':'重新開放';
-      $('feature-button').textContent={hidden:'揭曉並開放',open:'關閉新場次',paused:'重新開放'}[feature];
-      $('feature-description').textContent=feature==='hidden'?'玩家目前只會看到模糊預告。':'關閉新場次後，已付費的玩家仍可續玩。';
+      $('slot-description').textContent=feature?'維護時，遊戲會中斷並引導玩家返回大廳。':'關閉入口後停止新回合，已受理的轉輪仍可確認。';
+      $('slot-button').textContent=slot==='open'?(feature?'開啟維護':'關閉入口'):'重新開放';
+      $('feature-button').textContent=feature==='hidden'?'揭曉'+featureTitle:'顯示模糊預告';
+      $('featureMaintenance-button').textContent=featureMaintenance==='open'?'開啟維護':'結束維護';
+      $('feature-description').textContent=feature==='hidden'?'玩家目前只會看到模糊預告。':'玩家目前可看到遊戲名稱與完整卡圖。';
       $('backup-time').textContent=date(value.backup.at);
       $('backup-status').textContent=value.backup.retryAt>Date.now()?'等待下次重試 '+date(value.backup.retryAt):
         value.backup.running?'正在更新並核對備份，完成後會更新時間。':'';
@@ -236,6 +264,8 @@ export default String.raw`<!doctype html>
       $('report-form').reset();
       for(const id of ['entry-message','backup-message','report-message'])message(id,'');
       $('login').hidden=false;
+      $('key').value='';
+      showRemembered(remembered);
       $('sign-in-button').disabled=false;
       $('key').focus();
     }
@@ -253,25 +283,51 @@ export default String.raw`<!doctype html>
         if(active===session){busy=false;setButtons();}
       }
     }
+    if(rememberEnabled){
+      void rememberedRequest('GET').then(value=>{
+        if(!session)showRemembered(value.remembered);
+      }).catch(()=>{}).finally(()=>{$('remember-option').hidden=false;});
+      $('remember-key').addEventListener('change',async()=>{
+        if($('remember-key').checked||!remembered)return;
+        $('remember-key').disabled=true;
+        $('sign-in-button').disabled=true;
+        try{await rememberedRequest('DELETE');showRemembered(false);message('login-message','');}
+        catch{showRemembered(true);message('login-message','暫時無法取消記住金鑰，請再試一次。',true);}
+        finally{$('remember-key').disabled=false;$('sign-in-button').disabled=false;}
+      });
+    }
     $('sign-in').addEventListener('submit',async event=>{
       event.preventDefault();
+      if(session||$('sign-in-button').disabled)return;
       const key=$('key').value.trim();
-      if(!/^[a-f0-9]{64}$/i.test(key)){message('login-message','請貼上完整的管理金鑰。',true);return;}
+      const remember=rememberEnabled&&$('remember-key').checked;
+      const useSaved=remember&&remembered&&!key;
+      if(!useSaved&&!/^[a-f0-9]{64}$/i.test(key)){message('login-message','請貼上完整的管理金鑰。',true);return;}
       const active={key,abort:new AbortController()};
       session=active;
       $('sign-in-button').disabled=true;
+      $('remember-key').disabled=true;
       $('key').value='';
       message('login-message','登入中…');
       try{
+        if(remember){
+          active.key=(await rememberedRequest('POST',active)).token;
+          showRemembered(true);
+        }
         const value=await request('status',null,active);
+        if(session!==active)return;
         render(value);
         $('login').hidden=true;
         $('console').hidden=false;
         $('refresh').focus();
         message('login-message','');
       }catch(error){
+        if(session!==active)return;
+        if(useSaved&&error.status===401)showRemembered(false);
         logout();
         message('login-message',error.status?error.message:'暫時無法連上後台，請再試一次。',true);
+      }finally{
+        $('remember-key').disabled=false;
       }
     });
     $('lock').addEventListener('click',logout);
@@ -279,15 +335,17 @@ export default String.raw`<!doctype html>
       render(await request('status',null,active));
       message('entry-message','已更新營運狀態。');
     }));
-    for(const game of ['slot','feature']){
+    for(const game of ['slot','feature','featureMaintenance']){
       $(game+'-button').addEventListener('click',()=>{
         const current=snapshot.entry[game];
-        const mode=current==='open'?(game==='slot'?'maintenance':'paused'):'open';
+        const mode=current==='open'?(game==='feature'?'hidden':'maintenance'):'open';
         pendingChange={game,mode,revision:snapshot.entry.revision};
-        $('confirm-title').textContent=$(game+'-button').textContent+(game==='slot'?'老虎機':snapshot.entry.featureTitle);
-        $('confirm-detail').textContent=current==='hidden'?'確認後玩家會看到遊戲名稱與完整卡圖，並可開始新場次。':
-          mode==='open'?'確認後玩家可以開始新的回合或場次。':
-          game==='slot'?'目前正在結算的回合仍可確認。':'已付費的場次仍可續玩。';
+        const title=game==='slot'?'老虎機':snapshot.entry.featureTitle;
+        $('confirm-title').textContent=snapshot.entry.feature?title+' · '+$(game+'-button').textContent:$(game+'-button').textContent+title;
+        $('confirm-detail').textContent=game==='feature'?
+          (mode==='hidden'?'大廳會顯示模糊預告，遊戲中的玩家會收到返回大廳的提示。':'大廳會顯示'+title+'名稱與完整卡圖，入場依維護狀態開放。'):
+          mode==='open'?(game==='featureMaintenance'?'已揭曉時，玩家可以入場及續玩。':'確認後玩家可以開始新的回合。'):
+          snapshot.entry.feature?'遊戲會中斷並顯示維護告示。已受理的結果可在重新開放後確認。':'目前正在結算的回合仍可確認。';
         $('confirm').showModal();
         schedulePoll();
       });

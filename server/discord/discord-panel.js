@@ -103,13 +103,15 @@ async function history(i,store,recordField,target,category='r',days=0,before){
   return response(i,store.environment,title,description,fields,components);
 }
 const gameModes={s:{key:'slot',name:'老虎機',options:{o:['open','開放'],m:['maintenance','維護']}},
-  f:{key:'feature',name:'野球拳',options:{o:['open','開放'],h:['hidden','預告隱藏'],p:['paused','暫停新場次']}}};
+  f:{key:'feature',name:'野球拳預告',options:{o:['open','揭曉'],h:['hidden','模糊預告']}},
+  m:{key:'featureMaintenance',name:'野球拳維護',options:{o:['open','開放'],m:['maintenance','維護']}}};
 function arcadePanel(i,env,state){
-  return response(i,env,'遊戲營運','老虎機與野球拳可獨立操作。暫停時，已接受的操作仍可確認，已入場的野球拳玩家也可續局。',[
+  return response(i,env,'遊戲營運','開啟維護會中斷遊戲並引導玩家返回大廳。重新開放後可確認已受理的操作。',[
     ...Object.values(gameModes).map(game=>({name:game.name,value:Object.values(game.options).find(([mode])=>mode===state[game.key])[1],inline:true})),
     ...(state.updatedAt?[{name:'最近更新',value:`${time(state.updatedAt)}（台灣時間）`}]:[]),
   ],[row(button(i,state.slot==='open'?'老虎機切維護':'開放老虎機','ap',['s',state.slot==='open'?'m':'o',state.revision]),
-    button(i,state.feature==='hidden'?'揭曉野球拳':state.feature==='open'?'暫停野球拳':'重新開放野球拳','ap',['f',state.feature==='open'?'p':'o',state.revision],1)),row(home(i))]);
+    button(i,state.feature==='hidden'?'揭曉野球拳':'顯示模糊預告','ap',['f',state.feature==='open'?'h':'o',state.revision],1),
+    button(i,state.featureMaintenance==='open'?'野球拳切維護':'結束野球拳維護','ap',['m',state.featureMaintenance==='open'?'m':'o',state.revision],1)),row(home(i))]);
 }
 export async function handlePanel(i,store,recordField,parsed,{notifyGrant,removeGrantNotice,retryGrantNotice,arcade}={}){
   const {action,args}=parsed,env=store.environment,guild=i.guild_id,actor=i.member.user.id;
@@ -120,12 +122,12 @@ export async function handlePanel(i,store,recordField,parsed,{notifyGrant,remove
     const [gameCode,modeCode,revision,confirmation]=args;
     const game=Object.hasOwn(gameModes,gameCode)?gameModes[gameCode]:null;
     const choice=game&&Object.hasOwn(game.options,modeCode)?game.options[modeCode]:null;
-    if(!choice||modeCode==='h'||!/^\d+$/.test(revision??''))throw problem(400,'請重新選擇開關。','ARCADE_MODE');
+    if(!choice||!/^\d+$/.test(revision??''))throw problem(400,'請重新選擇開關。','ARCADE_MODE');
     if(action==='ap'){
       const state=arcade.read();
       if(Number(revision)!==state.revision)throw problem(409,'開關已更新，請重新開啟遊戲營運面板。','ARCADE_REVISION');
       const reveal=gameCode==='f'&&state.feature==='hidden'&&modeCode==='o';
-      return response(i,env,reveal?'揭曉野球拳':`${game.name}切換確認`,reveal?'確認後，正式玩家會看到野球拳名稱與完整圖片，並可入場。':`確認將${game.name}切換為「${choice[1]}」。`,[],[
+      return response(i,env,reveal?'揭曉野球拳':`${game.name}切換確認`,reveal?'確認後玩家會看到野球拳名稱與完整圖片，入場依維護狀態開放。':`確認將${game.name}切換為「${choice[1]}」。`,[],[
         row(button(i,reveal?'確認揭曉':'確認切換','ac',[gameCode,modeCode,state.revision,request(i)],4),button(i,'取消','ao')),
       ]);
     }

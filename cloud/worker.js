@@ -22,7 +22,7 @@ import {arcadeEnabled,operatorEnabled,readArcade} from './arcade-controls.js';
 import {ARCADE_STATUS,arcadeStatus,arcadeAsset,arcadeLobby} from './arcade-routes.js';
 import {duelPaths} from '../server/http/app-handler.js';
 import {duelDigest} from '../server/wallet/duel-settlement.js';
-import {authorizeOperator,handleOperator,operatorApi,operatorPage,serveOperator} from './operator-console.js';
+import {authorizeOperator,handleOperator,operatorApi,operatorPage,operatorSignIn,serveOperator,serveOperatorSignIn} from './operator-console.js';
 
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const slotEntry=(url,env)=>url.pathname==='/game-entry.json'&&!arcadeEnabled(env)&&operatorEnabled(env);
@@ -31,6 +31,7 @@ const authorized=(req,env,name='CLOUD_ADMIN_TOKEN')=>{const expected=env[name];i
 async function body(req,limit=12*1024**2){let n=0,parts=[];for await(const chunk of req.body||[]){n+=chunk.length;if(n>limit)throw new Error('Body too large');parts.push(chunk);}return JSON.parse(Buffer.concat(parts).toString('utf8'));}
 
 export class CircusProject extends DurableObject {
+  arcadeWatchers=new Set();
   constructor(ctx,env){super(ctx,env);Object.assign(this,{ctx,env});this.state=new CloudState(ctx.storage);this.quota=new CloudQuota(ctx.storage,this.state);this.active=new Set();this.opsTail=Promise.resolve();}
   track(promise){this.active.add(promise);void promise.finally(()=>this.active.delete(promise)).catch(()=>{});return promise;}
   backupStep(rt){this.backupPending ||= this.track(rt.backup.step()).finally(()=>this.backupPending=null);return this.backupPending;}
@@ -41,6 +42,29 @@ export class CircusProject extends DurableObject {
   makeRuntime(){return createCloudRuntime(this);}
   ready(){const b=this.state.get('backup-status');return this.state.get('mode')==='active'&&b?.ok===true&&Date.now()-b.at<48*3600000;}
   async schedule(delay){const now=Date.now(),due=now+delay,old=await this.ctx.storage.getAlarm();if(!old||old>due)await this.ctx.storage.setAlarm(due);}
+  arcadeChanged(){
+    if(!this.arcadeWatchers.size)return;
+    const status=arcadeStatus(this.state);
+    for(const send of this.arcadeWatchers)send(status);
+  }
+  async watchArcade(request,url){
+    const status=arcadeStatus(this.state);
+    if(url.searchParams.get('after')!==String(status.revision))return json(status);
+    const updated=await new Promise(resolve=>{
+      const empty=()=>send(null);
+      const send=value=>{
+        clearTimeout(timer);
+        this.arcadeWatchers.delete(send);
+        request.signal.removeEventListener('abort',empty);
+        resolve(value);
+      };
+      const timer=setTimeout(empty,12000);
+      this.arcadeWatchers.add(send);
+      if(request.signal.aborted)empty();
+      else request.signal.addEventListener('abort',empty,{once:true});
+    });
+    return updated?json(updated):new Response(null,{status:204,headers:{'Cache-Control':'no-store'}});
+  }
   async fetch(request){
     const url=new URL(request.url);
     if(slotEntry(url,this.env)){
@@ -64,7 +88,7 @@ export class CircusProject extends DurableObject {
       try{const operation=this.opsTail.then(()=>this.admin(url.pathname,request));this.opsTail=operation.catch(()=>{});return await operation;}catch{return json({error:'Cloud operation refused; inspect status before retrying'},409);}
     }
     if(url.pathname==='/healthz')return json({ok:true,version:APP_VERSION,model:MODEL_VERSION});
-    if(url.pathname===ARCADE_STATUS&&request.method==='GET'&&arcadeEnabled(this.env))return json(arcadeStatus(this.state));
+    if(url.pathname===ARCADE_STATUS&&request.method==='GET'&&arcadeEnabled(this.env))return this.watchArcade(request,url);
     if(!apiPaths.has(url.pathname)&&!(arcadeEnabled(this.env)&&duelPaths.has(url.pathname)&&arcadeStatus(this.state).feature))return json({error:'找不到此功能。'},404);
     if(!this.ready())return json({error:'帳號戲籌正在維護，請稍後再試。'},503);
     const origin=request.headers.get('origin');if(origin&&origin!==`https://${this.env.DISCORD_CLIENT_ID}.discordsays.com`)return json({error:'不允許的來源。'},403);
@@ -211,6 +235,8 @@ async function routeRequest(request,env){
 }
 
 export default {async fetch(request,env){
-  if(new URL(request.url).pathname===operatorPage)return serveOperator(request,env);
+  const {pathname}=new URL(request.url);
+  if(pathname===operatorPage)return serveOperator(request,env);
+  if(pathname===operatorSignIn)return serveOperatorSignIn(request,env);
   return secureResponse(await routeRequest(request,env),{sameOriginFrame:arcadeLobby(new URL(request.url),env)});
 }};

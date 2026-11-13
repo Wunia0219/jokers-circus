@@ -8,8 +8,8 @@ export const arcadeLobby=(url,env)=>arcadeEnabled(env)&&(url.pathname===lobbyPat
   url.pathname==='/'&&(url.searchParams.has('frame_id')||url.hostname===`${env.DISCORD_CLIENT_ID}.discordsays.com`));
 
 export function arcadeStatus(state){
-  const {slot,feature,revision}=readArcade(state);
-  return {slot,revision,...(feature==='hidden'?{}:{feature:{mode:feature,title:'野球拳',
+  const {slot,feature,featureMaintenance,revision}=readArcade(state);
+  return {slot,revision,...(feature==='hidden'?{}:{feature:{mode:featureMaintenance,title:'野球拳',
     image:'/arcade/feature/cover.webp',path:'/arcade/feature/play.html'}})};
 }
 
