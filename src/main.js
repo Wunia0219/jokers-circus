@@ -25,11 +25,12 @@ import { installSpinShortcut } from './ui/reels/spin-shortcut.js';
 import { roundFeedbackTiming } from './ui/reels/presentation.js';
 import { setBitmapNumber } from './ui/shared/bitmap-number.js';
 import { installResponsiveLayout } from './ui/shared/responsive-layout.js';
-import { createWalletClient } from './platform/wallet-client.js';
+import { createWalletClient, hasPendingSpin } from './platform/wallet-client.js';
 import { canEnterGame, readGameEntry } from './platform/game-entry.js';
 import {createCasinoPresence} from './platform/casino-presence.js';
-import {slotLobbyPath,canReturnToLobby} from './platform/game-navigation.js';
+import {slotLobbyPath} from './platform/game-navigation.js';
 import {fadeToLobby} from './platform/lobby-transition.js';
+import {arcadeHost,ARCADE_SLOT_PATH,canReturnToLobby} from './platform/arcade-session.js';
 import { BETS, SYMBOL_NAMES, MODEL_VERSION, drawStops, restoredStops, freshState, readState, createRound } from './game/index.js';
 
 const $ = s => document.querySelector(s);
@@ -65,15 +66,18 @@ try { state=readState(localStorage.getItem(KEY)); } catch { state=freshState();s
 let bet=100, busy=false, presenting=false, ready=false, leavingLobby=false, countAnimation=0, payoutAnimation=0, celebrationTimer=0;
 const loopbackWalletTest=location.protocol==='http:'&&location.hostname==='127.0.0.1'&&
   new URLSearchParams(location.search).get('wallet')==='local';
-const entryEnabled=import.meta.env.PROD&&!discordTestBuild&&!loopbackWalletTest&&
+const arcade=location.pathname===ARCADE_SLOT_PATH?arcadeHost():null;
+const entryEnabled=import.meta.env.PROD&&!arcade&&!discordTestBuild&&!loopbackWalletTest&&
   import.meta.env.VITE_DISCORD_WALLET_ENABLED==='true';
-let entryClosing=false, maintenanceShown=false, entryCheck=null, activityIdentity, casinoPresence;
-const activityMusic=discordTestBuild?discordTestMusic():null;
+let entryClosing=false, maintenanceShown=false, entryCheck=null, activityIdentity, casinoPresence, entryWatch;
+let liveMaintenance=false;
+const activityMusic=arcade?.music??(discordTestBuild?discordTestMusic():null);
 const scene=new SlotScene(), sound=new Sound({effectsEnabled:true,musicUrl:activityMusic?null:MUSIC_SOURCE,onStateChange:renderAudio});
 const bigWin=new BigWinPresentation($('#app'));
 let activityMode='browser', activityUser=null, walletClient=null, claiming=false, historySync=null, checkinPanel=null, checkinRetry=false;
+const canUseSpin=()=>ready&&(!entryClosing||busy||walletClient?.hasPending());
 const controls=new SpinControls({
-  isReady:()=>ready&&(!entryClosing||busy)&&!leavingLobby&&!claiming&&!document.hidden&&!$('#dialog').open,
+  isReady:()=>canUseSpin()&&!leavingLobby&&!claiming&&!document.hidden&&!$('#dialog').open,
   isBusy:()=>busy,
   startSpin:()=>spin(),
   stopReels:()=>scene.requestQuickStop(),
@@ -89,7 +93,7 @@ const renderSpinButton=bindSpinButton($('#spin'),controls);
 const motion=matchMedia('(prefers-reduced-motion: reduce)');scene.reduced=motion.matches;motion.addEventListener('change',()=>scene.reduced=motion.matches);
 const signed=n=>(n>0?'+':'')+fmt(n);
 function save(next) { if(walletClient){if((next.revision||0)>=(state.revision||0))state=next;return;}state=next;try{localStorage.setItem(KEY,JSON.stringify(state));}catch{storageAvailable=false;} }
-const lobbyPath=slotLobbyPath(window.location);
+const lobbyPath=arcade?'/':slotLobbyPath(window.location);
 const playerBar=createPlayerBar({icon,onCheckin:showCheckin,onHistory:showHistory,onRules:showRules,onSound:toggleSound,onMusic:toggleMusic,onLobby:lobbyPath?returnToLobby:undefined});
 $('#player-header').append(playerBar.element);
 function renderAudio(){
@@ -105,7 +109,7 @@ function startGameAudio(){
   document.addEventListener('keydown',unlockEffects,{capture:true,signal:effectsInput.signal});
 }
 if(!entryEnabled)startGameAudio();
-addEventListener('pagehide',event=>{if(maintenanceShown)return;if(event.persisted)void sound.setVisible(false);else{effectsInput.abort();stopMusic?.();sound.dispose();}});
+addEventListener('pagehide',event=>{if(maintenanceShown)return;if(event.persisted)void sound.setVisible(false);else{entryWatch?.abort();effectsInput.abort();stopMusic?.();sound.dispose();}});
 addEventListener('pageshow',event=>{if(event.persisted&&!maintenanceShown){leavingLobby=false;void sound.setVisible(true);void refreshEntry();}});
 const checkinOptions=()=>({ready:ready&&!entryClosing&&!!walletClient,busy,claiming,preview:!walletClient,retry:checkinRetry&&!state.claimed});
 function renderPlayer(){playerBar.update({user:activityUser,connected:!!walletClient,checkinPreview:!!lobbyPath&&!walletClient,localTest:activityMode==='local',ready:ready&&!entryClosing,busy,claiming,claimed:state.claimed,daily:state.daily,weeklyCheckin:state.weeklyCheckin,storageAvailable});if(checkinPanel?.element.isConnected&&$('#dialog').open)checkinPanel.update(walletClient?state:{},checkinOptions());updateLobbyButton();}
@@ -115,24 +119,31 @@ function updateLobbyButton(){
 }
 function returnToLobby(){
   if(leavingLobby || !lobbyPath || !canReturnToLobby({ready,busy,claiming,pending:walletClient?.hasPending()}))return;
-  leavingLobby=true;controls.stopAuto();void fadeToLobby($('#app'),lobbyPath);
+  leavingLobby=true;controls.stopAuto();
+  if(arcade)arcade.back(window);else void fadeToLobby($('#app'),lobbyPath);
 }
 const {show:notifyPlayer}=createPlayerToast($('#player-toast'));
 function showPlayerError(error,context='game'){
   const copy=playerError(error,{context,canClaim:!!walletClient&&!state.claimed});
   if(error?.status===401){ready=false;setBusy(false);}
   const body=document.createElement('div'),message=document.createElement('p');message.textContent=copy.message;body.append(message);
+  const supportCode=context==='game'?walletClient?.supportCode():null;
+  if(supportCode){const code=document.createElement('p');code.textContent='回報碼 '+supportCode;code.style.overflowWrap='anywhere';body.append(code);}
   if(copy.reconnect){const retry=document.createElement('button');retry.className='notice-action';retry.textContent='重新開啟遊戲';retry.addEventListener('click',()=>location.reload());body.append(retry);}
   openDialog(copy.title,body);
 }
 async function refreshWallet(){if(!walletClient||busy||claiming||!ready||entryClosing)return;try{const update=await walletClient.state();if(!busy&&!claiming&&!entryClosing){save(update.state);renderState();}}catch(error){if(error.status===401&&!entryClosing)showPlayerError(error);}}
 function enterMaintenance(){
-  if(maintenanceShown||busy||claiming)return;
+  if(maintenanceShown||!liveMaintenance&&(busy||claiming||walletClient?.hasPending()))return;
   maintenanceShown=true;
+  entryClosing=true;
   ready=false;
+  controls.stopAuto();
+  entryWatch?.abort();
   $('#dialog').close();
   $('#app').inert=true;
   $('#app').hidden=true;
+  $('#loading')?.remove();
   cancelAnimationFrame(countAnimation);
   cancelAnimationFrame(payoutAnimation);
   effectsInput.abort();
@@ -140,10 +151,36 @@ function enterMaintenance(){
   sound.dispose();
   casinoPresence?.dispose();
   if(scene.initTask){
-    hideCelebration();
+    if(scene.active)scene.cancelSpin();
+    bigWin.hide();
+    clearTimeout(celebrationTimer);
     void scene.destroy().catch(error=>console.warn('Stage cleanup unavailable:',error.message));
   }
-  showMaintenanceScreen({pending:walletClient?.hasPending()});
+  const pending=walletClient?.hasPending()||hasPendingSpin(activityIdentity?.session);
+  if(!liveMaintenance){showMaintenanceScreen({pending});return;}
+  const inDiscord=isDiscordActivity(location);
+  const notice=showMaintenanceScreen({pending,title:'維護中',backLabel:'返回 Discord',
+    ...(inDiscord?{onBack:async()=>{
+      const button=notice.querySelector('button');
+      button.disabled=true;
+      try{
+        const activity=activityIdentity??await connectActivity({authEnabled:false,walletEnabled:false});
+        activity.close();
+      }catch{notice.querySelector('h1 + p').textContent='請使用 Discord 的活動退出按鈕返回。';}
+      finally{button.disabled=false;}
+    }}:{}),
+  });
+}
+async function watchEntry(revision,signal){
+  while(!signal.aborted){
+    try{
+      const entry=await readGameEntry(fetch,{after:revision,signal});
+      if(!entry||signal.aborted)continue;
+      if(entry.mode==='maintenance'){enterMaintenance();return;}
+      if(entry.revision!==undefined&&entry.revision!==revision){revision=entry.revision;continue;}
+    }catch{/* Retry a disconnected watch using the last known revision. */}
+    if(!signal.aborted)await new Promise(resolve=>setTimeout(resolve,1000));
+  }
 }
 function refreshEntry(){
   if(!entryEnabled||!ready||entryClosing||document.hidden)return;
@@ -163,7 +200,7 @@ function renderState() {
 }
 function setBusy(value) {
   busy=value;
-  renderSpinButton({busy,presenting,claiming,ready:ready&&(!entryClosing||busy)});
+  renderSpinButton({busy,presenting,claiming,ready:canUseSpin()});
   $('#max-bet').disabled=value||claiming||!ready||entryClosing||controls.auto;
   $('#auto-spin').disabled=claiming||!ready||entryClosing;
   document.querySelectorAll('[data-bet]').forEach(b=>b.disabled=value||claiming||!ready||entryClosing||controls.auto);
@@ -233,6 +270,7 @@ async function spin() {
     if(!recovering&&state.balance>=bet)setBitmapNumber($('#balance'),fmt(state.balance-bet));
     scene.beginSpin();sound.spin();result('轉動中…',`本局下注 ${fmt(bet)}`);
     const update=await settlement;
+    if(maintenanceShown)return;
     const r=update.round;save(update.state);settledRound=r;
     if(update.synchronized){
       historySync=update.synchronized.then(synced=>{save(synced.state);if(!busy&&!claiming)renderState();});
@@ -240,6 +278,7 @@ async function spin() {
     }
     if(r.rules!==MODEL_VERSION){
       if(update.synchronized){const synced=await update.synchronized;save(synced.state);}
+      if(maintenanceShown)return;
       scene.cancelSpin(restoredStops(state));
       controls.stopAuto();renderState();showPayout(r.payout);
       result('上一局的結果已找回',`獲得 ${fmt(r.payout)} 戲籌，沒有再次扣除下注。可在遊玩紀錄查看。`);
@@ -252,6 +291,7 @@ async function spin() {
     controls.animationStarted();
     if(document.hidden)scene.finish();
     await animation;
+    if(maintenanceShown)return;
     presenting=true;setBusy(true);
     renderState();animateBalance(r.before-r.bet,state.balance);presentWins(r);showPayout(r.payout,true);
     const symbols=r.wins.length?r.wins.map(w=>`${SYMBOL_NAMES[w.symbol]} ${w.count} 連・${w.ways} 組`).join('、'):'這局沒有連出中獎組合';
@@ -264,6 +304,8 @@ async function spin() {
     // Space can shorten reel travel, but cannot cut off the resulting win.
     if(timing.hold&&!document.hidden)await new Promise(resolve=>setTimeout(resolve,timing.hold));
   }catch(error){
+    if(maintenanceShown)return;
+    if(liveMaintenance&&error.code==='SLOT_MAINTENANCE'){enterMaintenance();return;}
     scene.cancelSpin(restoredStops(state));
     controls.stopAuto();renderState();
     if(settledRound)showPayout(settledRound.payout);
@@ -331,10 +373,13 @@ async function claimDaily(){
   const panel=checkinPanel;panel?.message('');
   controls.stopAuto();claiming=true;setBusy(busy);
   try{
-    const update=await walletClient.checkin();checkinRetry=false;save(update.state);renderState();
+    const update=await walletClient.checkin();
+    if(maintenanceShown)return;
+    checkinRetry=false;save(update.state);renderState();
     const message=checkinClaimFeedback(update);
     if(panel?.element.isConnected&&$('#dialog').open)panel.message(message,'success');else notifyPlayer(message);
   }catch(error){
+    if(maintenanceShown)return;
     checkinRetry=error.status!==401;
     if(error.status===401)showPlayerError(error,'checkin');
     else if(panel?.element.isConnected&&$('#dialog').open)panel.message(playerError(error,{context:'checkin'}).message);
@@ -391,21 +436,29 @@ async function startGame() {
     let entry;
     try{entry=await readGameEntry();}
     catch{loading.fail('暫時無法確認遊戲是否開放，請再試一次。');return;}
+    liveMaintenance=entry.revision!==undefined;
+    if(liveMaintenance){
+      if(entry.mode==='maintenance'){loading.dismiss();enterMaintenance();return;}
+      entryWatch=new AbortController();
+      void watchEntry(entry.revision,entryWatch.signal);
+    }
     if(entry.mode==='maintenance'){
-      if(entry.previewUserIds.length&&isDiscordActivity(window.location)){
+      if(isDiscordActivity(window.location)){
         previewActivity=await connectActivity().catch(()=>null);
       }
       if(!canEnterGame(entry,previewActivity)){
         entryClosing=true;
-        loading.dismiss();
-        enterMaintenance();
-        return;
+        if(!hasPendingSpin(previewActivity?.session)){
+          loading.dismiss();
+          enterMaintenance();
+          return;
+        }
       }
     }
     startGameAudio();
   }
   let stageProgress, showStageProgress=false,casinoSession;
-  const activityReady=discordTestBuild?connectDiscordTestActivity():
+  const activityReady=arcade?Promise.resolve(arcade.connect(window)):discordTestBuild?connectDiscordTestActivity():
     connectLocalWallet(window.location).then(activity=>activity||previewActivity||connectActivity());
   const stageReady=Promise.all([scene.init($('#canvas-host'),(...progress)=>{
     stageProgress=progress;
@@ -415,10 +468,11 @@ async function startGame() {
   stageReady.catch(()=>{});
   try {
     const activity=await activityReady;
+    if(maintenanceShown)return;
     activityIdentity=activity;
     activityMode=activity.mode;
     activityUser=activity.user || null;
-    if(activity.session){walletClient=createWalletClient(activity.session,discordTestBuild?testSessionFetch(activity):undefined);state=(await walletClient.state()).state;renderState();}
+    if(activity.session){walletClient=createWalletClient(activity.session,arcade?.fetch??(discordTestBuild?testSessionFetch(activity):undefined));state=(await walletClient.state()).state;if(maintenanceShown)return;renderState();}
     if(activityMode==='discord'&&activity.session?.casinoNotifications)casinoSession=activity.session;
     if(activityMode==='discord'&&import.meta.env.VITE_DISCORD_WALLET_ENABLED==='true'&&!walletClient)throw new Error('帳號錢包尚未連接，請重新開啟活動。');
     renderPlayer();
@@ -426,6 +480,7 @@ async function startGame() {
     showStageProgress=true;
     if(stageProgress)loading.update(...stageProgress);
   } catch(error) {
+    if(maintenanceShown)return;
     console.error(error);
     showStageProgress=false;bigWin.hide();
     void scene.destroy().catch(cleanup=>console.warn('Stage cleanup unavailable:',cleanup.message));
@@ -435,15 +490,20 @@ async function startGame() {
   }
   try {
     await stageReady;
+    if(maintenanceShown)return;
     renderState();
     scene.setStops(restoredStops(state));
     scene.app.render();
     await loading.finish();
+    if(maintenanceShown)return;
     if(casinoSession){casinoPresence=createCasinoPresence(casinoSession);await casinoPresence.start();}
+    if(maintenanceShown)return;
     ready=true;setBusy(false);
+    if(entryClosing&&walletClient?.hasPending())result('上一局的結果仍待確認','維護期間可按 SPIN 確認上一局，不會再次下注。');
     void refreshEntry();
     setTimeout(()=>scene.preloadDealer(),0);
   } catch(error) {
+    if(maintenanceShown)return;
     showStageProgress=false;
     bigWin.hide();void scene.destroy().catch(cleanup=>console.warn('Stage cleanup unavailable:',cleanup.message));
     console.error(error);const copy=playerError(error,{context:'load'});loading.fail(copy.message);result(copy.title,copy.message);

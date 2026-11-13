@@ -19,14 +19,14 @@ npm run wallet:recovery -- backup --env .env.cloud.local --key-file data/backup-
 npm run wallet:recovery -- drill --archive backups/customer-recovery/example-backup/archive.json --key-file data/backup-keys/cloud-key.txt --environment test --out backups/customer-recovery/example-drill
 ```
 
-backup 只下載既有有效快照，不觸發新備份、不 pause／export、不增加 Firestore 讀寫。drill 還原到新 SQLite，以本機 API 核對全部錢包及重播 spin／簽到／重設；前後七表與來源 archive 須不變。錯誤金鑰、環境、來源、跨群、分頁或驗帳失敗均拒絕，既有輸出不覆蓋。單群資料可加 `--guild <群ID>`。
+backup 只下載既有有效快照，不觸發新備份、不 pause／export、不增加 Firestore 讀寫。drill 還原到新 SQLite，以本機 API 核對全部錢包及重播 spin／簽到／重設；前後七表與來源 archive 須不變。雙遊戲備份另外用 SQLite 中的野球拳收據重建 Firestore v2 場次與收藏，並核對快照內的校驗值。錯誤金鑰、環境、來源、跨群、分頁或驗帳失敗均拒絕，既有輸出不覆蓋。單群資料可加 `--guild <群ID>`。
 
 需要通知時才加 `--notify-webhook-file <私密檔> --notify-guild <群ID> --notify-channel <頻道ID>`，事前核對目的地。只傳摘要；結果不明不自動重貼。手動工具的 4xx 包含 429 會 blocked，不同於排程監控的重試規則。通知失敗不抹去已成功的備份／演練結果。
 
 ## 事故處理
 
 1. 核對玩家、群、時間與原請求。持續異常時先 pause 並等待已開始交易完成，保留最新資料及事故證據。
-2. 程式故障只回退相容程式，不能倒灌昨天餘額。相容版本須理解 welcome、週簽到、reset version 2、archive format 2。
+2. 程式故障只回退相容程式，不能倒灌昨天餘額。相容版本須理解 welcome、週簽到、reset version 2、archive format 2；已有野球拳交易時也須保留野球拳場次、收藏與原收據。可先從營運後台暫停新場次。
 3. 需要換來源時，先確認原 writer 停止，取得最新一致快照、驗帳及原額度；新目的地必須空白。
 4. 恢復後核對全部餘額、原請求去重、簽到及歷史，要求重新登入，再驗證告警與入口。無法恢復的區間明確告知。
 

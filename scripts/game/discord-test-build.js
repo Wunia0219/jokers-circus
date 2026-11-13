@@ -1,11 +1,12 @@
 import {resolve} from 'node:path';
 import base from '../../vite.config.js';
 import {securityHeaders,contentSecurityPolicy} from '../../server/http/security-headers.js';
+import {launchScreenMarkup} from '../build/launch-screen-markup.js';
 
 // Dedicated test builds have extra entry chunks. Cache their verified hashed
 // assets with one rule instead of exceeding Cloudflare's 100-rule limit.
 export function discordTestBuildOptions(outDir,clientId){
-  return {...base,configFile:false,envDir:false,plugins:[{
+  return {...base,configFile:false,envDir:false,plugins:[launchScreenMarkup,{
     name:'discord-test-headers',generateBundle(_,bundle){
       for(const name of Object.keys(bundle).filter(name=>name.startsWith('assets/')))if(!/^assets\/[\w.-]+-[\w-]{8}\.[a-z0-9]+$/.test(name))throw new Error('Unversioned test asset cannot use immutable cache');
       this.emitFile({type:'asset',fileName:'_headers',source:'/*\n'+Object.entries({...securityHeaders,'Content-Security-Policy':contentSecurityPolicy}).map(([key,value])=>`  ${key}: ${value}`).join('\n')+'\n\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n'});

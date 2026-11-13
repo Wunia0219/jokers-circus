@@ -4,6 +4,8 @@ import { privateReply, commandError } from './bot-replies.js';
 import {adminPanel,handlePanel,launchControls,parsePanel,panelId} from './discord-panel.js';
 import {recordLabel} from '../firestore/record-codes.js';
 import {revokeNotificationStatus} from './grant-notification.js';
+import {casinoPreviewCommand, casinoPreviewMessage} from './casino-preview.js';
+import {ANNOUNCEMENT_LAUNCH_ID, withAnnouncementLaunch} from './announcement-launch.js';
 
 export const commandDefinitions = [
   {name:'戲籌',description:'查看戲籌或開啟遊戲',type:1,options:[]},
@@ -19,24 +21,38 @@ export function validSignature(publicKey, headers, raw, now=Date.now()) {
   }catch{return false;}
 }
 export async function handleCommand(interaction, store, adminRoles=[],commandChannelIds=[],effects={}) {
+  interaction={...interaction,panelPrefix:effects.panelPrefix??'jc'};
   const reply=(...args)=>privateReply(store.environment,...args);
   try {
     if(interaction.type===1)return {type:1};
     if(![2,3,5].includes(interaction.type)||interaction.member?.user?.bot||!interaction.guild_id||!interaction.member?.user?.id)throw problem(403,'請在已啟用的伺服器內使用指令。','COMMAND_SCOPE');
     const guild=interaction.guild_id,user=interaction.member.user.id;
     store.validate(guild,user);
-    if(commandChannelIds.length&&!commandChannelIds.includes(interaction.channel_id||interaction.channel?.id))throw Object.assign(problem(403,'請到指定頻道使用指令。','COMMAND_CHANNEL'),{channel:commandChannelIds[0]});
+    const channel=interaction.channel_id||interaction.channel?.id;
+    if(commandChannelIds.length&&!commandChannelIds.includes(channel))throw Object.assign(problem(403,'請到指定頻道使用指令。','COMMAND_CHANNEL'),{channel:commandChannelIds[0]});
+    if(interaction.type===3&&interaction.data?.component_type===2&&interaction.data.custom_id===ANNOUNCEMENT_LAUNCH_ID&&
+        commandChannelIds.includes(channel))return {type:12};
     const panel=[3,5].includes(interaction.type)?parsePanel(interaction):null;
     if(panel?.action==='go')return {type:12};
     // APP_HANDLER opens the Activity without Discord's automatic channel invite.
     if(interaction.data?.type===4)return {type:12};
+    if(interaction.type===2&&interaction.data.name===casinoPreviewCommand.name&&effects.casinoPreview===true&&
+        store.environment==='test'&&store.backend==='firestore'&&commandChannelIds.length){
+      const choice=interaction.data.options?.find(option=>option.name==='樣式')?.value;
+      const message=casinoPreviewMessage(choice,{user});
+      if(message){
+        const preview=choice==='grant'?message:withAnnouncementLaunch(message);
+        return {type:4,data:{...preview,flags:64,allowed_mentions:{parse:[]}}};
+      }
+      return reply('選一種推播來看看。','推播預覽');
+    }
     if(interaction.data.name==='簽到'){
       const result=reply('請開啟遊戲，點上方「週簽到」領取獎勵。','請在遊戲內簽到');
       result.data.components=launchControls(interaction);return result;
     }
     if(['戲籌','\u7c4c\u78bc'].includes(interaction.data.name)){
       const state=await store.state(guild,user,{compact:true});
-      const result=reply(`**${number(state.balance)} 戲籌**\n\n${state.claimed?`今天已簽到，明天可領 **${number(state.weeklyCheckin.nextReward)} 戲籌**。`:`週簽到第 ${state.weeklyCheckin.day} 天，可在遊戲內領取 **${number(state.daily)} 戲籌**。`}\n每七天循環，中斷從第 1 天重來。`);
+      const result=reply(`**${number(state.balance)} 戲籌**\n\n${state.claimed?`今天簽到過了，明天可以領 **${number(state.weeklyCheckin.nextReward)} 戲籌**。`:`今天是週簽到第 ${state.weeklyCheckin.day} 天，到遊戲裡就能領 **${number(state.daily)} 戲籌**。`}\n每 7 天一輪，漏簽就從第 1 天重新算。`);
       result.data.components=launchControls(interaction);return result;
     }
     if(!panel&&!['戲籌管理','\u7c4c\u78bc管理'].includes(interaction.data.name))throw problem(400,'不支援此指令。','COMMAND_UNKNOWN');
@@ -44,7 +60,7 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
     if(!(permissions&8n)&&!interaction.member.roles?.some(id=>adminRoles.includes(id)))throw problem(403,'只有伺服器管理員或指定的戲籌管理身分組可以操作。','COMMAND_ADMIN');
     if(panel)return await handlePanel(interaction,store,recordField,panel,effects);
     const sub=interaction.data.options?.[0];
-    if(!sub)return adminPanel(interaction,store.environment);
+    if(!sub)return adminPanel(interaction,store.environment,effects.arcade);
     const args=Object.fromEntries((sub?.options||[]).map(option=>[option.name,option.value]));
     if(sub?.name==='玩家戲籌'){
       const page=await store.playerWallets(guild,{after:args['起始玩家']??''});

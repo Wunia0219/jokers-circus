@@ -7,6 +7,7 @@ import {auditRows} from './snapshot-audit.js';
 import {previousDay,validCheckinTransition} from '../server/wallet/weekly-checkin.js';
 import {validResetOperation,resetEntryIds} from '../server/wallet/wallet-admin.js';
 import {isOpeningKind,validWelcomeEntry} from '../server/wallet/wallet-opening.js';
+import {DUEL_LEDGER_KIND,duelDigest,duelKey,replayDuel,validateDuelReceipt} from '../server/wallet/duel-settlement.js';
 
 export const TABLES=['settings','wallets','ledger','operations','rounds','highlight_events','highlight_boards'];
 export const digest=value=>createHash('sha256').update(value).digest('hex');
@@ -40,6 +41,7 @@ export function auditSnapshot(snapshot,environment){
         requireValue(o.key===`daily:${e.user}:${e.day}`&&e.kind==='checkin'&&e.actor===e.user&&e.delta>0&&o.fingerprint==='daily'
           &&validCheckinTransition(r,prior?{...JSON.parse(prior.result),day}:null,e.day),'Checkin mismatch');
       }
+      else if(e.kind===DUEL_LEDGER_KIND)requireValue(validateDuelReceipt(o,r,e),'Challenge receipt mismatch');
       else if(e.kind==='grant')requireValue(o.key.startsWith('admin:')&&e.delta>0&&isDeepStrictEqual(JSON.parse(o.fingerprint),[e.actor,e.user,e.delta,e.reason]),'Grant mismatch');
       else if(e.kind==='reversal'){const original=entries.get(Number(e.reference));requireValue(o.key.startsWith('admin:')&&original?.kind==='grant'&&original.guild===e.guild&&original.user===e.user&&e.delta===-original.delta&&isDeepStrictEqual(JSON.parse(o.fingerprint),[e.actor,Number(e.reference),e.reason]),'Reversal mismatch');}
       else requireValue(e.kind==='test_fixture'&&Number(o.fingerprint)===e.after,'Fixture mismatch');
@@ -47,11 +49,15 @@ export function auditSnapshot(snapshot,environment){
     }
     requireValue(ops.has(key),'Operation missing');
   }
-  for(const e of t.ledger){
+  const duelStates=new Map();
+  for(const e of [...t.ledger].sort((a,b)=>a.id-b.id)){
     if(e.kind==='spin'){const link=e.guild+'_'+e.user+'_'+e.reference;requireValue(!spinLinks.has(link),'Duplicate spin ledger');spinLinks.add(link);const r=JSON.parse(ops.get(e.guild+'\0'+`spin:${e.user}:${e.reference}`)?.result||'null')?.round;requireValue(r&&e.actor===e.user&&r.before===e.before&&r.after===e.after&&r.net===e.delta&&Math.abs(Date.parse(r.time)-Date.parse(e.time))<=1000,'Spin link mismatch');}
     else if(!isOpeningKind(e.kind))requireValue(usedOps.has(e.id),'Missing retry result');
+    if(e.kind===DUEL_LEDGER_KIND){const owner=e.guild+'_'+e.user,o=ops.get(e.guild+'\0'+duelKey(e.user,e.reference));duelStates.set(owner,replayDuel(duelStates.get(owner),o,JSON.parse(o.result),e));}
     if(e.kind==='reversal'){const link=e.guild+'_'+e.reference;requireValue(!reversals.has(link),'Duplicate reversal');reversals.add(link);}
   }
+  for(const w of t.wallets)if(snapshot.readTime||w.duelDigest!==undefined)
+    requireValue(w.duelDigest===duelDigest(duelStates.get(w.guild+'_'+w.user)),'Challenge wallet mismatch');
   requireValue(usedRounds.size===rounds.size&&t.ledger.filter(e=>e.kind==='spin').length===rounds.size,'Round coverage');
   unique(t.highlight_events,e=>e.guild+'_'+e.round_id);unique(t.highlight_boards,b=>b.guild);
   for(const e of t.highlight_events){assertHighlightEvent(e);const rows=t.rounds.filter(r=>r.guild===e.guild&&r.id===e.round_id);const expected=rows.length===1?highlightEvent(e.guild,e.name,JSON.parse(rows[0].data),e.occurred):null;requireValue(expected&&expected.tier===e.tier&&expected.multiplier===e.multiplier&&expected.occurred===e.occurred,'Highlight round mismatch');}

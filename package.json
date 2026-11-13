@@ -1,12 +1,14 @@
 {
   "name": "luna-arcade-preview",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "private": true,
   "type": "module",
   "scripts": {
     "postinstall": "node scripts/security/patch-discord-sdk.js",
     "dev": "vite --host 127.0.0.1 --port 4187 --strictPort",
     "build": "vite build",
+    "arcade:build": "node scripts/build/arcade-release.js",
+    "arcade:preflight": "node scripts/qa/arcade-preflight.js",
     "audio:preview": "node scripts/audio/render-previews.js",
     "preview": "vite preview --host 127.0.0.1 --port 4187 --strictPort",
     "activity:serve": "npm run build && npm run activity:server",

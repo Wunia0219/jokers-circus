@@ -4,6 +4,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {digest} from './snapshot.js';
 import {highlightBoardRecord} from '../server/firestore/highlight-data.js';
 import {FirestoreRest} from './firestore-rest.js';
+import {duelDigest} from '../server/wallet/duel-settlement.js';
 const unpack=d=>{if(!d.exists)throw new Error('Backup document missing');return JSON.parse(d.get('json'));};
 // Each step uses at most 20 new ledger entries and the SAME Firestore readTime.
 // In-progress generations are never advertised as recoverable snapshots.
@@ -68,7 +69,8 @@ export class CloudBackup {
       const name=collections[job.collection];let query=s.root.collection(name).orderBy('__name__').limit(20);if(job.cursorId)query=query.startAfter(job.cursorId);
       // __name__ ordering only: reserve the full 20-document page, even if empty.
       s.quota.reserve({reads:this.readAttempts*20});const page=await s.db.query(query,{readTime:job.readTime});s.quota.observe(Buffer.byteLength(JSON.stringify(page.docs.map(d=>d.data()))));
-      for(const doc of page.docs){const row=unpack(doc);if(name==='wallets')t.wallets.push({guild:row.guild,user:row.user,balance:row.balance,milestone:Number(row.milestone),last_spin:row.last_spin});else if(name==='highlightEvents')t.highlight_events.push(row);else t.highlight_boards.push(highlightBoardRecord(row));}
+      for(const doc of page.docs){const row=unpack(doc);if(name==='wallets')t.wallets.push({guild:row.guild,user:row.user,balance:row.balance,milestone:Number(row.milestone),last_spin:row.last_spin,
+        ...(row.duel!==undefined?{duelDigest:duelDigest(row.duel)}:{})});else if(name==='highlightEvents')t.highlight_events.push(row);else t.highlight_boards.push(highlightBoardRecord(row));}
       if(page.size===20)job.cursorId=page.docs.at(-1).id;else{job.collection++;job.cursorId=null;}
       if(job.collection===collections.length)job.phase='audit';
     }

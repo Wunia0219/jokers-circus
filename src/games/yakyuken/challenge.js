@@ -15,8 +15,7 @@ export function weightedDuel(characterId,player,cryptoSource=globalThis.crypto){
   return duelForOutcome(player,drawOutcome(characterId,cryptoSource));
 }
 
-function drawOutcome(characterId,cryptoSource){
-  const rule=characterRule(characterId);
+function drawOutcome(characterId,cryptoSource,rule=characterRule(characterId)){
   const values=new Uint32Array(1),total=10000,ceiling=Math.floor(2**32/total)*total;
   do{cryptoSource.getRandomValues(values);}while(values[0]>=ceiling);
   const weight=values[0]%total;
@@ -31,11 +30,11 @@ export function duelForOutcome(player,outcome){
 
 // Sample the same independent throws, in the same order, before play starts.
 // There is no separate clear-rate draw, draw cap or progress-dependent weight.
-export function createChallengePlan(characterId,cryptoSource=globalThis.crypto){
-  let state=createChallenge(characterId);const outcomes=[];
+export function createChallengePlan(characterId,cryptoSource=globalThis.crypto,rule=characterRule(characterId)){
+  let state={characterId,wins:0,losses:0,status:'playing'};const outcomes=[];
   while(state.status==='playing'){
-    const outcome=drawOutcome(characterId,cryptoSource);outcomes.push(outcome);
-    state={...state,...challengeProgress(state,outcome)};
+    const outcome=drawOutcome(characterId,cryptoSource,rule);outcomes.push(outcome);
+    state={...state,...challengeProgress(state,outcome,rule)};
   }
   return Object.freeze(outcomes);
 }
@@ -54,10 +53,9 @@ export function playChallengeRound(state,player,cryptoSource=globalThis.crypto){
 
 // Shared by local presentation and authoritative settlement. Wallet effects
 // and transient throw counters remain with their respective callers.
-export function challengeProgress(state,outcome){
+export function challengeProgress(state,outcome,rule=characterRule(state.characterId)){
   if(state.status!=='playing')throw new Error('本場挑戰已結束');
   if(!['win','loss','draw'].includes(outcome))throw new Error('不支援的出拳結果');
-  const rule=characterRule(state.characterId);
   const wins=state.wins+Number(outcome==='win'),losses=state.losses+Number(outcome==='loss');
   const status=wins>=rule.winsRequired?'won':losses>=rule.lossLimit?'lost':'playing';
   return {wins,losses,status,reward:status==='won'?rule.reward:0};

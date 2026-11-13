@@ -19,11 +19,11 @@ export const contentSecurityPolicy = [
   "frame-ancestors 'self' https://discord.com https://*.discord.com https://*.discordsays.com",
 ].join('; ');
 
-export function secureResponse(response) {
+export function secureResponse(response,{sameOriginFrame=false}={}) {
   const secured = new Response(response.body, response);
   for (const [name, value] of Object.entries(securityHeaders)) secured.headers.set(name, value);
   if (secured.headers.get('Content-Type')?.startsWith('text/html')) {
-    secured.headers.set('Content-Security-Policy', contentSecurityPolicy);
+    secured.headers.set('Content-Security-Policy', contentSecurityPolicy+(sameOriginFrame?"; frame-src 'self'":''));
   }
   return secured;
 }

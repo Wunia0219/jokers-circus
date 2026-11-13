@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#211426">
+    <title>Joker’s Circus · 遊戲大廳</title>
+  </head>
+  <body>
+    <!-- launch-screen -->
+    <template id="game-loading">
+      <section class="loading-screen" aria-label="載入 Joker’s Circus" aria-busy="true">
+        <div class="loading-content">
+          <div class="loading-logo" role="img" aria-label="Joker’s Circus"></div>
+          <div class="loading-meter">
+            <span id="loading-status" class="loading-status" role="status">正在載入遊戲</span>
+            <div id="loading-track" class="loading-track" role="progressbar" aria-label="遊戲載入進度" aria-describedby="loading-status" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="loading-fill" class="loading-fill"><span class="loading-current"></span><i></i><i></i><i></i><i></i></div>
+            </div>
+            <button id="loading-retry" class="loading-retry" type="button" hidden></button>
+            <button id="loading-back" class="loading-retry" type="button" hidden>返回大廳</button>
+          </div>
+        </div>
+      </section>
+    </template>
+    <main id="lobby" aria-label="Joker’s Circus 遊戲大廳" inert>
+      <div id="lobby-stage"></div>
+      <button class="lobby-music" type="button" aria-label="背景音樂"></button>
+      <div id="lobby-feedback">
+        <p id="lobby-status" role="status"></p>
+        <button id="lobby-retry" type="button" hidden>重新連線</button>
+      </div>
+      <p class="sr-only" id="feature-status" aria-live="polite"></p>
+    </main>
+    <iframe id="arcade-game" title="Joker’s Circus 遊戲" allow="autoplay; fullscreen" hidden></iframe>
+    <script type="module" src="/src/platform/arcade-lobby.js"></script>
+  </body>
+</html>

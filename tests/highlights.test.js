@@ -3,29 +3,44 @@ import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { WalletStore } from '../server/wallet/wallet.js';
 import { Highlights, highlightsConfig } from '../server/discord/highlights.js';
-import { highlightCard, highlightAnnouncement, highlightTier, HIGHLIGHT_WINDOW_MS, HIGHLIGHT_INTERVAL_MS, HIGHLIGHT_MAX_AGE_MS } from '../server/discord/highlight-card.js';
+import { highlightCard, highlightAnnouncement, highlightTier, HIGHLIGHT_ART, HIGHLIGHT_WINDOW_MS, HIGHLIGHT_INTERVAL_MS, HIGHLIGHT_MAX_AGE_MS } from '../server/discord/highlight-card.js';
+import {discordMessageBody} from '../server/discord/discord-message-body.js';
 import { roundFromStops } from '../src/game/index.js';
 import { readFileSync } from 'node:fs';
 import {assertHighlightEvent,assertHighlightBoard} from '../server/firestore/highlight-data.js';
+import {casinoPreviewMessage} from '../server/discord/casino-preview.js';
 
 const guild = '100000000000000001', user = '100000000000000002', otherGuild = '100000000000000003';
 const channel = '100000000000000004', messageId = '100000000000000005';
 const webhookUrl = 'https://discord.com/api/webhooks/100000000000000006/fake-test-webhook';
 const examples = JSON.parse(readFileSync(new URL('../docs/data/math-report.json', import.meta.url))).examples;
 
-test('individual wins select the verified lossless artwork and keep untrusted names harmless',()=>{
+test('individual wins share the preview renderer, upload accessible PNGs and keep untrusted names harmless',async()=>{
   const manifest=JSON.parse(readFileSync(new URL('../docs/data/announcement-art.json',import.meta.url)));
-  for(const [tier,multiplier] of [['big',15],['super',50],['mega',150]]){
+  for(const [tier,multiplier,example,accent,greeting] of [
+    ['big',15,15,0xb3946d,'這局手氣不錯！'],
+    ['super',50,48,0xf9efd6,'這局贏得漂亮！'],
+    ['mega',150.25,128,0xc96d85,'中了大獎！這局值得拍手。'],
+  ]){
     const payload=highlightAnnouncement({tier,multiplier,name:'**name** @everyone <@123>',balance:999999});
-    const embed=payload.embeds[0],record=manifest.find(row=>row.tier===tier),url=new URL((tier==='big'?embed.thumbnail:embed.image).url);
-    assert.equal(tier==='big'?'image' in embed:'thumbnail' in embed,false);
-    assert.equal(url.protocol,'https:');assert.equal(url.hostname,'jokers-circus-production.nini900219.workers.dev');
+    const embed=payload.embeds[0],record=manifest.find(row=>row.tier===tier),url=new URL(HIGHLIGHT_ART[tier]);
     assert.equal('public'+url.pathname,record.file);
     const bytes=readFileSync(new URL('../'+record.file,import.meta.url));
     assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WEBP');assert.ok(bytes.includes(Buffer.from('VP8L')));
     assert.equal(createHash('sha256').update(bytes).digest('hex'),record.webpSha256);
     assert.equal(record.pixelsIdentical,true);assert.equal(record.lossless,true);
-    assert.match(embed.description,new RegExp(multiplier+' 倍下注獎金'));
+    assert.equal(embed.image.url,`attachment://${tier}-win.png`);
+    assert.equal(embed.color,accent);
+    assert.ok(payload.content.endsWith('，'+greeting));
+    const form=discordMessageBody(payload).body,wire=JSON.parse(form.get('payload_json')),file=form.get('files[0]');
+    assert.equal(wire.winCard,undefined);
+    assert.deepEqual(wire.attachments,[{id:0,filename:file.name,description:`${tier.toUpperCase()} WIN · ${multiplier}×，單局獎金倍率`}]);
+    const rendered=Buffer.from(await file.arrayBuffer());
+    assert.equal(rendered.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+    assert.ok(tier==='big'?rendered.readUInt32BE(20)<180:rendered.readUInt32BE(20)>400);
+    const preview=casinoPreviewMessage(tier),sameWin=highlightAnnouncement({tier,multiplier:example,name:'測試玩家'});
+    assert.deepEqual(preview,sameWin);
+    if(example!==multiplier)assert.notDeepEqual(rendered,Buffer.from(await discordMessageBody(preview).body.get('files[0]').arrayBuffer()));
     assert.doesNotMatch(JSON.stringify(payload),/@everyone|<@|999999|SUPPRESS|10 分鐘/);
     assert.deepEqual(payload.allowed_mentions,{parse:[]});assert.equal('flags' in payload,false);
   }
@@ -86,7 +101,7 @@ test('cards show names and multipliers without amounts, mentions, IDs, or expand
   assert.equal(payload.flags, 4096);
   assert.deepEqual(payload.allowed_mentions, { parse: [] });
   const embed = payload.embeds[0];
-  assert.equal(embed.title, 'MEGA WIN｜全場為你喝采！');
+  assert.equal(embed.title, 'MEGA WIN｜這局中了大獎，全場為你喝采！');
   assert.equal(embed.color, 0xc85c76);
   assert.equal(embed.fields.length, 5);
   assert.match(embed.fields[0].value, /125.5×/);

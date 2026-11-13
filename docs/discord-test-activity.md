@@ -1,6 +1,6 @@
-# 獨立 Discord 測試活動
+# 舊 Discord 測試活動
 
-此文件保存現行設定與驗收範圍；歷次部署和審稿過程由 Git 歷史追溯。產品版本以 `package.json` 為準。測試 App、Worker、DO 與帳本獨立於正式服；老虎機沿用[停輪基準](reel-timing-baseline.md)。野球拳流程、角色與 CG 規格見[玩法文件](yakyuken-preview.md)。
+此文件保存舊測試 Worker 與帳本的設定，供回退與查閱歷史使用。現行測試 App 的活動根映射和互動端點請依[測試服與正式服發布](arcade-release.md)設定。維護現行測試服時請勿執行本頁的舊部署或指令設定流程。老虎機沿用[停輪基準](reel-timing-baseline.md)。野球拳流程、角色與 CG 規格見[玩法文件](yakyuken-preview.md)。
 
 ## 固定環境邊界
 

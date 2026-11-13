@@ -18,13 +18,20 @@ import {handleFetch} from './http-bridge.js';
 import {APP_VERSION} from '../src/version.js';
 import {operationsHealth} from './operations-health.js';
 import {casinoVisitStatus} from '../server/discord/casino-visits.js';
+import {arcadeEnabled,liveSlotMaintenance,operatorEnabled,readArcade} from './arcade-controls.js';
+import {ARCADE_STATUS,arcadeStatus,arcadeAsset,arcadeLobby} from './arcade-routes.js';
+import {duelPaths} from '../server/http/app-handler.js';
+import {duelDigest} from '../server/wallet/duel-settlement.js';
+import {authorizeOperator,handleOperator,operatorApi,operatorPage,operatorSignIn,serveOperator,serveOperatorSignIn} from './operator-console.js';
 
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+const slotEntry=(url,env)=>url.pathname==='/game-entry.json'&&!arcadeEnabled(env)&&operatorEnabled(env);
 const apiPaths=new Set(['/healthz','/readyz','/api/token','/api/interactions','/api/wallet','/api/spin','/api/checkin','/api/ledger','/api/rounds','/api/casino-visit']);
 const authorized=(req,env,name='CLOUD_ADMIN_TOKEN')=>{const expected=env[name];if(!/^[a-f0-9]{64}$/i.test(expected||''))return false;const value=req.headers.get('authorization')?.replace(/^Bearer /,'')||'';return /^[a-f0-9]{64}$/i.test(value)&&timingSafeEqual(Buffer.from(value),Buffer.from(expected));};
 async function body(req,limit=12*1024**2){let n=0,parts=[];for await(const chunk of req.body||[]){n+=chunk.length;if(n>limit)throw new Error('Body too large');parts.push(chunk);}return JSON.parse(Buffer.concat(parts).toString('utf8'));}
 
 export class CircusProject extends DurableObject {
+  arcadeWatchers=new Set();
   constructor(ctx,env){super(ctx,env);Object.assign(this,{ctx,env});this.state=new CloudState(ctx.storage);this.quota=new CloudQuota(ctx.storage,this.state);this.active=new Set();this.opsTail=Promise.resolve();}
   track(promise){this.active.add(promise);void promise.finally(()=>this.active.delete(promise)).catch(()=>{});return promise;}
   backupStep(rt){this.backupPending ||= this.track(rt.backup.step()).finally(()=>this.backupPending=null);return this.backupPending;}
@@ -35,15 +42,60 @@ export class CircusProject extends DurableObject {
   makeRuntime(){return createCloudRuntime(this);}
   ready(){const b=this.state.get('backup-status');return this.state.get('mode')==='active'&&b?.ok===true&&Date.now()-b.at<48*3600000;}
   async schedule(delay){const now=Date.now(),due=now+delay,old=await this.ctx.storage.getAlarm();if(!old||old>due)await this.ctx.storage.setAlarm(due);}
+  arcadeChanged(){
+    if(!this.arcadeWatchers.size)return;
+    for(const send of this.arcadeWatchers)send(true);
+  }
+  async watchArcade(request,url,readStatus){
+    const status=readStatus();
+    if(url.searchParams.get('after')!==String(status.revision))return json(status);
+    const updated=await new Promise(resolve=>{
+      const empty=()=>send(false);
+      const send=value=>{
+        clearTimeout(timer);
+        this.arcadeWatchers.delete(send);
+        request.signal.removeEventListener('abort',empty);
+        resolve(value);
+      };
+      const timer=setTimeout(empty,12000);
+      this.arcadeWatchers.add(send);
+      if(request.signal.aborted)empty();
+      else request.signal.addEventListener('abort',empty,{once:true});
+    });
+    return updated?json(readStatus()):new Response(null,{status:204,headers:{'Cache-Control':'no-store'}});
+  }
   async fetch(request){
     const url=new URL(request.url);
+    if(slotEntry(url,this.env)){
+      if(!['GET','HEAD'].includes(request.method))return json({error:'不支援此操作。'},405);
+      // Older builds use the server's bet gate and can still replay a saved round.
+      const mode=url.searchParams.get('controls')==='1'?readArcade(this.state).slot:'open';
+      if(liveSlotMaintenance(this.env)&&url.searchParams.get('controls')==='1'){
+        const readStatus=()=>{
+          const {slot,revision}=readArcade(this.state);
+          return {mode:slot,previewUserIds:[],revision};
+        };
+        return request.method==='HEAD'?new Response(null,json(readStatus())):this.watchArcade(request,url,readStatus);
+      }
+      const response=json({mode,previewUserIds:[]});
+      return request.method==='HEAD'?new Response(null,response):response;
+    }
+    if(url.pathname.startsWith(operatorApi)){
+      const refused=authorizeOperator(request,this.env);
+      if(refused)return refused;
+      if(request.method==='GET')return handleOperator(this,request,url.pathname);
+      const operation=this.opsTail.then(()=>handleOperator(this,request,url.pathname));
+      this.opsTail=operation.catch(()=>{});
+      return operation;
+    }
     if(url.pathname.startsWith('/__ops/')){
       const monitorRead=url.pathname==='/__ops/status'&&request.method==='GET'&&authorized(request,this.env,'CLOUD_MONITOR_TOKEN');
       if(!authorized(request,this.env)&&!monitorRead)return json({error:'Forbidden'},403);
       try{const operation=this.opsTail.then(()=>this.admin(url.pathname,request));this.opsTail=operation.catch(()=>{});return await operation;}catch{return json({error:'Cloud operation refused; inspect status before retrying'},409);}
     }
     if(url.pathname==='/healthz')return json({ok:true,version:APP_VERSION,model:MODEL_VERSION});
-    if(!apiPaths.has(url.pathname))return json({error:'找不到此功能。'},404);
+    if(url.pathname===ARCADE_STATUS&&request.method==='GET'&&arcadeEnabled(this.env))return this.watchArcade(request,url,()=>arcadeStatus(this.state));
+    if(!apiPaths.has(url.pathname)&&!(arcadeEnabled(this.env)&&duelPaths.has(url.pathname)&&arcadeStatus(this.state).feature))return json({error:'找不到此功能。'},404);
     if(!this.ready())return json({error:'帳號戲籌正在維護，請稍後再試。'},503);
     const origin=request.headers.get('origin');if(origin&&origin!==`https://${this.env.DISCORD_CLIENT_ID}.discordsays.com`)return json({error:'不允許的來源。'},403);
     const run=async()=>{try{const rt=await this.runtime();if(!this.ready())return json({error:'服務正在維護。'},503);return await handleFetch(rt.handler,request);}catch(error){return json({error:'暫時無法完成請求，請沿用原請求重試。',...(error?.code==='FIRESTORE_BUDGET'?{code:error.code}:{})},503);}};
@@ -56,6 +108,7 @@ export class CircusProject extends DurableObject {
       if(quota)quota.scopes=Object.fromEntries(['maintenance','highlights'].map(scope=>[scope,{used:this.quota.totals(scope),limits:this.quota.identity().limits[scope],...(quota.enforcement?{enforcement:quota.enforcement}: {})}]));
       const backup=this.state.get('backup-status'),manifest=this.state.get('backup:'+this.state.get('backup-latest'));
       const status={version:APP_VERSION,cloudPlan:this.env.CLOUD_PLAN,mode:this.state.get('mode')||'unseeded',source:this.state.get('source'),backup:backup?{...backup,...(Number.isSafeInteger(manifest?.bytes)?{bytes:manifest.bytes,limitBytes:manifest.limitBytes,parts:manifest.parts,limitParts:manifest.format===2?BACKUP_MAX_PARTS:200}: {})}:null,alarm:this.state.get('alarm-status'),quota};
+      if(arcadeEnabled(this.env))status.arcade=readArcade(this.state);
       const job=this.state.get('backup-job'),retry=this.state.get('backup-retry');
       if(job)status.backupProgress={phase:job.phase,cursor:job.cursor,target:job.target,startedAt:job.startedAt};
       if(retry)status.backupRetry=retry;
@@ -101,7 +154,8 @@ export class CircusProject extends DurableObject {
       if(input.writersStopped!==true||!planVerified)throw new Error('Cutover prerequisites');
       const r=await this.runtime(),snapshot=r.vault.load(this.state.get('backup-latest')),meta=await r.store.read(r.store.meta);r.store.checkMeta(meta);
       if(meta.nextId!==snapshot.revision||snapshot.upstreamImportFingerprint!==(meta.importFingerprint??null))throw new Error('Source moved since backup');
-      for(const w of snapshot.tables.wallets){const actual=await r.store.read(r.store.walletRef(w.guild,w.user));if(!actual||actual.balance!==w.balance||Number(actual.milestone)!==w.milestone||actual.last_spin!==w.last_spin)throw new Error('Wallet mismatch');}
+      for(const w of snapshot.tables.wallets){const actual=await r.store.read(r.store.walletRef(w.guild,w.user));if(!actual||actual.balance!==w.balance||Number(actual.milestone)!==w.milestone||actual.last_spin!==w.last_spin||
+        (snapshot.readTime||w.duelDigest!==undefined)&&duelDigest(actual.duel)!==w.duelDigest)throw new Error('Wallet mismatch');}
       r.store.invalidateCache();this.state.set('mode','active');await this.schedule(1000);return json({active:true});
     }
     if(path==='/__ops/verify'){if(this.state.get('mode')!=='paused'||this.active.size)throw new Error('Paused writer required');const r=await this.runtime(),db=new FirestoreRest({...settings,credentials:JSON.parse(this.env.GOOGLE_SERVICE_ACCOUNT_JSON),fetchImpl:cloudFetch,readOnly:true}),store=new FirestoreWalletCore(settings,{db,quota:this.quota,guildIds:[...r.store.guildIds]});return json(await verifyCloudSnapshot(r.vault.load(this.state.get('backup-latest')),store));}
@@ -174,13 +228,21 @@ export class CircusProject extends DurableObject {
 }
 
 async function routeRequest(request,env){
-  const path=new URL(request.url).pathname;
-  if(path.startsWith('/api/')||path.startsWith('/__ops/')||apiPaths.has(path)){
-    try{const settings=cloudIdentity(env);return await env.CIRCUS_PROJECT.get(env.CIRCUS_PROJECT.idFromName(settings.projectId)).fetch(request);}catch{return json({error:'服務尚未就緒。'},503);}
+  const url=new URL(request.url),path=url.pathname;
+  const project=()=>{const settings=cloudIdentity(env);return env.CIRCUS_PROJECT.get(env.CIRCUS_PROJECT.idFromName(settings.projectId));};
+  if(path.startsWith('/api/')||path.startsWith('/__ops/')||path.startsWith(operatorApi)||apiPaths.has(path)||slotEntry(url,env)){
+    try{return await project().fetch(request);}catch{return json({error:'服務尚未就緒。'},503);}
   }
   if(!['GET','HEAD'].includes(request.method))return json({error:'不支援此操作。'},405);
+  try{const asset=await arcadeAsset(request,env,project);if(asset)return asset;}
+  catch{return json({error:'服務尚未就緒。'},503);}
   if(path.startsWith('/assets/')&&path.endsWith('.mp3'))return audioAsset(request,env.ASSETS);
   return env.ASSETS.fetch(request);
 }
 
-export default {async fetch(request,env){return secureResponse(await routeRequest(request,env));}};
+export default {async fetch(request,env){
+  const {pathname}=new URL(request.url);
+  if(pathname===operatorPage)return serveOperator(request,env);
+  if(pathname===operatorSignIn)return serveOperatorSignIn(request,env);
+  return secureResponse(await routeRequest(request,env),{sameOriginFrame:arcadeLobby(new URL(request.url),env)});
+}};

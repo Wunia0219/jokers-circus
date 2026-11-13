@@ -13,15 +13,17 @@ test('visit monitoring reports aggregate counts and the oldest pending time with
   assert.deepEqual(casinoVisitStatus(data),{activeVisits:1,pending:2,oldestPendingAt:20,uncertain:1});
   assert.deepEqual(casinoVisitStatus({visits:{},events:[]}),{activeVisits:0,pending:0,oldestPendingAt:null,uncertain:0});
 });
-test('departure copy preserves signed game results, current balance and a distinct idle departure',()=>{
+test('departure receipt preserves signed results and balance with red wins, green losses and a neutral tie',()=>{
   const visit={name:'玩家',start:{net:100,rounds:2,bet:200,payout:300,balance:10100}};
-  for(const [delta,display] of [[400,'+400'],[-400,'-400'],[0,'0']]){
-    const {content}=visitMessage(visit,{net:100+delta,rounds:5,bet:500,payout:600+delta,balance:12345},'closed');
-    assert.ok(content.includes(`**${display} 戲籌**`));assert.ok(content.includes('**12,345**'));assert.ok(content.includes('**3 局**'));
-    assert.equal(content.includes('不賺不賠'),delta===0);assert.doesNotMatch(content,/連線逾時|timeout|🎰|🚪/);
+  for(const [delta,amount,color] of [[400,'+400',0xf17b85],[-400,'−400',0x65be98],[0,'0',0xba8d61]]){
+    const {content,embeds:[card],receipt}=visitMessage(visit,{net:100+delta,rounds:5,bet:500,payout:600+delta,balance:12345},'closed');
+    assert.match(content,/離開賭場/);
+    assert.deepEqual(receipt,{net:delta,rounds:3});
+    assert.equal(card.color,color);
+    assert.equal(card.description,`這次獲得 **${amount} 戲籌** · 總遊玩 **3 局**\n手上還有 **12,345 戲籌**`);
   }
-  const idle=visitMessage(visit,visit.start,'timeout').content;
-  assert.match(idle,/暫時離開/);assert.match(idle,/還沒下注/);assert.doesNotMatch(idle,/贏了|輸了/);
+  const idle=visitMessage(visit,visit.start,'timeout');
+  assert.match(idle.content,/暫時離開.*還沒下注/);assert.equal(idle.receipt,undefined);
 });
 function fixture(){
   let now=1000000,reads=0,failure=false,balance={balance:10000,net:0,rounds:0,bet:0,payout:0};const saved=new Map(),sent=[];
@@ -34,12 +36,12 @@ function fixture(){
 test('entry/exit persist, duplicate requests coalesce, credits are excluded from gaming net',async()=>{
   const f=fixture(),id=randomUUID();await f.request('enter',id);await f.request('enter',id);
   assert.equal(f.visits.status().pending,1);assert.equal(f.reads,1);
-  await f.visits.flush();assert.match(f.sent[0].payload.content,/進入賭場/);assert.doesNotMatch(f.sent[0].payload.content,/@everyone/);
+  await f.visits.flush();assert.match(f.sent[0].payload.content,/入場.*歡迎來玩/);assert.doesNotMatch(f.sent[0].payload.content,/@everyone/);
   assert.ok(f.sent[0].payload.content.includes(`<@${user}>`));assert.deepEqual(f.sent[0].payload.allowed_mentions,{parse:[],users:[user]});
   for(let i=0;i<4;i++){f.advance(45000);await f.request('heartbeat',id);}assert.equal(f.reads,1,'heartbeats never read Firestore');
   f.balance={balance:11400,net:400,rounds:3,bet:300,payout:700}; // Includes a 1000 administrator grant.
   await f.request('leave',id);await f.request('leave',id);f.advance(VISIT_CLOSE_GRACE_MS);f.restart();await f.visits.sweep();await f.visits.flush();
-  assert.equal(f.reads,2);assert.equal(f.sent.length,2);assert.match(f.sent[1].payload.content,/\+400 戲籌/);assert.match(f.sent[1].payload.content,/11,400/);
+  assert.equal(f.reads,2);assert.equal(f.sent.length,2);assert.match(f.sent[1].payload.embeds[0].description,/這次獲得 \*\*\+400 戲籌/);assert.match(f.sent[1].payload.embeds[0].description,/11,400/);
   assert.ok(f.sent[1].payload.content.includes(`<@${user}>`));assert.deepEqual(f.sent[1].payload.allowed_mentions,{parse:[],users:[user]});
   assert.equal(f.visits.status().activeVisits,0);await f.request('leave',id);await f.visits.sweep();assert.equal(f.sent.length,2);
 });
@@ -53,7 +55,7 @@ test('crash timeout closes with an explicit timeout label and preserves state on
   const f=fixture(),id=randomUUID();await f.request('enter',id);f.advance(VISIT_TIMEOUT_MS+1);f.fail(true);
   await assert.rejects(f.visits.sweep());assert.equal(f.visits.status().activeVisits,1);assert.equal(f.visits.status().pending,1);
   f.fail(false);f.restart();await f.visits.sweep();await f.visits.flush();f.advance(1000);await f.visits.flush();
-  assert.match(f.sent[1].payload.content,/暫時離開賭場/);assert.match(f.sent[1].payload.content,/這次還沒下注/);assert.match(f.sent[1].payload.content,/10,000/);
+  assert.match(f.sent[1].payload.content,/暫時離開賭場/);assert.match(f.sent[1].payload.content,/這次還沒下注/);assert.equal(f.sent[1].payload.embeds,undefined);
 });
 test('a close delivered before enter cannot create a ghost visit; forged amounts and identities are ignored',async()=>{
   const f=fixture(),id=randomUUID();await f.request('leave',id);assert.equal((await f.request('enter',id)).closed,true);assert.equal(f.reads,0);

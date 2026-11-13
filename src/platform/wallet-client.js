@@ -1,11 +1,20 @@
 import {createWalletSync} from './wallet-sync.js';
 
+const pendingKey=session=>`kemet-pending:${session.guildId}:${session.userId}${session.walletEpoch?":"+session.walletEpoch:""}`;
+function readPending(session,storage){
+  try{
+    const pending=JSON.parse(storage?.getItem(pendingKey(session))||'null');
+    return Number.isInteger(pending?.bet)&&typeof pending?.requestId==='string'&&/^[-a-zA-Z0-9]{16,80}$/.test(pending.requestId)?pending:null;
+  }catch{return null;}
+}
+export function hasPendingSpin(session){
+  try{return !!readPending(session,globalThis.sessionStorage);}catch{return false;}
+}
+
 export function createWalletClient(session,fetchImpl=fetch,storage=globalThis.sessionStorage,{clock=()=>performance.now(),wait=delay=>new Promise(resolve=>globalThis.setTimeout(resolve,delay))}={}){
-  const key=`kemet-pending:${session.guildId}:${session.userId}${session.walletEpoch?":"+session.walletEpoch:""}`;
-  let pending,nextSpinAt=0,spinPromise=null,statePromise=null,latestState=null;
+  const key=pendingKey(session);
+  let pending=readPending(session,storage),nextSpinAt=0,spinPromise=null,statePromise=null,latestState=null;
   const validDelay=value=>Number.isFinite(value)&&value>0&&value<=60000;
-  try{pending=JSON.parse(storage?.getItem(key)||'null');}catch{pending=null;}
-  if(pending&&(!Number.isInteger(pending.bet)||!/^[-a-zA-Z0-9]{16,80}$/.test(pending.requestId||'')))pending=null;
   const persist=()=>{try{if(pending)storage?.setItem(key,JSON.stringify(pending));else storage?.removeItem(key);}catch{}};
   async function request(path,body,{deferHistory=false}={}){
     let response;
@@ -14,7 +23,7 @@ export function createWalletClient(session,fetchImpl=fetch,storage=globalThis.se
     let data;try{data=await response.json();}catch{throw new Error('服務回應中斷，請稍後重試。');}
     if(!response.ok){
       const error=new Error(data.error||'服務暫時無法使用。');error.status=response.status;
-      if(response.status===503&&data.code==='FIRESTORE_BUDGET')error.code=data.code;
+      if(['FIRESTORE_BUDGET','SLOT_MAINTENANCE'].includes(data.code))error.code=data.code;
       if(response.status===429&&['SPIN_COOLDOWN','SETTLEMENT_BUSY'].includes(data.code)&&validDelay(data.retryAfterMs))Object.assign(error,{code:data.code,retryAfterMs:data.retryAfterMs});
       throw error;
     }
@@ -63,5 +72,6 @@ export function createWalletClient(session,fetchImpl=fetch,storage=globalThis.se
       return spinPromise;
     },
     hasPending:()=>!!pending,
+    supportCode:()=>pending?'S-'+pending.requestId:null,
   };
 }

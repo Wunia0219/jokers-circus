@@ -3,13 +3,14 @@ import {BETS,MODEL_VERSION,LEGACY_MODELS,gridFromStops,evaluateGrid} from '../..
 import {previousDay,validCheckinTransition} from '../wallet/weekly-checkin.js';
 import {validResetOperation,resetEntryIds} from '../wallet/wallet-admin.js';
 import {validWelcomeEntry} from '../wallet/wallet-opening.js';
+import {DUEL_LEDGER_KIND,duelKey,replayDuel,validateDuelReceipt} from '../wallet/duel-settlement.js';
 
 const MAX_BALANCE=1_000_000_000_000;
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const balance=value=>Number.isSafeInteger(value)&&value>=0&&value<=MAX_BALANCE;
 const parse=text=>{try{return JSON.parse(text);}catch{return null;}};
 const currentMath={gridFromStops,evaluateGrid};
-const operationKinds=new Set(['spin','checkin','grant','reversal','test_fixture','reset']);
+const operationKinds=new Set(['spin','checkin','grant','reversal','test_fixture','reset',DUEL_LEDGER_KIND]);
 // Older writes sampled the clock separately for ledger, JSON and sort time.
 // Keep a bounded 1-second compatibility allowance without rewriting old rows.
 const sameSettlementTime=(left,right)=>Number.isFinite(left)&&Number.isFinite(right)&&Math.abs(left-right)<=1000;
@@ -83,7 +84,8 @@ export function inspectSettlements(db){
     const admin=/^admin:([-a-zA-Z0-9]{16,80})$/.test(row.key);
     const local=/^local-fixture:[a-z0-9-]+$/.test(row.key);
     let valid=false;
-    if(daily){
+    if(entry.kind===DUEL_LEDGER_KIND)valid=validateDuelReceipt(row,result,entry);
+    else if(daily){
       const day=previousDay(entry.day),prior=parse(operationByKey.get(row.guild,`daily:${entry.user}:${day}`)?.result);
       valid=entry.kind==='checkin'&&entry.user===daily[1]&&entry.day===daily[2]
         &&entry.actor===entry.user&&entry.delta>0&&row.fingerprint==='daily'
@@ -100,7 +102,7 @@ export function inspectSettlements(db){
     if(!valid)add('Operation result errors');
   }
 
-  const seenOwners=new Set();
+  const seenOwners=new Set(),duelStates=new Map();
   for(const entry of reader(db,'SELECT * FROM ledger ORDER BY id').iterate()){
     const owner=entry.guild+'_'+entry.user;
     if(entry.kind==='welcome'&&(!validWelcomeEntry(entry)||seenOwners.has(owner)))add('Invalid welcome credit');
@@ -119,6 +121,10 @@ export function inspectSettlements(db){
       }
     }else if(operationKinds.has(entry.kind)){
       otherEntries++;
+      if(entry.kind===DUEL_LEDGER_KIND){
+        try{const op=operationByKey.get(entry.guild,duelKey(entry.user,entry.reference));duelStates.set(owner,replayDuel(duelStates.get(owner),op,parse(op?.result),entry));}
+        catch{add('Challenge ledger operation errors');}
+      }
       if(entry.kind==='checkin'){
         const op=operationByKey.get(entry.guild,`daily:${entry.user}:${entry.day}`);
         if(parse(op?.result)?.entry?.id!==entry.id)add('Ledger operation errors');

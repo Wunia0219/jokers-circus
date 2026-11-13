@@ -6,7 +6,7 @@
 
 `main` 可以同時保存正式與測試功能的原始碼；合併不代表全部功能發布正式服。1.0.3 起，一般 `npm run build` 以 `productionBoundary` 排除野球拳、Discord 測試會話與大廳導航模組，並只複製明確核准的政策頁與公告圖片，不複製 `public/downloads/yakyuken/`。模組圖或產物含野球拳／測試雲端識別即拒絕建置。獨立測試建置使用自己的插件、多入口及輸出目錄，保留所有測試玩法、CG 與開場素材。
 
-正式發布前執行 `npm run build`、`npm run cloud:build` 及 `node scripts/qa/production-release.js`，核對正式 `dist`、Worker bundle、正式／測試的 Worker、DO、Firestore 與通知頻道。稽核只讀設定，不調整綁定。野球拳只允許專用 `jokers-circus-yakyuken-test`、`slot-game-203db`／`yakyuken-playtest-20261105-test`；不得使用正式 App、Worker、DO 或帳本。測試部署流程見[獨立 Discord 測試活動](discord-test-activity.md)。
+以 `npm run arcade:preflight -- test` 建置雙遊戲測試服，以 `npm run arcade:preflight -- production` 建置單一老虎機正式服。共用預檢會核對前端產物、Worker bundle、環境綁定與 Discord 設定。參見[測試服與正式服發布](arcade-release.md)。舊野球拳測試 Worker 和帳本保留供回退，見[舊 Discord 測試活動](discord-test-activity.md)。
 
 Netlify 的建置預覽由根目錄 `netlify.toml` 指定 `NPM_VERSION=12.2.1`，在自動安裝依賴前切換 npm；Node 仍依 `.node-version`。`packageManager`／`engines` 不會替 Netlify 升級 npm，放在 build command 裡才升級也來不及。保留 `.npmrc` 的版本與安裝腳本限制。參考 [Netlify 相依管理](https://docs.netlify.com/build/configure-builds/manage-dependencies/#npm)。
 
@@ -17,7 +17,8 @@ Netlify 的建置預覽由根目錄 `netlify.toml` 指定 `NPM_VERSION=12.2.1`�
 | 正式維運設定 | `.env.cloud.production.local`；Discord CLI 使用 `.env.server.production.local`（本機 live writer 關閉） |
 | 保留測試 Firestore | 專案 `slot-game-203db`，namespace `jokers-circus-v2-20261024-test`，`APP_ENV=test`；舊服務未刪除，Discord 共用應用程式入口已切正式 |
 | 測試群／頻道 | 群 `760012177326997544`，頻道 `1564243344857632818` |
-| 測試 Worker | `wrangler.jsonc`；私密覆寫為忽略 Git 的 `wrangler.cloud.local.jsonc`，不要用於正式更新 |
+| 保留的測試 Worker | `wrangler.jsonc`；私密覆寫為忽略 Git 的 `wrangler.cloud.local.jsonc` |
+| 雙遊戲測試 Worker | `wrangler.arcade-test.jsonc`；`slot-game-203db`／`jokers-circus-arcade-test`，私有維運範本為 `deploy/arcade-test.env.example` |
 | 執行設定 | `CLOUD_PLAN`（`free`／`paid`，核對實際方案）、`APP_ENV`、`FIRESTORE_PROJECT_ID`、`FIRESTORE_NAMESPACE`、`FIRESTORE_ENDPOINT` |
 | Discord 範圍 | `DISCORD_CLIENT_ID`、`DISCORD_PUBLIC_KEY`、`ALLOWED_GUILD_IDS`、`DISCORD_COMMAND_CHANNEL_IDS`、`CHIP_ADMIN_ROLE_IDS`（相容舊 Worker 的 `ADMIN_ROLE_IDS`） |
 | 遊戲限制 | `WEEKLY_CHECKIN_REWARDS`、`ADMIN_GRANT_MAX`、`ADMIN_DAILY_MAX` |
@@ -59,11 +60,11 @@ node --env-file=.env.server.production.local scripts/discord/check-discord.js --
 
 ### 遊戲入口開關
 
-要切換時可直接請 Codex「正式服切維修」或「正式服開放」。修改 `public/game-entry.json` 的 `mode` 為 `maintenance` 或 `open`，保留 `previewUserIds` 中已確認的 Discord 使用者 ID。設定檔是公開靜態資源，只放模式與允許預覽的 ID。首次發布預設 `maintenance`。
+啟用 `/operator` 後，在對應環境的後台操作「關閉入口」或「重新開放」，狀態保存在該環境的 DO，切換時不用重新部署。`public/game-entry.json` 是尚未接入後台的舊配置使用的靜態設定。
 
-首次發布後，單純切換狀態時使用線上同一版程式，只改入口設定。以正式 Discord App 的公開 client ID 建置，確認 `VITE_DISCORD_AUTH_ENABLED` 和 `VITE_DISCORD_WALLET_ENABLED` 均為 `true`。依本文件的正式發布前檢查核對產物和綁定，以 `wrangler.production.local.jsonc` 發布到既有正式 Worker。確認線上的 `/game-entry.json` 回傳預期模式與 `Cache-Control: no-store`、公開入口能顯示預期畫面、`/readyz` 正常。本機開發、loopback 測試錢包與獨立 Discord 測試活動沿用各自入口。
+正式服新版使用 `/game-entry.json?controls=1` 讀取狀態，搭配伺服器的下注檢查。已載入的舊版頁面仍可送出原請求以確認結算，維護期間一樣無法開新回合。測試服的大廳使用 `/api/arcade` 讀取兩款遊戲的狀態。
 
-新版遊戲啟動、回到前景或前景每 15–20 秒檢查入口。讀到維修後停止自動轉及新操作，正在處理的局或簽到完成後切到維修畫面。玩家可按「重新檢查」重新進入。舊版頁面仍可能提交操作。搬移資料或需要停止所有帳本寫入時，依[恢復程序](recovery.md)停寫並確認排空，適用於所有帳號。
+新版遊戲啟動、回到前景或在前景每 15–20 秒檢查入口。維護時停止自動轉及新下注，有待確認的原請求可再按 SPIN。玩家可在維修畫面按「重新檢查」重新進入。搬移資料或需要停止所有帳本寫入時，依[恢復程序](recovery.md)停寫並確認排空，適用於所有帳號。
 
 ## Discord
 

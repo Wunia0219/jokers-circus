@@ -14,4 +14,4 @@ export function slotLobbyPath(location,test=discordTest){
   if(test)return activityPath(location,'/yakyuken-preview.html');
   return location.protocol==='http:' && location.hostname==='127.0.0.1' && new URLSearchParams(location.search).get('lobby')==='preview'?PREVIEW_LOBBY_PATH:null;
 }
-export function canReturnToLobby({ready,busy,claiming,pending}){return !!ready && !busy && !claiming && !pending;}
+export {canReturnToLobby} from './arcade-session.js';

@@ -9,6 +9,8 @@ import {WalletStore} from '../../server/wallet/wallet.js';
 import {createActivityServer} from '../../server/http/app.js';
 import {digest} from '../../cloud/snapshot.js';
 import {expandResetResult} from '../../server/wallet/wallet-admin.js';
+import {DUEL_LEDGER_KIND,duelDigest} from '../../server/wallet/duel-settlement.js';
+import {firestoreImportPlan} from '../../server/firestore/import.js';
 
 const flags=new Map(),args=process.argv.slice(2);
 for(let i=0;i<args.length;i+=2){if(!['--archive','--key-file','--out','--environment'].includes(args[i])||!args[i+1]||flags.has(args[i]))throw new Error('Expected --archive --key-file --out --environment');flags.set(args[i],args[i+1]);}
@@ -17,7 +19,21 @@ const started=performance.now(),source=readFileSync(need('--archive')),sourceHas
 const envelope=JSON.parse(source),snapshot=decodeCloudArchive(envelope.archive||envelope,readFileSync(need('--key-file'),'utf8').trim(),environment);
 const out=resolve(need('--out'));if(existsSync(out))throw new Error('Use a new drill directory; never overwrite');mkdirSync(out,{recursive:true});
 const filename=join(out,'restored.sqlite');restoreCloudSnapshot(snapshot,filename,environment);
-const compare=()=>assert.deepEqual(snapshotForCloud(filename,environment).tables,snapshot.tables);
+// SQLite stores the original receipts. Firestore rebuilds the challenge
+// state from them, so the archive's wallet digest is checked separately.
+const expectedTables={...snapshot.tables,wallets:snapshot.tables.wallets.map(({duelDigest,...wallet})=>wallet)};
+const compare=()=>assert.deepEqual(snapshotForCloud(filename,environment).tables,expectedTables);
+const challengeReceiptsVerified=snapshot.tables.ledger.filter(entry=>entry.kind===DUEL_LEDGER_KIND).length;
+if(challengeReceiptsVerified){
+ const plan=firestoreImportPlan(filename,environment,{version:2});
+ const wallets=new Map(plan.resources.filter(row=>/^wallets\/[^/]+$/.test(row.path)).map(row=>[row.path,row.data]));
+ for(const expected of snapshot.tables.wallets){
+  const wallet=wallets.get(`wallets/${expected.guild}_${expected.user}`);
+  assert.ok(wallet,'Missing restored Firestore wallet');
+  if(snapshot.readTime||expected.duelDigest!==undefined)
+    assert.equal(duelDigest(wallet.duel),expected.duelDigest,'Restored challenge progress differs from the encrypted snapshot');
+ }
+}
 compare();const restoreMs=performance.now()-started,token=randomBytes(32).toString('hex');let session;
 const store=new WalletStore({filename,environment,guildIds:[...new Set(snapshot.tables.wallets.map(w=>w.guild))]});
 const service={authorize:async header=>{assert.equal(header,'Bearer '+token);return session;}};
@@ -37,5 +53,5 @@ try{
  }
 }finally{await new Promise(res=>{server.close(res);server.closeIdleConnections();});await server.drainCommands();store.close();}
 compare();assert.equal(digest(readFileSync(need('--archive'))),sourceHash);
-const report={ok:true,at:new Date().toISOString(),environment,sourceArchiveSha256:sourceHash,revision:snapshot.revision,counts:Object.fromEntries(Object.entries(snapshot.tables).map(([k,v])=>[k,v.length])),restoreMs:Math.round(restoreMs),totalDrillMs:Math.round(performance.now()-started),walletsVerified:wallets,originalRequestsReplayed:replayed,allSevenTablesUnchanged:true,sourceUnchanged:true,externalServicesAccessed:false,scope:'Local SQLite API recovery; not cloud redeployment, Discord OAuth or a production cutover'};
+const report={ok:true,at:new Date().toISOString(),environment,sourceArchiveSha256:sourceHash,revision:snapshot.revision,counts:Object.fromEntries(Object.entries(snapshot.tables).map(([k,v])=>[k,v.length])),restoreMs:Math.round(restoreMs),totalDrillMs:Math.round(performance.now()-started),walletsVerified:wallets,originalRequestsReplayed:replayed,challengeReceiptsVerified,allSevenTablesUnchanged:true,sourceUnchanged:true,externalServicesAccessed:false,scope:'Local SQLite API recovery and Firestore v2 challenge reconstruction'};
 writeFileSync(join(out,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
