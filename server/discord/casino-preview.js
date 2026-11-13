@@ -23,10 +23,13 @@ const results = {
   even: {net: 0, rounds: 8, bet: 160, payout: 160, balance: 1506},
 };
 const wins = {big: 15, super: 48, mega: 128};
+const testImageOrigin = 'https://jokers-circus-arcade-test.nini900219.workers.dev/announcements/';
 
 export function casinoPreviewMessage(choice) {
   if (choice === 'enter') return visitMessage(visit);
   if (Object.hasOwn(results, choice)) return visitMessage(visit, results[choice], 'closed');
-  if (Object.hasOwn(wins, choice)) return highlightAnnouncement({name: visit.name, tier: choice, multiplier: wins[choice]});
+  if (Object.hasOwn(wins, choice)) {
+    return highlightAnnouncement({name: visit.name, tier: choice, multiplier: wins[choice]}, {imageOrigin: testImageOrigin});
+  }
   return null;
 }

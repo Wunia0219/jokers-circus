@@ -296,7 +296,8 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  for(let i=0;i<150&&!hasWin();i++)await delay(100);
  assert.ok(hasWin(),'durable alarm recovers outbox without enqueue hint');
  if(casino){
-   const big=announcements.find(p=>p.embeds?.[0]?.title==='BIG WIN').embeds[0];
+   const big=announcements.find(p=>p.embeds?.[0]?.title?.startsWith('BIG WIN · ')).embeds[0];
+   assert.match(big.title,/^BIG WIN · [\d,.]+×$/);
    assert.match(big.thumbnail.url,/\/announcements\/big-win-[a-f0-9]+\.webp$/);assert.equal('image' in big,false);
    const previousBackup=(await call('/__ops/status',{headers:monitorHeaders})).data.backup.at;
    const started=await call('/__operator/backup',{headers:operatorHeaders,body:{}});

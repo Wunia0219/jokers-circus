@@ -10,33 +10,35 @@ export const highlightTier=winTier;
 const artOrigin='https://jokers-circus-production.nini900219.workers.dev/announcements/';
 const styles={
   big:{
-    file:'big-win-22bea6e95a7a.webp',media:'thumbnail',color:0xa88b60,
+    file:'big-win-22bea6e95a7a.webp',media:'thumbnail',color:0xa88b60,accent:0xb3946d,
     greeting:'這局手氣不錯！',
   },
   super:{
-    file:'super-win-bebd0e262ee5.webp',media:'image',color:0xd6b775,
+    file:'super-win-bebd0e262ee5.webp',media:'image',color:0xd6b775,accent:0xf9efd6,
     greeting:'這局贏得漂亮！',
   },
   mega:{
-    file:'mega-win-5f0adee4765d.webp',media:'image',color:0xc85c76,
+    file:'mega-win-5f0adee4765d.webp',media:'image',color:0xc85c76,accent:0xc96d85,
     greeting:'這局中了大獎，全場為你喝采！',
+    announcementGreeting:'中了大獎！這局值得拍手。',
   },
 };
 // Versioned public assets are fetched by Discord, never by the game preload.
 export const HIGHLIGHT_ART=Object.freeze(Object.fromEntries(Object.entries(styles).map(([tier,style])=>[tier,artOrigin+style.file])));
 const multiplierFormat=new Intl.NumberFormat('en-US',{maximumFractionDigits:2});
 const multiplier=value=>multiplierFormat.format(value);
-const artwork=tier=>({[styles[tier].media]:{url:HIGHLIGHT_ART[tier]}});
+const artwork=(tier,origin=artOrigin)=>({[styles[tier].media]:{url:origin+styles[tier].file}});
 
-export function highlightAnnouncement(entry){
+export function highlightAnnouncement(entry,{imageOrigin}={}){
   const {tier}=entry,style=styles[tier],name=playerMention(entry.user)||playerName(entry.name);
   return {
-    content:`${name}，${style.greeting}`,
+    content:`${name}，${style.announcementGreeting??style.greeting}`,
     allowed_mentions:playerMentions([entry.user]),
     embeds:[{
-      title:WIN_TITLES[tier],color:style.color,
-      description:`這局拿到的獎金是下注金額的 **${multiplier(entry.multiplier)} 倍**。`,
-      ...artwork(tier),
+      title:`${WIN_TITLES[tier]} · ${multiplier(entry.multiplier)}×`,
+      color:style.accent,
+      description:'單局獎金倍率',
+      ...artwork(tier,imageOrigin),
     }],
   };
 }

@@ -7,6 +7,7 @@ import { highlightCard, highlightAnnouncement, highlightTier, HIGHLIGHT_WINDOW_M
 import { roundFromStops } from '../src/game/index.js';
 import { readFileSync } from 'node:fs';
 import {assertHighlightEvent,assertHighlightBoard} from '../server/firestore/highlight-data.js';
+import {casinoPreviewMessage} from '../server/discord/casino-preview.js';
 
 const guild = '100000000000000001', user = '100000000000000002', otherGuild = '100000000000000003';
 const channel = '100000000000000004', messageId = '100000000000000005';
@@ -15,7 +16,11 @@ const examples = JSON.parse(readFileSync(new URL('../docs/data/math-report.json'
 
 test('individual wins select the verified lossless artwork and keep untrusted names harmless',()=>{
   const manifest=JSON.parse(readFileSync(new URL('../docs/data/announcement-art.json',import.meta.url)));
-  for(const [tier,multiplier] of [['big',15],['super',50],['mega',150]]){
+  for(const [tier,multiplier,example,accent,greeting] of [
+    ['big',15,15,0xb3946d,'這局手氣不錯！'],
+    ['super',50,48,0xf9efd6,'這局贏得漂亮！'],
+    ['mega',150.25,128,0xc96d85,'中了大獎！這局值得拍手。'],
+  ]){
     const payload=highlightAnnouncement({tier,multiplier,name:'**name** @everyone <@123>',balance:999999});
     const embed=payload.embeds[0],record=manifest.find(row=>row.tier===tier),url=new URL((tier==='big'?embed.thumbnail:embed.image).url);
     assert.equal(tier==='big'?'image' in embed:'thumbnail' in embed,false);
@@ -25,7 +30,18 @@ test('individual wins select the verified lossless artwork and keep untrusted na
     assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WEBP');assert.ok(bytes.includes(Buffer.from('VP8L')));
     assert.equal(createHash('sha256').update(bytes).digest('hex'),record.webpSha256);
     assert.equal(record.pixelsIdentical,true);assert.equal(record.lossless,true);
-    assert.match(embed.description,new RegExp('下注金額的 \\*\\*'+multiplier+' 倍'));
+    assert.equal(embed.title,`${tier.toUpperCase()} WIN · ${multiplier}×`);
+    assert.equal(embed.description,'單局獎金倍率');
+    assert.equal(embed.color,accent);
+    assert.ok(payload.content.endsWith('，'+greeting));
+    const preview=casinoPreviewMessage(tier);
+    const previewUrl=new URL((preview.embeds[0].thumbnail??preview.embeds[0].image).url);
+    assert.equal(previewUrl.origin,'https://jokers-circus-arcade-test.nini900219.workers.dev');
+    assert.equal(previewUrl.pathname,url.pathname);
+    assert.deepEqual(preview.embeds[0],{
+      ...embed,title:`${tier.toUpperCase()} WIN · ${example}×`,
+      [tier==='big'?'thumbnail':'image']:{url:previewUrl.href},
+    });
     assert.doesNotMatch(JSON.stringify(payload),/@everyone|<@|999999|SUPPRESS|10 分鐘/);
     assert.deepEqual(payload.allowed_mentions,{parse:[]});assert.equal('flags' in payload,false);
   }
