@@ -53,6 +53,12 @@ export default String.raw`<!doctype html>
     small { display: block; font-size: .875rem; }
     .health { padding: .75rem 1rem; background: var(--positive-bg); border-radius: .65rem; color: var(--positive); }
     .health[data-warning="true"] { background: var(--warning-bg); color: var(--warning); }
+    .backup-summary { margin-top: .65rem; color: var(--muted); font-size: .9rem; }
+    #backup-status:empty { display: none; }
+    .advanced-tools { margin-top: 1.25rem; }
+    .advanced-tools > summary { min-height: 44px; padding: .65rem 1rem; border: 1px solid var(--frame); border-radius: .5rem; background: var(--panel-deep); color: var(--gold); font-weight: 650; cursor: pointer; }
+    .advanced-tools > summary:hover { background: var(--panel); }
+    .advanced-tools > .grid > section { margin-top: 0; }
     .pill { background: #4c334f; color: var(--text); border-radius: 999px; padding: .2rem .65rem; font-size: .875rem; }
     .pill[data-open="true"] { background: var(--positive-bg); color: var(--positive); }
     label { display: block; font-weight: 600; }
@@ -101,6 +107,10 @@ export default String.raw`<!doctype html>
         <div class="actions"><button id="refresh" class="secondary">更新狀態</button><button id="lock" class="secondary">登出</button></div>
       </div>
       <p id="health" class="health" role="status"></p>
+      <div class="backup-summary">
+        <p class="muted">最近有效備份 <strong id="backup-time"></strong></p>
+        <p id="backup-status" class="muted" role="status"></p>
+      </div>
       <p id="entry-message" class="feedback" role="status"></p>
       <section aria-labelledby="entry-heading">
         <h2 id="entry-heading">遊戲入口</h2>
@@ -120,6 +130,8 @@ export default String.raw`<!doctype html>
           </article>
         </div>
       </section>
+      <details id="advanced-tools" class="advanced-tools">
+      <summary>進階工具</summary>
       <div class="grid">
         <section class="card" aria-labelledby="report-heading">
           <h2 id="report-heading">查詢玩家回報</h2>
@@ -140,8 +152,6 @@ export default String.raw`<!doctype html>
         </section>
         <section class="card" aria-labelledby="recovery-heading">
           <h2 id="recovery-heading">備份與服務恢復</h2>
-          <p class="muted">最近有效備份 <strong id="backup-time"></strong></p>
-          <p id="backup-status" class="muted" role="status"></p>
           <div class="actions">
             <button id="backup-button">更新備份</button>
             <button id="verify-button" class="secondary">核對備份</button>
@@ -150,6 +160,7 @@ export default String.raw`<!doctype html>
           <small>備份與服務就緒後，可在上方重新開放遊戲入口。</small>
         </section>
       </div>
+      </details>
     </div>
   </main>
   <dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-detail">
@@ -263,6 +274,7 @@ export default String.raw`<!doctype html>
       $('reply').value='';
       $('result-detail').textContent='';
       $('report-form').reset();
+      $('advanced-tools').open=false;
       for(const id of ['entry-message','backup-message','report-message'])message(id,'');
       $('login').hidden=false;
       $('key').value='';
