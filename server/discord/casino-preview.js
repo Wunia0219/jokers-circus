@@ -1,0 +1,32 @@
+import {visitMessage} from './casino-visits.js';
+import {highlightAnnouncement} from './highlight-card.js';
+
+export const casinoPreviewCommand = {
+  name: '推播預覽', description: '私下預覽命運荷官的公告樣式', type: 1,
+  options: [{
+    name: '樣式', description: '選擇要預覽的公告', type: 3, required: true,
+    choices: [
+      {name: '入場', value: 'enter'}, {name: '未下注離場', value: 'idle'},
+      {name: '淨贏結算', value: 'gain'}, {name: '淨輸結算', value: 'loss'},
+      {name: '打平結算', value: 'even'}, {name: 'BIG WIN', value: 'big'},
+      {name: 'SUPER WIN', value: 'super'}, {name: 'MEGA WIN', value: 'mega'},
+    ],
+  }],
+};
+
+const start = {net: 0, rounds: 0, bet: 0, payout: 0, balance: 1506};
+const visit = {name: '測試玩家', start};
+const results = {
+  idle: start,
+  gain: {net: 1498, rounds: 43, bet: 2000, payout: 3498, balance: 3004},
+  loss: {net: -320, rounds: 16, bet: 320, payout: 0, balance: 1186},
+  even: {net: 0, rounds: 8, bet: 160, payout: 160, balance: 1506},
+};
+const wins = {big: 15, super: 48, mega: 128};
+
+export function casinoPreviewMessage(choice) {
+  if (choice === 'enter') return visitMessage(visit);
+  if (Object.hasOwn(results, choice)) return visitMessage(visit, results[choice], 'closed');
+  if (Object.hasOwn(wins, choice)) return highlightAnnouncement({name: visit.name, tier: choice, multiplier: wins[choice]});
+  return null;
+}

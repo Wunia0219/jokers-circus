@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CasinoBot,casinoBotSettings} from '../server/discord/casino-bot.js';
 import {highlightAnnouncement} from '../server/discord/highlight-card.js';
+import {casinoPreviewMessage} from '../server/discord/casino-preview.js';
+import {handleCommand} from '../server/discord/commands.js';
+import {completeDeferredCommand} from '../server/discord/deferred-command.js';
 const guild='100000000000000001',channel='100000000000000002',applicationId='100000000000000003',token='isolated-bot-token-'.repeat(3);
 function fixture({identity=applicationId,destination=guild,send}={}){
   const calls=[];let now=1000;
@@ -27,6 +30,34 @@ test('wrong bot or guild never receives a message',async()=>{
   for(const options of [{identity:'100000000000000008'},{destination:'100000000000000009'}]){
     const f=fixture(options);assert.equal((await f.bot.send({content:'test'},'one')).kind,'retry');assert.equal(f.calls.some(c=>c.options.method==='POST'),false);
   }
+});
+test('test preview uploads a real receipt only through the original private interaction reply',async()=>{
+  const user='100000000000000009';
+  const interaction={type:2,application_id:applicationId,token:'isolated-interaction-token',guild_id:guild,
+    channel_id:channel,member:{user:{id:user}},data:{name:'推播預覽',options:[{name:'樣式',value:'loss'}]}};
+  const wallet={store:{environment:'test',backend:'firestore',validate:(g,u)=>assert.deepEqual([g,u],[guild,user])},
+    commandChannelIds:[channel],casinoPreview:true};
+  const handle=(i,w=wallet)=>handleCommand(i,w.store,[],w.commandChannelIds,w);
+  assert.equal((await handle(interaction)).data.flags,64);
+  assert.equal((await handle({...interaction,channel_id:user})).data.receipt,undefined);
+  assert.equal((await handle(interaction,{...wallet,store:{...wallet.store,environment:'production'}})).data.receipt,undefined);
+  assert.equal(await completeDeferredCommand(interaction,wallet,{fetchImpl:async(url,options)=>{
+    assert.equal(url,`https://discord.com/api/v10/webhooks/${applicationId}/${interaction.token}/messages/@original`);
+    assert.equal(options.method,'PATCH');
+    const data=JSON.parse(options.body.get('payload_json'));
+    assert.deepEqual(data.allowed_mentions,{parse:[]});
+    assert.equal(data.receipt,undefined);
+    assert.equal(data.embeds[0].image.url,'attachment://casino-receipt.png');
+    assert.equal(data.attachments[0].description,'本次淨輸 −320 戲籌 · 共 16 局');
+    const file=options.body.get('files[0]'),bytes=Buffer.from(await file.arrayBuffer());
+    assert.equal(file.type,'image/png');
+    assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+    return Response.json({});
+  }}),true);
+  const f=fixture();
+  assert.equal((await f.bot.send(casinoPreviewMessage('gain'),'visit:receipt')).kind,'sent');
+  const sent=JSON.parse(f.calls.at(-1).options.body.get('payload_json'));
+  assert.equal(sent.enforce_nonce,true);assert.ok(sent.nonce);
 });
 test('provider rate limits are honored without shortening long waits; uncertain network writes are quarantined',async()=>{
   const f=fixture({send:()=>Response.json({retry_after:900},{status:429})});

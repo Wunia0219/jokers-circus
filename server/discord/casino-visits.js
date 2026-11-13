@@ -1,10 +1,11 @@
 import {randomUUID} from 'node:crypto';
 import {playerName,playerMention,playerMentions} from './player-display.js';
 import {problem} from '../wallet/wallet-common.js';
+import {RECEIPT_NAME, receiptColors, receiptSummary} from './casino-receipt.js';
 
 export const VISIT_HEARTBEAT_MS=45000,VISIT_TIMEOUT_MS=180000,VISIT_CLOSE_GRACE_MS=10000;
 const id=value=>/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value||''),keyOf=session=>session.guild+':'+session.user;
-const fmt=value=>value.toLocaleString('en-US'),signed=value=>(value>0?'+':'')+fmt(value);
+const fmt=value=>value.toLocaleString('en-US');
 const account=value=>{for(const k of ['balance','net','rounds','bet','payout'])if(!Number.isSafeInteger(value?.[k]))throw new Error('Invalid visit account');return value;};
 
 export function casinoVisitStatus(data){
@@ -21,12 +22,21 @@ export function casinoVisitStatus(data){
 }
 export function visitMessage(visit,end,reason){
   const name=playerMention(visit.user)||`**${playerName(visit.name)}**`,allowed_mentions=playerMentions([visit.user]);
-  if(!end)return {content:`♠ ${name} 進入賭場，歡迎入座！`,allowed_mentions};
+  if(!end)return {content:`♠ **入場** · ${name} 進入賭場，歡迎入座！`,allowed_mentions};
   account(end);const net=end.net-visit.start.net,rounds=end.rounds-visit.start.rounds;
-  if(!Number.isSafeInteger(net)||rounds<0)throw new Error('Visit accounting moved backwards');
-  const goodbye=reason==='timeout'?`♣ ${name} 暫時離開賭場，先替你收好這趟的帳目。`:`♣ ${name} 離開賭場，下次見！`;
-  const result=rounds===0?'這次還沒下注。':`本次輸贏：**${signed(net)} 戲籌**${net===0?'（不賺不賠）':''} · 共玩 **${fmt(rounds)} 局**`;
-  return {content:`${goodbye}\n${result}\n手上戲籌：**${fmt(end.balance)}**`,allowed_mentions};
+  if(!Number.isSafeInteger(net)||!Number.isSafeInteger(rounds)||rounds<0)throw new Error('Visit accounting moved backwards');
+  const goodbye=reason==='timeout'?'暫時離開賭場':'離開賭場';
+  const content=`♣ **離場** · ${name} ${goodbye}`;
+  if(rounds===0)return {content:`${content} · 這次還沒下注。`,allowed_mentions};
+  const {tone,label,amount,games}=receiptSummary(net,rounds);
+  return {
+    content,allowed_mentions,receipt:{net,rounds},
+    embeds:[{
+      title:'離場結算',color:receiptColors[tone],
+      description:`${label} **${amount} 戲籌** · 共玩 **${games} 局**\n手上戲籌 **${fmt(end.balance)}**`,
+      image:{url:`attachment://${RECEIPT_NAME}`},
+    }],
+  };
 }
 
 // Devices share one visit; only entry/exit read the authoritative ledger.

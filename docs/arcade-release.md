@@ -25,7 +25,7 @@
 1. 將[測試維運範本](../deploy/arcade-test.env.example)複製成 `.env.arcade-test.local`，填入測試專案服務帳戶的絕對路徑。首次在新的 SQLite 路徑用 `node --env-file=.env.arcade-test.local scripts/database/init-db.js` 準備空白測試帳本。接入測試時用 `node --env-file=.env.arcade-test.local scripts/firestore/import-firestore.js --from <空白 SQLite>` 初始化新 namespace，接著用同一份設定執行 `scripts/firestore/backup-firestore.js`。這兩個遠端步驟需要在該私有設定中暫時啟用 `FIRESTORE_LIVE_ENABLED=true`。
 2. 把測試快照連同三份用量資料庫交給 `cloud:handoff -- prepare --env .env.arcade-test.local --from <測試快照> --to <交接檔> --writers-stopped true`。全新且未啟用 Discord 公告時，缺少的 `.highlights.sqlite` 可用 `FirestoreQuota` 以同一測試 project 初始化為空。使用新 Worker 專屬的 `CLOUD_ADMIN_TOKEN`、`CLOUD_ENCRYPTION_KEY` 和 `ARCADE_CONSOLE_TOKEN`，以及測試 App 的 `DISCORD_CLIENT_SECRET`、測試專案的 `GOOGLE_SERVICE_ACCOUNT_JSON`。部署測試 Worker 後，以 `.env.arcade-test.local` 為目標，用既有 `cloud:control` 的 `seed`、`verify`、`activate` 完成測試帳本接入。測試後台管理金鑰與正式服分開設定。
 3. 測試 Worker 就緒後，在 **測試 App** 把根映射及 Interactions Endpoint 分別指向新測試 Worker 及其 `/api/interactions`。Discord 不須重新註冊指令；兩款遊戲和指令使用同一個現行測試帳本。切換後請重新輸入指令以開啟新的管理表單。舊測試 Worker 和帳本可保留供回退，餘額與紀錄不自動搬移。
-4. 用 `wrangler.arcade-test-monitor.jsonc` 部署測試監控。為測試遊戲 Worker 的 `CLOUD_MONITOR_TOKEN` 和測試監控的 `MONITORED_TOKEN` 設定同一把測試專用唯讀金鑰。測試監控每十分鐘查看測試服狀態，結果可在監控的 `/__ops/status` 查詢。測試服不設定 Discord 公告憑證。
+4. 用 `wrangler.arcade-test-monitor.jsonc` 部署測試監控。為測試遊戲 Worker 的 `CLOUD_MONITOR_TOKEN` 和測試監控的 `MONITORED_TOKEN` 設定同一把測試專用唯讀金鑰。測試監控每十分鐘查看測試服狀態，結果可在監控的 `/__ops/status` 查詢。一般測試發布維持公告停用，可用 `/推播預覽` 查看私人卡片。需要演練自動公告時，參見[公告的測試服設定](casino-announcements.md#discord-測試服)。
 
 ## 正式服接入
 

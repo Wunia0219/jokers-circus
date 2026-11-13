@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {playerMentions} from './player-display.js';
+import {discordMessageBody} from './discord-message-body.js';
 const snowflake=value=>/^\d{17,20}$/.test(value||'');
 
 export function casinoBotSettings(env,store){
@@ -16,7 +17,7 @@ export function casinoBotSettings(env,store){
 // Never log upstream response bodies, headers or credentials.
 export class CasinoBot {
   constructor({guild,channel,applicationId,token,fetchImpl=fetch,clock=Date.now}){Object.assign(this,{guild,channel,applicationId,token,fetchImpl,clock});this.verified=false;this.blockedUntil=0;}
-  request(path,options={}){return this.fetchImpl('https://discord.com/api/v10'+path,{...options,headers:{Authorization:'Bot '+this.token,'Content-Type':'application/json'},signal:AbortSignal.timeout(8000),redirect:'error'});}
+  request(path,options={}){return this.fetchImpl('https://discord.com/api/v10'+path,{...options,headers:{...options.headers,Authorization:'Bot '+this.token},signal:AbortSignal.timeout(8000),redirect:'error'});}
   async verify(){
     const identity=await this.request('/users/@me');const bot=identity.ok?await identity.json():null;
     if(bot?.id!==this.applicationId||bot.bot!==true)throw new Error('Bot identity mismatch');
@@ -29,7 +30,7 @@ export class CasinoBot {
     if(!this.verified){try{await this.verify();}catch{return {kind:'retry',delay:300000};}}
     const nonce=createHash('sha256').update(eventId).digest('hex').slice(0,24);
     let response;
-    try{response=await this.request('/channels/'+this.channel+'/messages',{method:'POST',body:JSON.stringify({...payload,allowed_mentions:playerMentions(payload.allowed_mentions?.users),nonce,enforce_nonce:true})});}
+    try{response=await this.request('/channels/'+this.channel+'/messages',{method:'POST',...discordMessageBody({...payload,allowed_mentions:playerMentions(payload.allowed_mentions?.users),nonce,enforce_nonce:true})});}
     catch{return {kind:'uncertain'};}
     const reset=Number(response.headers.get('X-RateLimit-Reset-After'));
     if(response.headers.get('X-RateLimit-Remaining')==='0'&&Number.isFinite(reset)&&reset>0)this.blockedUntil=this.clock()+Math.ceil(reset*1000);

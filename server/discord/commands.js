@@ -4,6 +4,7 @@ import { privateReply, commandError } from './bot-replies.js';
 import {adminPanel,handlePanel,launchControls,parsePanel,panelId} from './discord-panel.js';
 import {recordLabel} from '../firestore/record-codes.js';
 import {revokeNotificationStatus} from './grant-notification.js';
+import {casinoPreviewCommand, casinoPreviewMessage} from './casino-preview.js';
 
 export const commandDefinitions = [
   {name:'戲籌',description:'查看戲籌或開啟遊戲',type:1,options:[]},
@@ -31,6 +32,13 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
     if(panel?.action==='go')return {type:12};
     // APP_HANDLER opens the Activity without Discord's automatic channel invite.
     if(interaction.data?.type===4)return {type:12};
+    if(interaction.type===2&&interaction.data.name===casinoPreviewCommand.name&&effects.casinoPreview===true&&
+        store.environment==='test'&&store.backend==='firestore'&&commandChannelIds.length){
+      const choice=interaction.data.options?.find(option=>option.name==='樣式')?.value;
+      const message=casinoPreviewMessage(choice);
+      if(message)return {type:4,data:{...message,flags:64,allowed_mentions:{parse:[]}}};
+      return reply('請選擇要查看的公告樣式。','推播預覽');
+    }
     if(interaction.data.name==='簽到'){
       const result=reply('請開啟遊戲，點上方「週簽到」領取獎勵。','請在遊戲內簽到');
       result.data.components=launchControls(interaction);return result;

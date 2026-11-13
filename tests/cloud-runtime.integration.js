@@ -44,7 +44,18 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    if(request.url==='https://discord.com/api/oauth2/token')return MFResponse.json({access_token:'fixture-oauth-secret',scope:'identify guilds.members.read',expires_in:3600});
    if(u.pathname==='/api/v10/users/@me')return MFResponse.json(request.headers.get('authorization')?.startsWith('Bot ')?{id:client,bot:true}:{id:user,username:'isolated-runtime-test'});
    if(u.pathname==='/api/v10/channels/100000000000000006')return MFResponse.json({id:'100000000000000006',guild_id:guild,type:0});
-   if(u.pathname==='/api/v10/channels/100000000000000006/messages'){announcements.push(await request.json());return MFResponse.json({id:'100000000000000007',channel_id:'100000000000000006'});}
+   if(u.pathname==='/api/v10/channels/100000000000000006/messages'){
+     if(request.headers.get('content-type')?.startsWith('multipart/form-data')){
+       const form=await request.formData(),file=form.get('files[0]');
+       const payload=JSON.parse(form.get('payload_json'));
+       assert.equal(file.name,'casino-receipt.png');assert.equal(file.type,'image/png');
+       assert.equal(Buffer.from(await file.arrayBuffer()).subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+       assert.equal(payload.embeds[0].image.url,'attachment://'+file.name);
+       assert.match(payload.attachments[0].description,/戲籌 · 共 .* 局/);
+       announcements.push(payload);
+     }else announcements.push(await request.json());
+     return MFResponse.json({id:'100000000000000007',channel_id:'100000000000000006'});
+   }
    if(u.pathname===`/api/v10/users/@me/guilds/${guild}/member`)return MFResponse.json({user:{id:user,bot:false},pending:false});
    if(u.pathname==='/api/webhooks/100000000000000005/isolated-fake-webhook'){if(request.method==='GET')return MFResponse.json({type:1,guild_id:guild,channel_id:'100000000000000006'});announcements.push(await request.json());return MFResponse.json({id:'100000000000000007'});}
    if(u.pathname.endsWith('/messages/@original')&&request.method==='PATCH'){replies.push(await request.json());return MFResponse.json({});}
@@ -294,7 +305,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    await call('/api/casino-visit',{token,body:{action:'leave',instanceId:visitId}});
    for(let i=0;i<150&&!announcements.some(p=>p.content?.includes('離開賭場'));i++)await delay(100);
    assert.equal(announcements.filter(p=>p.content?.includes('進入賭場')).length,1);
-   const exits=announcements.filter(p=>p.content?.includes('離開賭場'));assert.equal(exits.length,1);assert.match(exits[0].content,/本次輸贏/);
+   const exits=announcements.filter(p=>p.content?.includes('離開賭場'));assert.equal(exits.length,1);assert.equal(exits[0].embeds[0].title,'離場結算');
    assert.ok(announcements.every(p=>p.enforce_nonce===true&&!('flags' in p)));
    for(const announcement of announcements){assert.ok(announcement.content.includes(`<@${user}>`));assert.deepEqual(announcement.allowed_mentions,{parse:[],users:[user]});}
    const deadline=Date.now()+90000;let completed;

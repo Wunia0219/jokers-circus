@@ -1,5 +1,6 @@
 import {handleCommand} from './commands.js';
 import {setTimeout as delay} from 'node:timers/promises';
+import {discordMessageBody} from './discord-message-body.js';
 
 export const validInteractionToken=token=>typeof token==='string'&&/^[-A-Za-z0-9._]{16,2048}$/.test(token);
 
@@ -8,11 +9,12 @@ export const validInteractionToken=token=>typeof token==='string'&&/^[-A-Za-z0-9
 export async function completeDeferredCommand(interaction,wallet,{fetchImpl=fetch,wait=delay,warn=()=>console.warn('Discord command reply unavailable')}={}){
   const result=await handleCommand(interaction,wallet.store,wallet.adminRoles,wallet.commandChannelIds,wallet);
   const {flags,...body}=result.data;
+  const message=discordMessageBody(body);
   const url=`https://discord.com/api/v10/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`;
   for(let attempt=0;attempt<3;attempt++){
     let response;
     try{
-      response=await fetchImpl(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(8000),redirect:'error'});
+      response=await fetchImpl(url,{method:'PATCH',...message,signal:AbortSignal.timeout(8000),redirect:'error'});
       if(response.ok)return true;
     }catch{}
     if(response&&[400,401,403,404].includes(response.status))break;
