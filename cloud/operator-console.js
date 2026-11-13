@@ -1,5 +1,5 @@
 import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
-import {arcadeEnabled,changeArcade,operatorEnabled,readArcade} from './arcade-controls.js';
+import {arcadeEnabled,changeArcade,liveSlotMaintenance,operatorEnabled,readArcade} from './arcade-controls.js';
 import {walletSettings} from '../server/wallet/settings.js';
 import {problem} from '../server/wallet/wallet-common.js';
 import {securityHeaders} from '../server/http/security-headers.js';
@@ -12,7 +12,7 @@ export const operatorApi='/__operator/';
 export const operatorSignIn=operatorApi+'sign-in';
 const rememberName='__Secure-circus-operator-remember';
 const rememberSeconds=30*24*3600,sessionSeconds=3600;
-const rememberEnabled=env=>env.APP_ENV==='test'&&arcadeEnabled(env);
+const rememberEnabled=env=>liveSlotMaintenance(env)||env.APP_ENV==='test'&&arcadeEnabled(env);
 const script=page.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n?/g,'\n');
 const scriptHash=createHash('sha256').update(script).digest('base64');
 const responseHeaders={...securityHeaders,'Cache-Control':'no-store'};
@@ -82,7 +82,8 @@ function status(project){
   const job=project.state.get('backup-job');
   return {
     environment:project.env.APP_ENV,ready:project.ready(),mode:project.state.get('mode')??'unseeded',
-    entry:{slot,revision,updatedAt,...(arcadeEnabled(project.env)?{feature,featureMaintenance,featureTitle:'野球拳'}:{})},guilds:walletSettings(project.env,{cloud:true}).guildIds,
+    entry:{slot,revision,updatedAt,...(liveSlotMaintenance(project.env)?{liveMaintenance:true}:{}),
+      ...(arcadeEnabled(project.env)?{feature,featureMaintenance,featureTitle:'野球拳'}:{})},guilds:walletSettings(project.env,{cloud:true}).guildIds,
     backup:{at:backup?.ok?backup.at:null,running:!!job,retryAt:project.state.get('backup-retry')?.nextAttempt??null},
   };
 }

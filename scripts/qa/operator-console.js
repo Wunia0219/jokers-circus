@@ -162,14 +162,17 @@ try{
   delete status.entry.feature;
   delete status.entry.featureMaintenance;
   delete status.entry.featureTitle;
+  status.entry.liveMaintenance=true;
   await page.setViewportSize({width:1200,height:930});
   await page.goto(productionUrl.origin+'/operator');
   const productionBadge=page.getByText('正式服',{exact:true});
   assert.equal(await productionBadge.isVisible(),true);
   assert.equal(await testBadge.count(),0);
   assert.doesNotMatch(await page.title(),/^TEST/);
-  assert.equal(await remember.count(),0);
-  assert.equal((await context.request.get(productionUrl.origin+'/__operator/sign-in')).status(),404);
+  await remember.waitFor();
+  assert.equal(await remember.isChecked(),false);
+  const productionSignIn=productionUrl.origin+'/__operator/sign-in';
+  assert.deepEqual(await (await context.request.get(productionSignIn,{headers:{Cookie:cookieName+'='+cookie.value}})).json(),{remembered:false});
   await keyField.fill(key);
   await page.getByRole('button',{name:'登入',exact:true}).click();
   await page.locator('#console').waitFor();
@@ -177,7 +180,33 @@ try{
   assert.equal(await page.locator('#feature-card').isVisible(),false);
   assert.equal(await page.getByLabel('回報碼',{exact:true}).getAttribute('placeholder'),'S- 開頭');
   assert.equal(await page.locator('#slot-button').isEnabled(),true);
+  assert.equal(await page.locator('#slot-button').textContent(),'開啟維護');
   await page.screenshot({path:'test-results/operator-console/production.png',fullPage:true});
+  await page.getByRole('button',{name:'登出',exact:true}).click();
+  await remember.check();
+  await keyField.fill(key);
+  await page.getByRole('button',{name:'登入',exact:true}).click();
+  await page.locator('#console').waitFor();
+  await page.reload();
+  await remember.waitFor();
+  assert.equal(await remember.isChecked(),true);
+  await page.getByRole('button',{name:'登入',exact:true}).click();
+  await page.locator('#console').waitFor();
+  assert.equal(await page.locator('#feature-card').isVisible(),false);
+  const prodEntry=productionUrl.origin+'/game-entry.json?controls=1';
+  assert.deepEqual(await (await context.request.get(prodEntry)).json(),{mode:'open',previewUserIds:[],revision:0});
+  const waiting=context.request.get(prodEntry+'&after=0',{timeout:5000});
+  const entryApi=productionUrl.origin+'/__operator/entry';
+  const headers={Authorization:'Bearer '+key};
+  for(const game of ['feature','featureMaintenance']){
+    assert.equal((await context.request.post(entryApi,{headers,data:{game,mode:'maintenance',revision:0}})).status(),400);
+  }
+  const changed=await context.request.post(entryApi,{headers,data:{game:'slot',mode:'maintenance',revision:0}});
+  assert.equal(changed.status(),200);
+  assert.deepEqual(await (await waiting).json(),{mode:'maintenance',previewUserIds:[],revision:1});
+  assert.equal((await context.request.get(productionUrl.origin+'/api/arcade')).status(),404);
+  assert.equal((await context.request.get(productionUrl.origin+'/arcade/feature/play.html')).status(),404);
+  assert.equal((await context.request.get(productionUrl.origin+'/api/feature/state')).status(),404);
   assert.deepEqual(errors,[]);
   console.log('Operator login, remembered credential, entry changes, reports, backup and mobile layout passed.');
 }finally{

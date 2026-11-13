@@ -22,7 +22,7 @@ export async function connectActivity({
   if (!params.get('frame_id') || !params.get('instance_id') || !['desktop', 'mobile'].includes(params.get('platform'))) {
     throw new Error('缺少 Discord 啟動資訊，請從 Discord 的應用程式啟動器開啟遊戲。');
   }
-  const { DiscordSDK, Common } = await loadSdk();
+  const { DiscordSDK, Common, RPCCloseCodes } = await loadSdk();
   const sdk = new DiscordSDK(clientId, { disableConsoleLogOverride: true });
   let timer;
   try {
@@ -51,5 +51,6 @@ export async function connectActivity({
   setOrientation(lockMobileOrientation);
   const identity = authEnabled ? await authenticateActivity(sdk, clientId, fetchImpl,walletEnabled) : null;
   return { mode: 'discord', sdk, user:walletEnabled?identity?.user:identity,session:walletEnabled?identity?.session:null,
+    close:()=>sdk.close(RPCCloseCodes.CLOSE_NORMAL,'Returning to Discord'),
     ...(mobile && !lockMobileOrientation ? { restoreMobilePortrait: () => setOrientation(true) } : {}) };
 }

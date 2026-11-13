@@ -14,21 +14,28 @@ const guildId='223456789012345678', ownerId='323456789012345678', playerId='4234
 const entryPath='/game-entry.json';
 let browser;
 
-async function scenario({id, mode='maintenance', mobile=false, holdSpin=false, lostResponse=false}) {
+async function scenario({id, mode='maintenance', mobile=false, holdSpin=false, lostResponse=false, live=false}) {
   const viewport=mobile?{width:390,height:844}:{width:1280,height:800};
   const context=await browser.newContext({viewport,isMobile:mobile,reducedMotion:'reduce'});
   const page=await context.newPage();
   const errors=[], requests={token:0,wallet:0,spin:0}, spinIds=[];
   page.on('pageerror',error=>errors.push(error.message));
   const state=freshState();
-  let releaseSpin, spinSent;
+  let releaseSpin, spinSent, revision=0;
+  const watchers=new Set(),watching=Promise.withResolvers();
+  const entry=()=>({mode,previewUserIds:live?[]:[ownerId],...(live?{revision}:{})});
   const sent=new Promise(done=>{spinSent=done;});
   const hold=holdSpin?new Promise(done=>{releaseSpin=done;}):null;
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());
     if(url.origin!==origin)return route.abort();
     if(url.pathname==='/qa-parent')return route.fulfill({contentType:'text/html',body:'<!doctype html><html><body style="margin:0"></body></html>'});
-    if(url.pathname===entryPath)return route.fulfill({json:{mode,previewUserIds:[ownerId]},headers:{'Cache-Control':'no-store'}});
+    if(url.pathname===entryPath){
+      if(live&&url.searchParams.get('after')===String(revision)){
+        await new Promise(resolve=>{watchers.add(resolve);watching.resolve();});
+      }
+      return route.fulfill({json:entry(),headers:{'Cache-Control':'no-store'}});
+    }
     if(url.pathname==='/api/token'){
       requests.token++;
       return route.fulfill({json:{access_token:'qa-token',session:{token:'qa-session',guildId,userId:id}}});
@@ -59,6 +66,7 @@ async function scenario({id, mode='maintenance', mobile=false, holdSpin=false, l
       const [opcode,payload]=event.data;
       const reply=value=>event.source.postMessage([1,value],location.origin);
       if(opcode===0)return reply({cmd:'DISPATCH',evt:'READY',nonce:null,data:{v:1,config:{api_endpoint:'//discord.com/api',environment:'test'}}});
+      if(opcode===2){window.activityClose=payload.code;return;}
       if(opcode!==1)return;
       const auth={access_token:'qa-token',user:{id,username:'preview-tester',discriminator:'0',public_flags:0,global_name:'測試玩家',avatar:null},scopes:['identify','guilds.members.read'],expires:'2099-01-01T00:00:00Z',application:{id:'123456789012345678',name:'test',description:''}};
       const data=payload.cmd==='AUTHORIZE'?{code:'qa-code'}:payload.cmd==='AUTHENTICATE'?auth:null;
@@ -68,11 +76,15 @@ async function scenario({id, mode='maintenance', mobile=false, holdSpin=false, l
     document.body.append(frame);
   },{id,guildId,mobile});
   const view=await (await page.waitForSelector('iframe')).contentFrame();
-  return {page,view,context,requests,errors,sent,releaseSpin,spinIds,setMode:value=>{mode=value;}};
+  return {page,view,context,requests,errors,sent,releaseSpin,spinIds,watching:watching.promise,setMode:value=>{
+    mode=value;revision++;
+    for(const resolve of watchers)resolve();
+    watchers.clear();
+  }};
 }
 
-async function maintenance({view}){
-  await view.getByRole('heading',{name:'維修中'}).waitFor();
+async function maintenance({view},name='維修中'){
+  await view.getByRole('heading',{name,exact:true}).waitFor();
   await view.waitForFunction(()=>document.querySelector('.maintenance-notice img')?.naturalWidth===640);
   assert.equal(await view.locator('#app').isVisible(),false);
   assert.equal(await view.locator('#app').evaluate(app=>app.inert),true);
@@ -136,5 +148,33 @@ try{
     assert.deepEqual(active.errors,[]);
     await active.context.close();
   }
-  console.log('Verified guest and Discord player maintenance, owner preview, reopening, and preserved request identity after a lost response.');
+  const closed=await scenario({id:playerId,live:true});
+  await maintenance(closed,'維護中');
+  assert.deepEqual(closed.requests,{token:0,wallet:0,spin:0});
+  await closed.view.getByRole('button',{name:'返回 Discord',exact:true}).click();
+  await closed.page.waitForFunction(()=>window.activityClose===1000);
+  assert.deepEqual(closed.requests,{token:0,wallet:0,spin:0});
+  await closed.context.close();
+
+  const live=await scenario({id:playerId,mode:'open',live:true,holdSpin:true,lostResponse:true});
+  await live.view.getByRole('button',{name:'旋轉一次',exact:true}).click();
+  await live.sent;
+  await live.watching;
+  live.setMode('maintenance');
+  await maintenance(live,'維護中');
+  await live.view.locator('#canvas-host canvas').waitFor({state:'detached'});
+  assert.equal(await live.view.locator('#auto-spin').getAttribute('aria-pressed'),'false');
+  assert.equal(live.requests.spin,1);
+  live.releaseSpin();
+  live.setMode('open');
+  await live.view.evaluate(()=>location.reload());
+  const recovered=live.page.waitForResponse(response=>new URL(response.url()).pathname==='/api/spin');
+  await live.view.getByRole('button',{name:'旋轉一次',exact:true}).click();
+  await recovered;
+  assert.equal(live.requests.spin,2);
+  assert.equal(live.spinIds[0],live.spinIds[1]);
+  assert.deepEqual(live.errors,[]);
+  live.setMode('maintenance');
+  await live.context.close();
+  console.log('Verified legacy maintenance and live slot interruption, Discord exit, and original request recovery.');
 }finally{await browser?.close();await new Promise(done=>server.close(done));}

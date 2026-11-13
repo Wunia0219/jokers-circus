@@ -221,7 +221,7 @@ export default String.raw`<!doctype html>
       snapshot=value;
       $('health').textContent=value.ready?'服務可接受新回合':value.mode==='active'?'服務保護中，請核對備份及服務狀態。':'遊戲服務尚未啟用';
       $('health').dataset.warning=String(!value.ready);
-      const {slot,feature,featureMaintenance,featureTitle,updatedAt}=value.entry;
+      const {slot,feature,featureMaintenance,featureTitle,updatedAt,liveMaintenance}=value.entry;
       $('feature-card').hidden=!feature;
       $('feature-title').textContent=featureTitle??'';
       $('code').placeholder=feature?'S- 或 D- 開頭':'S- 開頭';
@@ -230,8 +230,9 @@ export default String.raw`<!doctype html>
         $(game+'-state').textContent=game==='featureMaintenance'&&feature==='hidden'&&state==='open'?'維護已關閉':labels[state];
         $(game+'-state').dataset.open=String(state==='open');
       }
-      $('slot-description').textContent=feature?'維護時，遊戲會中斷並引導玩家返回大廳。':'關閉入口後停止新回合，已受理的轉輪仍可確認。';
-      $('slot-button').textContent=slot==='open'?(feature?'開啟維護':'關閉入口'):'重新開放';
+      $('slot-description').textContent=feature?'維護時，遊戲會中斷並引導玩家返回大廳。':
+        liveMaintenance?'維護時，遊戲會中斷並引導玩家返回 Discord。':'關閉入口後停止新回合，已受理的轉輪仍可確認。';
+      $('slot-button').textContent=slot==='open'?(feature||liveMaintenance?'開啟維護':'關閉入口'):'重新開放';
       $('feature-button').textContent=feature==='hidden'?'揭曉'+featureTitle:'顯示模糊預告';
       $('featureMaintenance-button').textContent=featureMaintenance==='open'?'開啟維護':'結束維護';
       $('feature-description').textContent=feature==='hidden'?'玩家目前只會看到模糊預告。':'玩家目前可看到遊戲名稱與完整卡圖。';
@@ -341,11 +342,12 @@ export default String.raw`<!doctype html>
         const mode=current==='open'?(game==='feature'?'hidden':'maintenance'):'open';
         pendingChange={game,mode,revision:snapshot.entry.revision};
         const title=game==='slot'?'老虎機':snapshot.entry.featureTitle;
-        $('confirm-title').textContent=snapshot.entry.feature?title+' · '+$(game+'-button').textContent:$(game+'-button').textContent+title;
+        const live=snapshot.entry.feature||snapshot.entry.liveMaintenance;
+        $('confirm-title').textContent=live?title+' · '+$(game+'-button').textContent:$(game+'-button').textContent+title;
         $('confirm-detail').textContent=game==='feature'?
           (mode==='hidden'?'大廳會顯示模糊預告，遊戲中的玩家會收到返回大廳的提示。':'大廳會顯示'+title+'名稱與完整卡圖，入場依維護狀態開放。'):
           mode==='open'?(game==='featureMaintenance'?'已揭曉時，玩家可以入場及續玩。':'確認後玩家可以開始新的回合。'):
-          snapshot.entry.feature?'遊戲會中斷並顯示維護告示。已受理的結果可在重新開放後確認。':'目前正在結算的回合仍可確認。';
+          live?'遊戲會中斷並顯示維護告示。已受理的結果可在重新開放後確認。':'目前正在結算的回合仍可確認。';
         $('confirm').showModal();
         schedulePoll();
       });

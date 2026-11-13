@@ -1,7 +1,7 @@
 import poster from './maintenance-poster.svg';
 import './maintenance-screen.css';
 
-export function showMaintenanceScreen({pending = false, onBack, title = onBack ? '維護中' : '維修中', message} = {}) {
+export function showMaintenanceScreen({pending = false, onBack, backLabel = '返回大廳', title = onBack ? '維護中' : '維修中', message} = {}) {
   const screen = document.createElement('main');
   screen.className = 'maintenance-screen';
   screen.setAttribute('aria-labelledby', 'maintenance-title');
@@ -17,7 +17,7 @@ export function showMaintenanceScreen({pending = false, onBack, title = onBack ?
   const heading=screen.querySelector('h1'),button=screen.querySelector('button');
   heading.textContent=title;
   if(message)heading.nextElementSibling.textContent=message;
-  if(onBack)button.textContent='返回大廳';
+  if(onBack)button.textContent=backLabel;
   button.addEventListener('click', onBack??(()=>location.reload()));
   document.body.append(screen);
   heading.focus({preventScroll:true});

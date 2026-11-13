@@ -18,7 +18,7 @@ import {handleFetch} from './http-bridge.js';
 import {APP_VERSION} from '../src/version.js';
 import {operationsHealth} from './operations-health.js';
 import {casinoVisitStatus} from '../server/discord/casino-visits.js';
-import {arcadeEnabled,operatorEnabled,readArcade} from './arcade-controls.js';
+import {arcadeEnabled,liveSlotMaintenance,operatorEnabled,readArcade} from './arcade-controls.js';
 import {ARCADE_STATUS,arcadeStatus,arcadeAsset,arcadeLobby} from './arcade-routes.js';
 import {duelPaths} from '../server/http/app-handler.js';
 import {duelDigest} from '../server/wallet/duel-settlement.js';
@@ -44,14 +44,13 @@ export class CircusProject extends DurableObject {
   async schedule(delay){const now=Date.now(),due=now+delay,old=await this.ctx.storage.getAlarm();if(!old||old>due)await this.ctx.storage.setAlarm(due);}
   arcadeChanged(){
     if(!this.arcadeWatchers.size)return;
-    const status=arcadeStatus(this.state);
-    for(const send of this.arcadeWatchers)send(status);
+    for(const send of this.arcadeWatchers)send(true);
   }
-  async watchArcade(request,url){
-    const status=arcadeStatus(this.state);
+  async watchArcade(request,url,readStatus){
+    const status=readStatus();
     if(url.searchParams.get('after')!==String(status.revision))return json(status);
     const updated=await new Promise(resolve=>{
-      const empty=()=>send(null);
+      const empty=()=>send(false);
       const send=value=>{
         clearTimeout(timer);
         this.arcadeWatchers.delete(send);
@@ -63,7 +62,7 @@ export class CircusProject extends DurableObject {
       if(request.signal.aborted)empty();
       else request.signal.addEventListener('abort',empty,{once:true});
     });
-    return updated?json(updated):new Response(null,{status:204,headers:{'Cache-Control':'no-store'}});
+    return updated?json(readStatus()):new Response(null,{status:204,headers:{'Cache-Control':'no-store'}});
   }
   async fetch(request){
     const url=new URL(request.url);
@@ -71,6 +70,13 @@ export class CircusProject extends DurableObject {
       if(!['GET','HEAD'].includes(request.method))return json({error:'不支援此操作。'},405);
       // Older builds use the server's bet gate and can still replay a saved round.
       const mode=url.searchParams.get('controls')==='1'?readArcade(this.state).slot:'open';
+      if(liveSlotMaintenance(this.env)&&url.searchParams.get('controls')==='1'){
+        const readStatus=()=>{
+          const {slot,revision}=readArcade(this.state);
+          return {mode:slot,previewUserIds:[],revision};
+        };
+        return request.method==='HEAD'?new Response(null,json(readStatus())):this.watchArcade(request,url,readStatus);
+      }
       const response=json({mode,previewUserIds:[]});
       return request.method==='HEAD'?new Response(null,response):response;
     }
@@ -88,7 +94,7 @@ export class CircusProject extends DurableObject {
       try{const operation=this.opsTail.then(()=>this.admin(url.pathname,request));this.opsTail=operation.catch(()=>{});return await operation;}catch{return json({error:'Cloud operation refused; inspect status before retrying'},409);}
     }
     if(url.pathname==='/healthz')return json({ok:true,version:APP_VERSION,model:MODEL_VERSION});
-    if(url.pathname===ARCADE_STATUS&&request.method==='GET'&&arcadeEnabled(this.env))return this.watchArcade(request,url);
+    if(url.pathname===ARCADE_STATUS&&request.method==='GET'&&arcadeEnabled(this.env))return this.watchArcade(request,url,()=>arcadeStatus(this.state));
     if(!apiPaths.has(url.pathname)&&!(arcadeEnabled(this.env)&&duelPaths.has(url.pathname)&&arcadeStatus(this.state).feature))return json({error:'找不到此功能。'},404);
     if(!this.ready())return json({error:'帳號戲籌正在維護，請稍後再試。'},503);
     const origin=request.headers.get('origin');if(origin&&origin!==`https://${this.env.DISCORD_CLIENT_ID}.discordsays.com`)return json({error:'不允許的來源。'},403);

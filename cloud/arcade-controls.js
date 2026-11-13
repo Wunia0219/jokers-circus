@@ -2,6 +2,7 @@ import {problem} from '../server/wallet/wallet-common.js';
 
 const initial=Object.freeze({slot:'open',feature:'hidden',featureMaintenance:'open',revision:0});
 export const arcadeEnabled=env=>env.ARCADE_RELEASE_ENABLED==='true';
+export const liveSlotMaintenance=env=>env.APP_ENV==='production'&&!arcadeEnabled(env)&&operatorEnabled(env);
 export function readArcade(state){
   const saved=state.get('arcade-controls');
   if(!saved)return initial;
