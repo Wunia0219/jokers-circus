@@ -15,12 +15,12 @@ test('visit monitoring reports aggregate counts and the oldest pending time with
 });
 test('departure receipt preserves signed results and balance with red wins, green losses and a neutral tie',()=>{
   const visit={name:'玩家',start:{net:100,rounds:2,bet:200,payout:300,balance:10100}};
-  for(const [delta,display,label,color] of [[400,'+400','本次淨贏',0xf17b85],[-400,'−400','本次淨輸',0x65be98],[0,'0','本次打平',0xba8d61]]){
+  for(const [delta,amount,color] of [[400,'+400',0xf17b85],[-400,'−400',0x65be98],[0,'0',0xba8d61]]){
     const {content,embeds:[card],receipt}=visitMessage(visit,{net:100+delta,rounds:5,bet:500,payout:600+delta,balance:12345},'closed');
     assert.match(content,/離開賭場/);
     assert.deepEqual(receipt,{net:delta,rounds:3});
     assert.equal(card.color,color);
-    assert.equal(card.description,`${label} **${display} 戲籌** · 共玩 **3 局**\n手上戲籌 **12,345**`);
+    assert.equal(card.description,`這次獲得 **${amount} 戲籌** · 總遊玩 **3 局**\n手上還有 **12,345 戲籌**`);
   }
   const idle=visitMessage(visit,visit.start,'timeout');
   assert.match(idle.content,/暫時離開.*還沒下注/);assert.equal(idle.receipt,undefined);
@@ -36,12 +36,12 @@ function fixture(){
 test('entry/exit persist, duplicate requests coalesce, credits are excluded from gaming net',async()=>{
   const f=fixture(),id=randomUUID();await f.request('enter',id);await f.request('enter',id);
   assert.equal(f.visits.status().pending,1);assert.equal(f.reads,1);
-  await f.visits.flush();assert.match(f.sent[0].payload.content,/進入賭場/);assert.doesNotMatch(f.sent[0].payload.content,/@everyone/);
+  await f.visits.flush();assert.match(f.sent[0].payload.content,/入場.*歡迎來玩/);assert.doesNotMatch(f.sent[0].payload.content,/@everyone/);
   assert.ok(f.sent[0].payload.content.includes(`<@${user}>`));assert.deepEqual(f.sent[0].payload.allowed_mentions,{parse:[],users:[user]});
   for(let i=0;i<4;i++){f.advance(45000);await f.request('heartbeat',id);}assert.equal(f.reads,1,'heartbeats never read Firestore');
   f.balance={balance:11400,net:400,rounds:3,bet:300,payout:700}; // Includes a 1000 administrator grant.
   await f.request('leave',id);await f.request('leave',id);f.advance(VISIT_CLOSE_GRACE_MS);f.restart();await f.visits.sweep();await f.visits.flush();
-  assert.equal(f.reads,2);assert.equal(f.sent.length,2);assert.match(f.sent[1].payload.embeds[0].description,/\+400 戲籌/);assert.match(f.sent[1].payload.embeds[0].description,/11,400/);
+  assert.equal(f.reads,2);assert.equal(f.sent.length,2);assert.match(f.sent[1].payload.embeds[0].description,/這次獲得 \*\*\+400 戲籌/);assert.match(f.sent[1].payload.embeds[0].description,/11,400/);
   assert.ok(f.sent[1].payload.content.includes(`<@${user}>`));assert.deepEqual(f.sent[1].payload.allowed_mentions,{parse:[],users:[user]});
   assert.equal(f.visits.status().activeVisits,0);await f.request('leave',id);await f.visits.sweep();assert.equal(f.sent.length,2);
 });

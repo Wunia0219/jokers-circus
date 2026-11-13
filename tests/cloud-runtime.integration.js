@@ -51,7 +51,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
        assert.equal(file.name,'casino-receipt.png');assert.equal(file.type,'image/png');
        assert.equal(Buffer.from(await file.arrayBuffer()).subarray(0,8).toString('hex'),'89504e470d0a1a0a');
        assert.equal(payload.embeds[0].image.url,'attachment://'+file.name);
-       assert.match(payload.attachments[0].description,/戲籌 · 共 .* 局/);
+       assert.match(payload.attachments[0].description,/^這次獲得 [+−]?[\d,]+ 戲籌 · 總遊玩 [\d,]+ 局$/);
        announcements.push(payload);
      }else announcements.push(await request.json());
      return MFResponse.json({id:'100000000000000007',channel_id:'100000000000000006'});
@@ -161,8 +161,8 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  if(casino){const current=(await call('/__ops/status',{headers:monitorHeaders})).data;assert.ok(current.quota.used.writes>20000);assert.equal(current.quota.enforcement,'notify-only');assert.equal(current.quota.scopes.highlights.enforcement,'notify-only');assert.deepEqual(current.operations.alerts.filter(alert=>alert.code.startsWith('QUOTA_')),[],'paid usage is still recorded beyond the free allowance without threshold alerts');}
  const statusWithoutMeasurements=await call('/__ops/status?database=info',{adminAuth:true});assert.equal(statusWithoutMeasurements.status,200);assert.equal('spinTiming' in statusWithoutMeasurements.data,false);assert.equal('database' in statusWithoutMeasurements.data,false);
  if(casino){
-   for(let i=0;i<150&&!announcements.some(p=>p.content?.includes('進入賭場'));i++)await delay(100);
-   assert.ok(announcements.some(p=>p.content?.includes('進入賭場')),'initial maintenance has run before the cold-restart recovery case');
+   for(let i=0;i<150&&!announcements.some(p=>p.content?.includes('**入場**'));i++)await delay(100);
+   assert.ok(announcements.some(p=>p.content?.includes('**入場**')),'initial maintenance has run before the cold-restart recovery case');
  }
  sdk.highlightsGuild=guild;sdk.spinDelay=0;const examples=JSON.parse(readFileSync('docs/data/math-report.json','utf8')).examples;
  const forcedTier=casino?'big':'mega';
@@ -304,7 +304,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    const metadataBeforeContinuation=metadataReads;
    await call('/api/casino-visit',{token,body:{action:'leave',instanceId:visitId}});
    for(let i=0;i<150&&!announcements.some(p=>p.content?.includes('離開賭場'));i++)await delay(100);
-   assert.equal(announcements.filter(p=>p.content?.includes('進入賭場')).length,1);
+   assert.equal(announcements.filter(p=>p.content?.includes('**入場**')).length,1);
    const exits=announcements.filter(p=>p.content?.includes('離開賭場'));assert.equal(exits.length,1);assert.equal(exits[0].embeds[0].title,'離場結算');
    assert.ok(announcements.every(p=>p.enforce_nonce===true&&!('flags' in p)));
    for(const announcement of announcements){assert.ok(announcement.content.includes(`<@${user}>`));assert.deepEqual(announcement.allowed_mentions,{parse:[],users:[user]});}

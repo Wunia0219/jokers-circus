@@ -25,7 +25,7 @@ test('individual wins select the verified lossless artwork and keep untrusted na
     assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WEBP');assert.ok(bytes.includes(Buffer.from('VP8L')));
     assert.equal(createHash('sha256').update(bytes).digest('hex'),record.webpSha256);
     assert.equal(record.pixelsIdentical,true);assert.equal(record.lossless,true);
-    assert.match(embed.description,new RegExp(multiplier+' 倍下注獎金'));
+    assert.match(embed.description,new RegExp('下注金額的 \\*\\*'+multiplier+' 倍'));
     assert.doesNotMatch(JSON.stringify(payload),/@everyone|<@|999999|SUPPRESS|10 分鐘/);
     assert.deepEqual(payload.allowed_mentions,{parse:[]});assert.equal('flags' in payload,false);
   }
@@ -86,7 +86,7 @@ test('cards show names and multipliers without amounts, mentions, IDs, or expand
   assert.equal(payload.flags, 4096);
   assert.deepEqual(payload.allowed_mentions, { parse: [] });
   const embed = payload.embeds[0];
-  assert.equal(embed.title, 'MEGA WIN｜全場為你喝采！');
+  assert.equal(embed.title, 'MEGA WIN｜這局中了大獎，全場為你喝采！');
   assert.equal(embed.color, 0xc85c76);
   assert.equal(embed.fields.length, 5);
   assert.match(embed.fields[0].value, /125.5×/);

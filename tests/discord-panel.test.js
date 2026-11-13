@@ -61,7 +61,7 @@ test('native forms resolve guild players and use the original form request for f
   const s=fixture(t),panel=await run(base(),s),modal=await run(click(panel,'發放戲籌'),s);
   assert.equal(modal.type,9);assert.ok(modal.data.components.every(c=>c.type===18));assert.equal(modal.data.components[0].component.type,5);
   assert.equal(modal.data.components.length,4);
-  const notification=modal.data.components[3];assert.equal(notification.label,'是否通知被發放的玩家');assert.equal(notification.component.type,3);
+  const notification=modal.data.components[3];assert.equal(notification.label,'要通知收到戲籌的玩家嗎？');assert.equal(notification.component.type,3);
   assert.deepEqual(notification.component.options.map(o=>[o.label,o.value,!!o.default]),[['不通知本人','no',true],['通知本人','yes',false]]);
   const submission=form(modal,{member:target,amount:'500',reason:'活動獎勵'}),grant=await run(submission,s);assert.match(grant.data.embeds[0].description,/10,000 → \*\*10,500/);
   s.spin(guild,target,20,randomUUID());const balance=s.state(guild,target).balance;

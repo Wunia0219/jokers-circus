@@ -2,13 +2,13 @@ import {visitMessage} from './casino-visits.js';
 import {highlightAnnouncement} from './highlight-card.js';
 
 export const casinoPreviewCommand = {
-  name: '推播預覽', description: '私下預覽命運荷官的公告樣式', type: 1,
+  name: '推播預覽', description: '看看命運荷官的推播，只有你看得到', type: 1,
   options: [{
-    name: '樣式', description: '選擇要預覽的公告', type: 3, required: true,
+    name: '樣式', description: '選一種推播來看看', type: 3, required: true,
     choices: [
-      {name: '入場', value: 'enter'}, {name: '未下注離場', value: 'idle'},
-      {name: '淨贏結算', value: 'gain'}, {name: '淨輸結算', value: 'loss'},
-      {name: '打平結算', value: 'even'}, {name: 'BIG WIN', value: 'big'},
+      {name: '入場', value: 'enter'}, {name: '沒下注就離場', value: 'idle'},
+      {name: '這次賺了', value: 'gain'}, {name: '這次賠了', value: 'loss'},
+      {name: '這次打平', value: 'even'}, {name: 'BIG WIN', value: 'big'},
       {name: 'SUPER WIN', value: 'super'}, {name: 'MEGA WIN', value: 'mega'},
     ],
   }],

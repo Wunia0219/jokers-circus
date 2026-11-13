@@ -1,9 +1,10 @@
 import {crc32, deflateSync, inflateSync} from 'node:zlib';
-import {receiptFrames, receiptGlyphs} from './casino-receipt-art.js';
+import {receiptFrame, receiptGlyphs, receiptLabels, receiptLayout} from './casino-receipt-art.js';
 
 export const RECEIPT_NAME = 'casino-receipt.png';
 export const receiptColors = {gain: 0xf17b85, loss: 0x65be98, even: 0xba8d61};
-const width = 680, height = 224, stride = width * 3, glyphHeight = 76;
+const {width, height, numberTop, glyphHeight} = receiptLayout;
+const stride = width * 3;
 const ink = {gain: [255, 135, 146], loss: [122, 227, 169], even: [248, 232, 209]};
 const format = new Intl.NumberFormat('en-US');
 const glyphs = Object.fromEntries(Object.entries(receiptGlyphs).map(([char, [advance, encoded]]) =>
@@ -44,17 +45,20 @@ function writeNumber(pixels, text, x, y, maxWidth, color) {
 
 export function receiptSummary(net, rounds) {
   const tone = net > 0 ? 'gain' : net < 0 ? 'loss' : 'even';
-  const label = {gain: '本次淨贏', loss: '本次淨輸', even: '本次打平'}[tone];
   const amount = (net > 0 ? '+' : net < 0 ? '−' : '') + format.format(Math.abs(net));
   const games = format.format(rounds);
-  return {tone, label, amount, games, description: `${label} ${amount} 戲籌 · 共 ${games} 局`};
+  return {tone, amount, games,
+    description: `${receiptLabels.amount} ${amount} 戲籌 · ${receiptLabels.rounds} ${games} 局`,
+  };
 }
+
+export {receiptLabels};
 
 export function renderCasinoReceipt(net, rounds) {
   const {tone, amount, games} = receiptSummary(net, rounds);
-  const pixels = inflateSync(Buffer.from(receiptFrames[tone], 'base64'));
-  writeNumber(pixels, amount, 55, 91, 372, ink[tone]);
-  writeNumber(pixels, games, 480, 91, 143, ink.even);
+  const pixels = inflateSync(Buffer.from(receiptFrame, 'base64'));
+  writeNumber(pixels, amount, 55, numberTop, 372, ink[tone]);
+  writeNumber(pixels, games, 480, numberTop, 143, ink.even);
   const rows = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y++) {
     pixels.copy(rows, y * (stride + 1) + 1, y * stride, (y + 1) * stride);

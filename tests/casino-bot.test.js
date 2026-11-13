@@ -48,7 +48,7 @@ test('test preview uploads a real receipt only through the original private inte
     assert.deepEqual(data.allowed_mentions,{parse:[]});
     assert.equal(data.receipt,undefined);
     assert.equal(data.embeds[0].image.url,'attachment://casino-receipt.png');
-    assert.equal(data.attachments[0].description,'本次淨輸 −320 戲籌 · 共 16 局');
+    assert.equal(data.attachments[0].description,'這次獲得 −320 戲籌 · 總遊玩 16 局');
     const file=options.body.get('files[0]'),bytes=Buffer.from(await file.arrayBuffer());
     assert.equal(file.type,'image/png');
     assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');

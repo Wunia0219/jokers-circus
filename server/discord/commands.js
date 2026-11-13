@@ -37,7 +37,7 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
       const choice=interaction.data.options?.find(option=>option.name==='樣式')?.value;
       const message=casinoPreviewMessage(choice);
       if(message)return {type:4,data:{...message,flags:64,allowed_mentions:{parse:[]}}};
-      return reply('請選擇要查看的公告樣式。','推播預覽');
+      return reply('選一種推播來看看。','推播預覽');
     }
     if(interaction.data.name==='簽到'){
       const result=reply('請開啟遊戲，點上方「週簽到」領取獎勵。','請在遊戲內簽到');
@@ -45,7 +45,7 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
     }
     if(['戲籌','\u7c4c\u78bc'].includes(interaction.data.name)){
       const state=await store.state(guild,user,{compact:true});
-      const result=reply(`**${number(state.balance)} 戲籌**\n\n${state.claimed?`今天已簽到，明天可領 **${number(state.weeklyCheckin.nextReward)} 戲籌**。`:`週簽到第 ${state.weeklyCheckin.day} 天，可在遊戲內領取 **${number(state.daily)} 戲籌**。`}\n每七天循環，中斷從第 1 天重來。`);
+      const result=reply(`**${number(state.balance)} 戲籌**\n\n${state.claimed?`今天簽到過了，明天可以領 **${number(state.weeklyCheckin.nextReward)} 戲籌**。`:`今天是週簽到第 ${state.weeklyCheckin.day} 天，到遊戲裡就能領 **${number(state.daily)} 戲籌**。`}\n每 7 天一輪，漏簽就從第 1 天重新算。`);
       result.data.components=launchControls(interaction);return result;
     }
     if(!panel&&!['戲籌管理','\u7c4c\u78bc管理'].includes(interaction.data.name))throw problem(400,'不支援此指令。','COMMAND_UNKNOWN');

@@ -42,8 +42,8 @@ export function adminPanel(i,env,arcade){return response(i,env,'戲籌管理','�
 ]);}
 const text=(custom_id,placeholder,max_length=200,value)=>({type:4,custom_id,style:max_length===200?2:1,required:true,min_length:1,max_length,placeholder,...(value?{value}:{})});
 const label=(name,component,description)=>({type:18,label:name,component,...(description?{description}:{})});
-const userSelect=()=>label('玩家',{type:5,custom_id:'member',min_values:1,max_values:1,required:true,placeholder:'搜尋並選擇本群玩家'});
-const grantNotificationSelect=()=>label('是否通知被發放的玩家',{type:3,custom_id:'notify',min_values:1,max_values:1,required:true,options:[
+const userSelect=()=>label('玩家',{type:5,custom_id:'member',min_values:1,max_values:1,required:true,placeholder:'搜尋這個伺服器的玩家'});
+const grantNotificationSelect=()=>label('要通知收到戲籌的玩家嗎？',{type:3,custom_id:'notify',min_values:1,max_values:1,required:true,options:[
   {label:'不通知本人',value:'no',default:true},
   {label:'通知本人',value:'yes'},
 ]},'選擇通知時，會在遊玩文字頻道公開發放數量與原因，並 @ 玩家。');

@@ -11,15 +11,15 @@ const artOrigin='https://jokers-circus-production.nini900219.workers.dev/announc
 const styles={
   big:{
     file:'big-win-22bea6e95a7a.webp',media:'thumbnail',color:0xa88b60,
-    greeting:'這局手氣不錯！',description:multiple=>`收下 **${multiple} 倍下注獎金**。`,
+    greeting:'這局手氣不錯！',
   },
   super:{
     file:'super-win-bebd0e262ee5.webp',media:'image',color:0xd6b775,
-    greeting:'這局漂亮！',description:multiple=>`一舉拿下 **${multiple} 倍下注獎金**，掌聲送給你。`,
+    greeting:'這局贏得漂亮！',
   },
   mega:{
     file:'mega-win-5f0adee4765d.webp',media:'image',color:0xc85c76,
-    greeting:'全場為你喝采！',description:multiple=>`**${multiple} 倍下注獎金**，這一局你就是主角。`,
+    greeting:'這局中了大獎，全場為你喝采！',
   },
 };
 // Versioned public assets are fetched by Discord, never by the game preload.
@@ -35,7 +35,7 @@ export function highlightAnnouncement(entry){
     allowed_mentions:playerMentions([entry.user]),
     embeds:[{
       title:WIN_TITLES[tier],color:style.color,
-      description:style.description(multiplier(entry.multiplier)),
+      description:`這局拿到的獎金是下注金額的 **${multiplier(entry.multiplier)} 倍**。`,
       ...artwork(tier),
     }],
   };
