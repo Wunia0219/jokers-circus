@@ -48,10 +48,11 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
      if(request.headers.get('content-type')?.startsWith('multipart/form-data')){
        const form=await request.formData(),file=form.get('files[0]');
        const payload=JSON.parse(form.get('payload_json'));
-       assert.equal(file.name,'casino-receipt.png');assert.equal(file.type,'image/png');
+       assert.match(file.name,/^(?:casino-receipt|(?:big|super|mega)-win)\.png$/);assert.equal(file.type,'image/png');
        assert.equal(Buffer.from(await file.arrayBuffer()).subarray(0,8).toString('hex'),'89504e470d0a1a0a');
        assert.equal(payload.embeds[0].image.url,'attachment://'+file.name);
-       assert.match(payload.attachments[0].description,/^這次獲得 [+−]?[\d,]+ 戲籌 · 總遊玩 [\d,]+ 局$/);
+       assert.match(payload.attachments[0].description,file.name==='casino-receipt.png'
+         ? /^這次獲得 [+−]?[\d,]+ 戲籌 · 總遊玩 [\d,]+ 局$/ : /^(?:BIG|SUPER|MEGA) WIN · [\d,.]+×，單局獎金倍率$/);
        announcements.push(payload);
      }else announcements.push(await request.json());
      return MFResponse.json({id:'100000000000000007',channel_id:'100000000000000006'});
@@ -300,13 +301,13 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  assert.equal((await call('/__ops/export',{adminAuth:true,body:{}})).status,409,'backup readTime excludes later progress, so export is refused');
  for(let i=0;i<20;i++){const b=await call('/__ops/backup',{adminAuth:true,body:{}});assert.equal(b.status,200);if(b.data.complete)break;if(i===19)assert.fail('Latest backup did not finish');}
  assert.equal((await call('/__ops/activate',{adminAuth:true,body:activation})).status,200);
- const hasWin=()=>announcements.some(p=>p.embeds?.[0]?.title?.includes(casino?'BIG WIN':'MEGA WIN'));
+ const hasWin=()=>announcements.some(p=>casino?p.embeds?.[0]?.image?.url==='attachment://big-win.png':p.embeds?.[0]?.title?.includes('MEGA WIN'));
  for(let i=0;i<150&&!hasWin();i++)await delay(100);
  assert.ok(hasWin(),'durable alarm recovers outbox without enqueue hint');
  if(casino){
-   const big=announcements.find(p=>p.embeds?.[0]?.title?.startsWith('BIG WIN · ')).embeds[0];
-   assert.match(big.title,/^BIG WIN · [\d,.]+×$/);
-   assert.match(big.thumbnail.url,/\/announcements\/big-win-[a-f0-9]+\.webp$/);assert.equal('image' in big,false);
+   const big=announcements.find(p=>p.embeds?.[0]?.image?.url==='attachment://big-win.png');
+   assert.match(big.attachments[0].description,/^BIG WIN · [\d,.]+×，單局獎金倍率$/);
+   assert.equal(big.components[0].components[0].style,1);
    const previousBackup=(await call('/__ops/status',{headers:monitorHeaders})).data.backup.at;
    const started=await call('/__operator/backup',{headers:operatorHeaders,body:{}});
    assert.equal(started.status,200);assert.equal(started.data.backup.running,true);

@@ -18,12 +18,13 @@ function fixture({identity=applicationId,destination=guild,send}={}){
 test('bot REST posts individual wins and pings only the verified recipient',async()=>{
   const recipient='100000000000000009',f=fixture(),payload=highlightAnnouncement({name:'@everyone',user:recipient,tier:'mega',multiplier:100});
   assert.equal('flags' in payload,false);assert.doesNotMatch(JSON.stringify(payload),/10 分鐘/);
-  assert.match(payload.embeds[0].image.url,/\/announcements\/mega-win-[a-f0-9]+\.webp$/);
+  assert.equal(payload.embeds[0].image.url,'attachment://mega-win.png');
   assert.equal((await f.bot.send(payload,'win:1')).kind,'sent');assert.equal((await f.bot.send(payload,'win:1')).kind,'sent');
-  const posts=f.calls.filter(c=>c.options.method==='POST').map(c=>JSON.parse(c.options.body));
+  const posts=f.calls.filter(c=>c.options.method==='POST').map(c=>JSON.parse(c.options.body.get('payload_json')));
   assert.equal(posts[0].nonce,posts[1].nonce);assert.equal(posts[0].enforce_nonce,true);assert.deepEqual(posts[0].allowed_mentions,{parse:[],users:[recipient]});assert.equal('username' in posts[0],false);
   assert.ok(posts[0].content.includes(`<@${recipient}>`));assert.doesNotMatch(posts[0].content,/@everyone/);
   assert.equal(posts[0].components[0].components[0].label,'開啟遊戲');
+  assert.equal(posts[0].components[0].components[0].style,1);
   await f.bot.send({content:'@everyone <@&100000000000000099>',allowed_mentions:{parse:['everyone','roles','users'],roles:['100000000000000099'],users:['bad',recipient,recipient]}},'negative');
   const last=JSON.parse(f.calls.at(-1).options.body);assert.deepEqual(last.allowed_mentions,{parse:[],users:[recipient]});
   assert.equal(last.components,undefined);
@@ -81,6 +82,7 @@ test('framed previews launch for any member in the game channel without granting
     }
     const button=preview.data.components.at(-1).components[0];
     assert.equal(button.label,'開啟遊戲');
+    assert.equal(button.style,1);
     const click={...interaction,type:3,member:{user:{id:anotherMember}},
       data:{component_type:2,custom_id:button.custom_id}};
     assert.deepEqual(await handleCommand(click,store,[],[channel]),{type:12});

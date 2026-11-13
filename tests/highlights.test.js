@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { WalletStore } from '../server/wallet/wallet.js';
 import { Highlights, highlightsConfig } from '../server/discord/highlights.js';
-import { highlightCard, highlightAnnouncement, highlightTier, HIGHLIGHT_WINDOW_MS, HIGHLIGHT_INTERVAL_MS, HIGHLIGHT_MAX_AGE_MS } from '../server/discord/highlight-card.js';
+import { highlightCard, highlightAnnouncement, highlightTier, HIGHLIGHT_ART, HIGHLIGHT_WINDOW_MS, HIGHLIGHT_INTERVAL_MS, HIGHLIGHT_MAX_AGE_MS } from '../server/discord/highlight-card.js';
+import {discordMessageBody} from '../server/discord/discord-message-body.js';
 import { roundFromStops } from '../src/game/index.js';
 import { readFileSync } from 'node:fs';
 import {assertHighlightEvent,assertHighlightBoard} from '../server/firestore/highlight-data.js';
@@ -14,7 +15,7 @@ const channel = '100000000000000004', messageId = '100000000000000005';
 const webhookUrl = 'https://discord.com/api/webhooks/100000000000000006/fake-test-webhook';
 const examples = JSON.parse(readFileSync(new URL('../docs/data/math-report.json', import.meta.url))).examples;
 
-test('individual wins select the verified lossless artwork and keep untrusted names harmless',()=>{
+test('individual wins share the preview renderer, upload accessible PNGs and keep untrusted names harmless',async()=>{
   const manifest=JSON.parse(readFileSync(new URL('../docs/data/announcement-art.json',import.meta.url)));
   for(const [tier,multiplier,example,accent,greeting] of [
     ['big',15,15,0xb3946d,'這局手氣不錯！'],
@@ -22,26 +23,24 @@ test('individual wins select the verified lossless artwork and keep untrusted na
     ['mega',150.25,128,0xc96d85,'中了大獎！這局值得拍手。'],
   ]){
     const payload=highlightAnnouncement({tier,multiplier,name:'**name** @everyone <@123>',balance:999999});
-    const embed=payload.embeds[0],record=manifest.find(row=>row.tier===tier),url=new URL((tier==='big'?embed.thumbnail:embed.image).url);
-    assert.equal(tier==='big'?'image' in embed:'thumbnail' in embed,false);
-    assert.equal(url.protocol,'https:');assert.equal(url.hostname,'jokers-circus-production.nini900219.workers.dev');
+    const embed=payload.embeds[0],record=manifest.find(row=>row.tier===tier),url=new URL(HIGHLIGHT_ART[tier]);
     assert.equal('public'+url.pathname,record.file);
     const bytes=readFileSync(new URL('../'+record.file,import.meta.url));
     assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WEBP');assert.ok(bytes.includes(Buffer.from('VP8L')));
     assert.equal(createHash('sha256').update(bytes).digest('hex'),record.webpSha256);
     assert.equal(record.pixelsIdentical,true);assert.equal(record.lossless,true);
-    assert.equal(embed.title,`${tier.toUpperCase()} WIN · ${multiplier}×`);
-    assert.equal(embed.description,'單局獎金倍率');
+    assert.equal(embed.image.url,`attachment://${tier}-win.png`);
     assert.equal(embed.color,accent);
     assert.ok(payload.content.endsWith('，'+greeting));
-    const preview=casinoPreviewMessage(tier);
-    const previewUrl=new URL((preview.embeds[0].thumbnail??preview.embeds[0].image).url);
-    assert.equal(previewUrl.origin,'https://jokers-circus-arcade-test.nini900219.workers.dev');
-    assert.equal(previewUrl.pathname,url.pathname);
-    assert.deepEqual(preview.embeds[0],{
-      ...embed,title:`${tier.toUpperCase()} WIN · ${example}×`,
-      [tier==='big'?'thumbnail':'image']:{url:previewUrl.href},
-    });
+    const form=discordMessageBody(payload).body,wire=JSON.parse(form.get('payload_json')),file=form.get('files[0]');
+    assert.equal(wire.winCard,undefined);
+    assert.deepEqual(wire.attachments,[{id:0,filename:file.name,description:`${tier.toUpperCase()} WIN · ${multiplier}×，單局獎金倍率`}]);
+    const rendered=Buffer.from(await file.arrayBuffer());
+    assert.equal(rendered.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+    assert.ok(tier==='big'?rendered.readUInt32BE(20)<180:rendered.readUInt32BE(20)>400);
+    const preview=casinoPreviewMessage(tier),sameWin=highlightAnnouncement({tier,multiplier:example,name:'測試玩家'});
+    assert.deepEqual(preview,sameWin);
+    if(example!==multiplier)assert.notDeepEqual(rendered,Buffer.from(await discordMessageBody(preview).body.get('files[0]').arrayBuffer()));
     assert.doesNotMatch(JSON.stringify(payload),/@everyone|<@|999999|SUPPRESS|10 分鐘/);
     assert.deepEqual(payload.allowed_mentions,{parse:[]});assert.equal('flags' in payload,false);
   }

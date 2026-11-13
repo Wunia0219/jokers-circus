@@ -208,8 +208,8 @@ test('bot mode delivers each committed win individually and never edits an earli
   const q=new FirestoreHighlights(h.s,{guild,bot,clock:()=>now});h.workers.push(q);
   await q.flush();now+=HIGHLIGHT_INTERVAL_MS;await q.flush();now+=HIGHLIGHT_INTERVAL_MS;await q.flush();
   assert.equal(messages.length,3);assert.equal(new Set(messages.map(m=>m.id)).size,3);
-  assert.ok(messages.every(m=>m.payload.embeds.length===1&&(m.payload.embeds[0].image||m.payload.embeds[0].thumbnail).url.endsWith('.webp')&&!('flags' in m.payload)));
-  const big=messages.find(m=>/^BIG WIN · [\d,.]+×$/.test(m.payload.embeds[0].title));assert.ok(big?.payload.embeds[0].thumbnail);assert.equal('image' in big.payload.embeds[0],false);
+  assert.ok(messages.every(m=>m.payload.embeds.length===1&&m.payload.embeds[0].image.url.endsWith('.png')&&!('flags' in m.payload)));
+  const big=messages.find(m=>/^BIG WIN · [\d,.]+×，單局獎金倍率$/.test(m.payload.winCard.description));assert.equal(big?.payload.embeds[0].image.url,'attachment://big-win.png');
   for(const message of messages){assert.ok(message.payload.content.includes(`<@${user}>`));assert.deepEqual(message.payload.allowed_mentions,{parse:[],users:[user]});}
   assert.equal((await h.event(first)).status,'sent');assert.equal((await h.event(second)).status,'sent');assert.equal((await h.event(third)).status,'sent');
   const start=await h.s.casinoAccount(guild,user);await h.s.checkin(guild,user);const after=await h.s.casinoAccount(guild,user);

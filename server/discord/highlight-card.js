@@ -1,5 +1,6 @@
 import {winTier,WIN_TITLES} from '../../src/game/win-tier.js';
 import {playerName,playerMention,playerMentions} from './player-display.js';
+import {winCardFilename} from './discord-win-card.js';
 
 export const HIGHLIGHT_WINDOW_MS=10*60*1000;
 export const HIGHLIGHT_INTERVAL_MS=10*1000;
@@ -27,19 +28,19 @@ const styles={
 export const HIGHLIGHT_ART=Object.freeze(Object.fromEntries(Object.entries(styles).map(([tier,style])=>[tier,artOrigin+style.file])));
 const multiplierFormat=new Intl.NumberFormat('en-US',{maximumFractionDigits:2});
 const multiplier=value=>multiplierFormat.format(value);
-const artwork=(tier,origin=artOrigin)=>({[styles[tier].media]:{url:origin+styles[tier].file}});
+const artwork=tier=>({[styles[tier].media]:{url:HIGHLIGHT_ART[tier]}});
 
-export function highlightAnnouncement(entry,{imageOrigin}={}){
+export function highlightAnnouncement(entry){
   const {tier}=entry,style=styles[tier],name=playerMention(entry.user)||playerName(entry.name);
+  const value=`${multiplier(entry.multiplier)}×`;
   return {
     content:`${name}，${style.announcementGreeting??style.greeting}`,
     allowed_mentions:playerMentions([entry.user]),
     embeds:[{
-      title:`${WIN_TITLES[tier]} · ${multiplier(entry.multiplier)}×`,
       color:style.accent,
-      description:'單局獎金倍率',
-      ...artwork(tier,imageOrigin),
+      image:{url:`attachment://${winCardFilename(tier)}`},
     }],
+    winCard:{tier,value,description:`${WIN_TITLES[tier]} · ${value}，單局獎金倍率`},
   };
 }
 

@@ -1,5 +1,6 @@
-import {crc32, deflateSync, inflateSync} from 'node:zlib';
+import {inflateSync} from 'node:zlib';
 import {receiptFrame, receiptGlyphs, receiptLabels, receiptLayout} from './casino-receipt-art.js';
+import {rgbPng} from './rgb-png.js';
 
 export const RECEIPT_NAME = 'casino-receipt.png';
 export const receiptColors = {gain: 0xf17b85, loss: 0x65be98, even: 0xba8d61};
@@ -9,15 +10,6 @@ const ink = {gain: [255, 135, 146], loss: [122, 227, 169], even: [248, 232, 209]
 const format = new Intl.NumberFormat('en-US');
 const glyphs = Object.fromEntries(Object.entries(receiptGlyphs).map(([char, [advance, encoded]]) =>
   [char, {advance, alpha: inflateSync(Buffer.from(encoded, 'base64'))}]));
-
-function pngChunk(name, data) {
-  const chunk = Buffer.alloc(12 + data.length);
-  chunk.writeUInt32BE(data.length);
-  chunk.write(name, 4);
-  data.copy(chunk, 8);
-  chunk.writeUInt32BE(crc32(chunk.subarray(4, -4)), chunk.length - 4);
-  return chunk;
-}
 
 function writeNumber(pixels, text, x, y, maxWidth, color) {
   const digits = Array.from(text, char => glyphs[char]);
@@ -63,15 +55,5 @@ export function renderCasinoReceipt(net, rounds) {
   for (let y = 0; y < height; y++) {
     pixels.copy(rows, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
   }
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width);
-  header.writeUInt32BE(height, 4);
-  header[8] = 8;
-  header[9] = 2;
-  return Buffer.concat([
-    Buffer.from('89504e470d0a1a0a', 'hex'),
-    pngChunk('IHDR', header),
-    pngChunk('IDAT', deflateSync(rows)),
-    pngChunk('IEND', Buffer.alloc(0)),
-  ]);
+  return rgbPng(width, height, rows);
 }
