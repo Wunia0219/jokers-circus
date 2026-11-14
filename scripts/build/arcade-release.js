@@ -64,11 +64,17 @@ export async function buildArcadeRelease({clientId,legacy=null,logLevel,target='
   if(!slotOnly){
     await buildEntry('lobby.html','/arcade/',[launchScreenMarkup,lobbyIsolation]);
     await buildEntry('play.html','/arcade/feature/',[],allowTestApp?{
-      define:{'import.meta.env.VITE_ARCADE_TEST_TOWEL':'"true"'},
+      define:{'import.meta.env.VITE_ARCADE_TEST_DOWNLOADS':'"true"'},
       resolve:{alias:{'../../../images/yakyuken/youran/stage-3.webp':resolve('images/yakyuken/youran/stage-3-towel.webp')}},
-    }:{define:{'import.meta.env.VITE_ARCADE_TEST_TOWEL':'"false"'}});
+    }:{define:{'import.meta.env.VITE_ARCADE_TEST_DOWNLOADS':'"false"'}});
     copyFileSync('images/lobby/yakyuken-cover-v3.webp',join(outDir,'arcade/feature/cover.webp'));
-    if(allowTestApp)copyFileSync('art/yakyuken/youran/redesign/youran-stage-3-towel.png',join(outDir,'arcade/feature/youran-finale.png'));
+    if(allowTestApp){
+      copyFileSync('art/yakyuken/youran/redesign/youran-stage-3-towel.png',join(outDir,'arcade/feature/youran-finale.png'));
+      for(let stage=1;stage<=7;stage++){
+        const file=`selo-stage-${stage}.png`;
+        copyFileSync(join('public/downloads/yakyuken',file),join(outDir,'arcade/feature',file));
+      }
+    }
   }
 
   // Old open tabs still request hashed assets from their own bundle.

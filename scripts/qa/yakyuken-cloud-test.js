@@ -48,7 +48,7 @@ try{
       await play(page);state=await wallet(page);const record=state.records.find(r=>r.id===matchId);
       assert.equal(state.balance,initial.balance-fee+record.reward);assert.ok(!Object.hasOwn(record,'draws'));
       if(record.status!=='playing')break;
-      await page.getByRole('button',{name:'下一局',exact:true}).click();await phase(page,'selecting');
+      await page.getByRole('button',{name:'下一拳',exact:true}).click();await phase(page,'selecting');
     }
     await page.waitForFunction(()=>!window.__cloudScene.ending&&!window.__cloudScene.entering);
     if((await wallet(page)).records.find(r=>r.id===matchId)?.status==='playing'){
@@ -57,9 +57,9 @@ try{
     await history(page);await page.screenshot({path:output+'/history.png'});checks.push('real test cloud hands, wallet delta and persisted history');
     const saved=await wallet(page);await page.reload();await phase(page,'games');assert.equal((await wallet(page)).balance,saved.balance);assert.deepEqual((await wallet(page)).records,saved.records);checks.push('real Firestore state survives browser reload');
   }else{
-    await play(page);assert.equal((await wallet(page)).records[0].wins,1);await page.getByRole('button',{name:'下一局',exact:true}).click();await phase(page,'selecting');
+    await play(page);assert.equal((await wallet(page)).records[0].wins,1);await page.getByRole('button',{name:'下一拳',exact:true}).click();await phase(page,'selecting');
     const before=[reads,writes];await play(page);assert.deepEqual([reads,writes],before,'draw performs no repository access');assert.equal((await wallet(page)).records[0].wins,1);
-    await page.getByRole('button',{name:'下一局',exact:true}).click();await phase(page,'selecting');await play(page);assert.equal((await wallet(page)).balance,11500);checks.push('server outcomes, free draw, one prize and net +1,500');
+    await page.getByRole('button',{name:'下一拳',exact:true}).click();await phase(page,'selecting');await play(page);assert.equal((await wallet(page)).balance,11500);checks.push('server outcomes, free draw, one prize and net +1,500');
     await history(page);
     for(const [width,height] of [[320,568],[390,844],[530,900],[1600,900]]){
       await page.setViewportSize({width,height});await page.waitForFunction(w=>window.__cloudScene.layout.ui.width===w,width);await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
@@ -75,7 +75,7 @@ try{
     await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>window.__cloudScene.layout.ui.width===390);
     const summary=page.getByRole('button',{name:/^展開 .* 對局結果$/}).first(),box=await summary.boundingBox();await page.mouse.click(box.x+box.width/2,box.y+box.height/2);await page.screenshot({path:output+'/history-expanded.png'});
     assert.equal(await page.evaluate(()=>JSON.stringify(window.__cloudScene.wallet.wallet.records).includes('draws')),false);checks.push('win/loss colors, centered responsive summary and no persisted draw counters');
-    await page.getByRole('button',{name:'關閉視窗',exact:true}).click();await page.getByRole('button',{name:'再次挑戰',exact:true}).click();await phase(page,'selecting');await play(page);await page.getByRole('button',{name:'下一局',exact:true}).click();await phase(page,'selecting');await play(page);await page.getByRole('button',{name:'返回',exact:true}).click();await phase(page,'characters');
+    await page.getByRole('button',{name:'關閉視窗',exact:true}).click();await page.getByRole('button',{name:'再次挑戰',exact:true}).click();await phase(page,'selecting');await play(page);await page.getByRole('button',{name:'下一拳',exact:true}).click();await phase(page,'selecting');await play(page);await page.getByRole('button',{name:'返回',exact:true}).click();await phase(page,'characters');
     assert.equal((await wallet(page)).balance,10500);assert.equal((await wallet(page)).records[0].net,-1000);await history(page);await page.screenshot({path:output+'/history-loss.png'});await page.getByRole('button',{name:'關閉視窗',exact:true}).click();checks.push('loss retains entry fee and records net -1,000');
     await page.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(page,'selecting');await play(page);const saved=await wallet(page);await page.reload();await phase(page,'games');await enter(page);assert.equal((await wallet(page)).balance,saved.balance);assert.equal((await wallet(page)).activeId,saved.activeId);assert.equal((await wallet(page)).records[0].wins,1);checks.push('reload resumes the current match without another fee');
     failAction='hand';await page.getByRole('button',{name:'選擇拳頭',exact:true}).click();await page.getByRole('button',{name:'確認出牌',exact:true}).click();await page.waitForFunction(()=>window.__cloudScene.wallet.pending&&window.__cloudScene.phase==='retrying');

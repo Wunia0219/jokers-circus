@@ -25,7 +25,7 @@ export function buildLobby(scene){
         onPress:()=>index?scene.visitScreen('characters'):scene.openSlot()}))});
   }else{
     const c=l.character,s=c.contentScale,rule=characterRule(scene.selectedCharacter);
-    const mobileIntro=c.vertical&&rule.id==='guest-4';
+    const mobileIntro=c.vertical;
     portrait(scene.characterTextures[0],root,c.art,c.art.height/.58);
     if(!c.vertical){
       const p=c.panel,frame=new Graphics({label:'character-selection-frame',eventMode:'none'});
@@ -56,7 +56,7 @@ export function buildLobby(scene){
       title(character.enabled?(index?character.name:'荷官'):'準備中',0,r.height/2-13*s,button,Math.max(11,11*s),selected?PALETTE.gold:0xa493a0);
       if(!character.enabled)button.setEnabled(false);
     });
-    title(scene.wallet?'入場費不予退還':'本機試玩暫不扣款',c.infoX,c.feeY,root,Math.max(12,12*s),PALETTE.muted);
+    title(scene.wallet?'入場後不退費':'試玩不扣戲籌',c.infoX,c.feeY,root,Math.max(12,12*s),PALETTE.muted);
     const paused=scene.wallet?.admissionOpen===false;
     const enter=at(new PixiButton({text:paused?'暫停新場次':`入場 ${ENTRY_FEE.toLocaleString('en-US')} 戲籌`,
       name:paused?'暫停新場次':scene.onLobby?'進入野球拳':'進入野球拳試玩',variant:'gold',width:c.buttonWidth,height:c.buttonHeight,fontSize:16*s,onPress:()=>scene.enterCharacter()}),c.infoX,c.enterY,root);

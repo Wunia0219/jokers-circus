@@ -181,7 +181,8 @@ try{
   assert.equal(featureRequests,0);
   assert.ok(!requests.some(url=>/feature\/|yakyuken|cg-download/i.test(url)));
   const towelPath='/arcade/feature/youran-finale.png';
-  for(const path of ['/arcade/feature/play.html','/arcade/%66eature/cover.webp','/arcade/feature/cover.webp',towelPath,oldFeature])
+  const seloPath='/arcade/feature/selo-stage-1.png';
+  for(const path of ['/arcade/feature/play.html','/arcade/%66eature/cover.webp','/arcade/feature/cover.webp',towelPath,seloPath,oldFeature])
     assert.equal((await page.request.get(origin+path)).status(),404,path);
   const checkLayout=()=>slotCard.evaluate(node=>{
     const bounds=node.getBoundingClientRect();
@@ -228,8 +229,10 @@ try{
   await lobby.getByRole('progressbar',{name:'遊戲載入進度',exact:true}).waitFor({state:'detached'});
   assert.equal(await page.evaluate(()=>window.handshakes),1,'child game shares the original Discord connection');
   const towel=await page.request.get(origin+towelPath);
+  const selo=await page.request.get(origin+seloPath);
   if(production){
     assert.equal(towel.status(),404,'Test-only download stays unavailable in production even after reveal');
+    assert.equal(selo.status(),404,'Test Selo download stays unavailable in production');
     await game.getByRole('button',{name:'CG 收藏',exact:true}).tap();
     for(const [name,count] of [['命運荷官',3],['優然',4],['夏澄',6],['瑟洛',8],['萬世',10]])
       await game.getByRole('button',{name:new RegExp(`^${name}收藏，已解鎖 ${name==='萬世'?1:0} / ${count}`)}).waitFor();
@@ -256,6 +259,16 @@ try{
   assert.deepEqual(await page.evaluate(()=>window.externalLinks),[
     'https://jokers-circus-arcade-test.nini900219.workers.dev'+towelPath,
   ]);
+  assert.equal(selo.status(),200);
+  assert.match(selo.headers()['content-disposition'],/^attachment;.*Selo-first-win\.png/);
+  assert.deepEqual(await selo.body(),readFileSync('public/downloads/yakyuken/selo-stage-1.png'));
+  await game.getByRole('button',{name:'返回 CG 收藏',exact:true}).tap();
+  await game.getByRole('button',{name:/^瑟洛收藏，已解鎖 8 \/ 8/}).tap();
+  await game.getByRole('button',{name:'回顧收起外套 CG',exact:true}).tap();
+  await game.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).tap();
+  await page.waitForFunction(()=>window.externalLinks.length===2);
+  assert.equal(await page.evaluate(()=>window.externalLinks[1]),
+    'https://jokers-circus-arcade-test.nini900219.workers.dev'+seloPath);
   }
   const notice=lobby.getByRole('heading',{name:'維護中',exact:true});
   const back=lobby.getByRole('button',{name:'返回大廳',exact:true});

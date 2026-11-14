@@ -14,7 +14,7 @@ const tone = value => value > 0 ? 'gain' : value < 0 ? 'loss' : 'even';
 export const clearPreviews = roles.map(([portrait, id, name, ink, base, halo, serial, pos, top]) => {
   const {reward, winsRequired: wins} = DUEL_RULES[id];
   const title = `野球拳・${name}通關`;
-  const description = `演示玩家拿下 ${wins} 勝，獲得 **${number.format(reward)} 戲籌**。`;
+  const description = `示範玩家累積 ${wins} 勝，獲得 **${number.format(reward)} 戲籌**。`;
   return {key: `clear-${portrait}`, label: `野球拳通關｜${name}`, title, description,
     alt: `${title} · 累積 ${wins} 勝 · 通關獎金 ${number.format(reward)} 戲籌`,
     portrait, name, wins, ink, base, halo, serial, pos, top};

@@ -30,8 +30,8 @@ export class WardrobeTransition {
   elapsed=0;
   committed=false;
   disposed=false;
-  constructor({app,background,to,name,dialogue,reduced,onCommit,onChange,gradients,backdrop,subject}){
-    Object.assign(this,{app,background,to,name,dialogue,reduced,onCommit,onChange,gradients,backdrop,subject});
+  constructor({app,background,to,name,reduced,onCommit,onChange,gradients,backdrop,subject}){
+    Object.assign(this,{app,background,to,name,reduced,onCommit,onChange,gradients,backdrop,subject});
     this.done=new Promise(resolve=>{this.resolve=resolve;});
     this.root=backdrop.layer;this.root.alpha=1;this.root.eventMode='static';
     this.previousVisible=background.visible;
@@ -55,9 +55,8 @@ export class WardrobeTransition {
     this.caption=new Container({label:'wardrobe-caption',eventMode:'none'});
     const fade=new Graphics();fade.context.batchMode='batch';
     fade.rect(0,height-220,width,220).fill(this.gradients[1]);this.caption.addChild(fade);
-    const title=label(this.name,width<650?24:32,PALETTE.bright,{fontWeight:'500',letterSpacing:3});title.position.set(width/2,height-107);
-    const quote=label(`「${this.dialogue}」`,width<650?14:17,0xe3d1bc,{wordWrap:true,wordWrapWidth:Math.min(520,width-40),lineHeight:24});quote.position.set(width/2,height-64);
-    this.caption.addChild(title,quote);this.root.addChild(this.caption);this.draw();
+    const title=label(this.name,width<650?24:32,PALETTE.bright,{fontWeight:'500',letterSpacing:3});title.position.set(width/2,height-85);
+    this.caption.addChild(title);this.root.addChild(this.caption);this.draw();
   }
   capture(width,height){
     const {background,backdrop}=this,filters=background.filters,area=background.filterArea;

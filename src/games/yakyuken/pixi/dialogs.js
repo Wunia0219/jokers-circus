@@ -21,7 +21,7 @@ export function buildSlotDialog(scene,type){
     const node=label(text,size,color,{wordWrap:true,wordWrapWidth:mw-44,lineHeight:size*1.9,align:'left'});node.anchor.set(0,0);node.position.set(-mw/2+22,y);body.addChild(node);return node;
   };
   if(type==='leave'){
-    paragraph(scene.wallet?'本場尚未完成，入場已扣除 1,000 戲籌。\n現在離開，不會退還入場費。':'本場尚未完成。\n現在離開，將結束這場挑戰。',-mh/2+92,14);
+    paragraph(scene.wallet?'這場還沒打完，入場時已扣除 1,000 戲籌。\n現在離開，入場費不會退還。':'本場尚未完成。\n現在離開，將結束這場挑戰。',-mh/2+92,14);
     const bw=Math.min(210,(mw-56)/2);
     for(const [text,x,onPress,variant] of [['繼續遊戲',-bw/2-6,()=>scene.closeModal(),'panel'],['確認離開',bw/2+6,()=>scene.confirmLeave(),'duel']]){
       const button=new PixiButton({text,name:text,width:bw,height:48,variant,onPress});button.position.set(x,mh/2-54);body.addChild(button);

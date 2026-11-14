@@ -7,6 +7,7 @@ export const arcadeAssetDirs=['assets','arcade/assets','arcade/feature/assets'];
 const hashedAsset=/^[\w.-]+-[\w-]{8}\.[a-z0-9]+$/;
 const arcadePages=['arcade/lobby.html','arcade/feature/play.html','arcade/feature/cover.webp'];
 const testDownload='arcade/feature/youran-finale.png';
+const testSeloDownload=/^arcade\/feature\/selo-stage-[1-7]\.png$/;
 
 export function readReleaseFiles(root,path=''){
   return readdirSync(join(root,path),{withFileTypes:true}).flatMap(entry=>{
@@ -21,7 +22,7 @@ export function assertArcadeAssets(files,{allowTestApp=false}={}){
   assertProductionArtifact(files.filter(([name])=>!name.startsWith('arcade/')),{allowTestApp});
   for(const [name,bytes] of files.filter(([path])=>path.startsWith('arcade/'))){
     const slash=name.lastIndexOf('/');
-    assert.ok(arcadePages.includes(name)||allowTestApp&&name===testDownload||arcadeAssetDirs.includes(name.slice(0,slash))&&hashedAsset.test(name.slice(slash+1)),name);
+    assert.ok(arcadePages.includes(name)||allowTestApp&&(name===testDownload||testSeloDownload.test(name))||arcadeAssetDirs.includes(name.slice(0,slash))&&hashedAsset.test(name.slice(slash+1)),name);
     if(!/\.(?:js|css|html)$/.test(name))continue;
     const source=String(bytes);
     assert.doesNotMatch(source,/slot-game-203db|yakyuken-playtest|discord-test-session|\/api\/playtest/i);

@@ -90,7 +90,7 @@ try{
         const s=window.__responsiveScene,b=s.confirmButton.getBounds(),d=s.statusDetail.getBounds(),t=s.status.getBounds();
         return {caption:s.confirmButton.caption.width,buttonWidth:s.confirmButton.buttonWidth,detailTop:d.y,detailBottom:d.y+d.height,detailRight:d.x+d.width,titleBottom:t.y+t.height,buttonTop:b.y,buttonBottom:b.y+b.height,x:b.x,right:b.x+b.width,unit:s.balanceGroup.getChildByLabel('balance-unit').text};
       });
-      assert.equal(controls.unit,'COINS');
+      assert.equal(controls.unit,'戲籌');
       assert.ok(controls.caption<=controls.buttonWidth-20,'button caption fits even in short landscape windows');
       assert.ok(controls.titleBottom<controls.detailTop,'heading and description remain separate');
       assert.ok(controls.detailBottom<controls.buttonTop||controls.detailRight<controls.x,`${width}x${height}: status never overlaps confirm: ${JSON.stringify(controls)}`);

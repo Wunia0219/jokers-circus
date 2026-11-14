@@ -17,7 +17,7 @@ try{
   addEventListener('pagehide',event=>event.persisted?scene.pause():void scene.destroy());
   addEventListener('pageshow',event=>{if(event.persisted)scene.resume();});
   await scene.init(root);
-  if(scene.app.canvas.dataset.phase==='error')throw new Error('舞台素材載入失敗。');
+  if(scene.app.canvas.dataset.phase==='error')throw new Error('暫時無法載入遊戲，請再試一次。');
   if(await scene.beginEntry('game',{loading})&&wallet.active())await scene.beginEntry('table',{resume:true});
 }catch(error){
   await scene?.destroy();

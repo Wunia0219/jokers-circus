@@ -29,7 +29,7 @@ function buildProgress(scene,hud){
 function updateDialogue(scene){
   const bubble=scene.dialogueBubble;
   if(!bubble)return;
-  bubble.visible=scene.phase==='confirmed' && !!scene.dialogue;
+  bubble.visible=['selecting','confirmed'].includes(scene.phase) && !!scene.dialogue;
   if(!bubble.visible || bubble.dialogue===scene.dialogue)return;
   bubble.dialogue=scene.dialogue;
   bubble.removeChildren().forEach(child=>child.destroy({children:true}));
@@ -109,23 +109,23 @@ export function updateSlotHud(scene){
   if(results){const back=resultLayout.secondary;scene.returnButton.resizeButton(back.width,back.height);scene.returnButton.position.set(back.x,back.y);scene.returnButton.caption.style.fontSize=back.fontSize;}
   scene.returnButton.setEnabled(results&&!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing&&!scene.entering&&!scene.wallet?.pending);
   const paused=finished&&scene.wallet?.admissionOpen===false;
-  const next=finished?(paused?'暫停新場次':'再次挑戰'):'下一局';
+  const next=finished?(paused?'暫停新場次':'再次挑戰'):'下一拳';
   const retryName=scene.wallet?.pending?'重試上一拳':'重新同步';
   scene.confirmButton.setText(scene.rewardPresentation.busy?'領獎中…':confirmed?next:retrying?retryName:phase==='confirming'?'正在確認紀錄…':phase==='requesting'?'正在確認出牌…':phase==='presenting'?`${opponent}出牌中…`:'確認出牌');
   scene.confirmButton.caption.scale.set(1);
   scene.confirmButton.caption.scale.set(Math.min(1,(scene.confirmButton.buttonWidth-24)/scene.confirmButton.caption.width));
   scene.confirmButton.setName(confirmed?next:retrying?retryName:'確認出牌');
   scene.confirmButton.setEnabled(!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing && !scene.ending && (confirmed&&!paused || retrying || phase==='selecting' && !!selected));
-  scene.status.text=confirmed?{win:'你贏了',loss:`${opponent}獲勝`,draw:'平手，再來一拳'}[duel.outcome]:phase==='presenting'?`${opponent}即將揭牌`:selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
-  scene.statusDetail.text=confirmed?`你出${TABLE_MOVE_NAMES[selected]} · ${opponent}出${TABLE_MOVE_NAMES[duel.dealer]}`:phase==='presenting'?'好戲，即將揭曉':selected?'準備好了，就出這一張':'選擇手牌，與命運一決勝負';
+  scene.status.text=confirmed?{win:'你贏了這拳',loss:`${opponent}贏了這拳`,draw:'平手'}[duel.outcome]:phase==='presenting'?`${opponent}準備翻牌`:selected?'已選'+TABLE_MOVE_NAMES[selected]:'輪到你出牌';
+  scene.statusDetail.text=confirmed?`你出${TABLE_MOVE_NAMES[selected]} · ${opponent}出${TABLE_MOVE_NAMES[duel.dealer]}`:phase==='presenting'?'等對手翻牌':selected?'準備好就確認出牌':'選一張牌出拳';
   if(phase==='confirming'){
-    scene.status.text=duel?{win:'你贏了',loss:`${opponent}獲勝`,draw:'平手，再來一拳'}[duel.outcome]:'正在確認出牌';
+    scene.status.text=duel?{win:'你贏了這拳',loss:`${opponent}贏了這拳`,draw:'平手'}[duel.outcome]:'正在確認出牌';
     scene.statusDetail.text='正在確認紀錄…';
   }
-  if(retrying){scene.status.text='出牌尚未確認';scene.statusDetail.text=scene.handTurn?.error||'請重試原操作。';}
+  if(retrying){scene.status.text='上一拳還沒確認';scene.statusDetail.text=scene.handTurn?.error||`請按「${retryName}」。`;}
   if(confirmed && finished){
-    scene.status.text=challenge.status==='won'?'挑戰通關':'挑戰結束';
-    scene.statusDetail.text=challenge.status==='won'?'獎金 '+challenge.reward.toLocaleString('en-US')+' 戲籌 · '+(scene.wallet?'已入帳':'試玩未入帳'):'已達敗場上限，本場無獎金';
+    scene.status.text=challenge.status==='won'?'通關了！':'挑戰結束';
+    scene.statusDetail.text=challenge.status==='won'?'獎金 '+challenge.reward.toLocaleString('en-US')+' 戲籌 · '+(scene.wallet?'已入帳':'試玩未入帳'):'這場沒通關，沒有獎金';
     if(scene.rewardPresentation.busy)scene.statusDetail.text=scene.rewardPresentation.stage==='counting'?'獎金累計中…':'最後一幕，為你揭曉';
   }
   if(scene.layout.status.autoStack){

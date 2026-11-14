@@ -208,7 +208,7 @@ try{
         return {stage:app.canvas.dataset.entryStage,progress:entryOverlay.target,visible:entryOverlay.content.visible,
           logo:logo.width>0&&logo.height>0,status:entryOverlay.status.text,entries};
       });
-      assert.deepEqual(loading,{stage:'loading',progress:24,visible:true,logo:true,status:'正在確認入場與戲籌…',entries:0});
+      assert.deepEqual(loading,{stage:'loading',progress:24,visible:true,logo:true,status:'正在確認入場…',entries:0});
       assert.equal(await frame.getByRole('button',{name:'確認出牌',exact:true}).count(),0);
       await screenshot(page,{path:output+'/'+who+'-yakyuken-entry-wait.png'});
     }finally{releaseEntry();await page.unroute('**/api/playtest/begin',holdEntry);}
@@ -224,7 +224,7 @@ try{
       context.createOscillator=()=>{window.__tableSounds.tones++;return createTone();};
     });
     for(let i=0;i<2;i++){
-      if(i){await frame.getByRole('button',{name:'下一局',exact:true}).click();await phase('selecting');}
+      if(i){await frame.getByRole('button',{name:'下一拳',exact:true}).click();await phase('selecting');}
       const hand=frame.getByRole('button',{name:'選擇拳頭',exact:true}),confirm=frame.getByRole('button',{name:'確認出牌',exact:true});
       if(mobile)await hand.tap();else await hand.click();
       assert.deepEqual(await frame.evaluate(()=>window.__tableSounds),{samples:i,tones:0},'selection leaves the background track alone');

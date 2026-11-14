@@ -22,7 +22,7 @@ export class YakyukenScreenFade {
     this.root.hitArea=new Rectangle(0,0,width,height);
     this.backdrop=new Graphics().rect(0,0,width,height).fill(0x0b1020);this.root.addChild(this.backdrop);
     if(this.stage==='error'){
-      const message=label(this.errorMessage||'舞台暫時未能準備好\n請再試一次，或返回上一頁。',14,0xf0d6d4,{lineHeight:24,wordWrap:true,wordWrapWidth:width-40});
+      const message=label(this.errorMessage||'暫時無法載入遊戲\n請再試一次，或返回上一頁。',14,0xf0d6d4,{lineHeight:24,wordWrap:true,wordWrapWidth:width-40});
       message.position.set(width/2,height/2-46);this.root.addChild(message);
       const w=Math.min(168,(width-60)/2);
       const retry=new PixiButton({text:'再試一次',name:'重試野球拳轉場',variant:'gold',width:w,height:48,onPress:this.onRetry});

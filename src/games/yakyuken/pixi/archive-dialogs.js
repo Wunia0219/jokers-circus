@@ -19,7 +19,7 @@ function navigation(text,name,direction,onPress){
   button.caption.x=direction<0?8:-8;button.addChild(arrow);return button;
 }
 function storageCaption(scene,body,mw,y){
-  text(scene.archive.cloud?'收藏與紀錄儲存在測試雲端':scene.archive.persistent?'收藏與紀錄儲存在這台裝置':'目前無法儲存，資料只保留在此頁',11,0,y,body,PALETTE.muted,{wordWrap:true,wordWrapWidth:mw-32,lineHeight:15});
+  text(scene.archive.cloud?(scene.isTestWallet?'收藏與紀錄已儲存在測試服':'收藏與紀錄已儲存'):scene.archive.persistent?'收藏與紀錄儲存在這台裝置':'目前無法儲存，資料只保留在此頁',11,0,y,body,PALETTE.muted,{wordWrap:true,wordWrapWidth:mw-32,lineHeight:15});
 }
 function collectionFooter(scene,body,mw,mh,inline,mini,mastheadY,mobile,scrollbar){
   const bottom=mh/2;
@@ -154,8 +154,8 @@ function buildViewer(scene,body,width,height,layout){
   const status=text('',12,0,top+barHeight+14,body,PALETTE.bright);
   const download=place(new PixiButton({text:'下載原圖',name:'下載高畫質去背 PNG',icon:downloadGlyph,iconSize:18,variant:'tool',width:downloadWidth,height:44,onPress:async()=>{
     download.setEnabled(false);status.text='';
-    try{const opened=await downloadCG(scene.archive,character,index,scene.activity);if(!body.destroyed)status.text=opened?'':'已取消，可再次點選下載';}
-    catch{if(!body.destroyed)status.text='暫時無法開啟下載，請稍後再試';}
+    try{const opened=await downloadCG(scene.archive,character,index,scene.activity);if(!body.destroyed)status.text=opened?'':'已取消下載，可以再試一次';}
+    catch{if(!body.destroyed)status.text='暫時無法下載，請稍後再試';}
     finally{if(!body.destroyed)download.setEnabled(true);}
   }}),left+downloadLeft+downloadWidth/2,y,body);
   download.setActive(true);

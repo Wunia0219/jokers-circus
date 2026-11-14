@@ -39,9 +39,9 @@ export const CHARACTER_ART=Object.freeze({
 });
 
 export const CHARACTER_INTROS=Object.freeze({
-  dealer:'酒紅襯衫、黑色背心，邀你入局。',
-  'guest-1':'銀髮工匠優然，等你出拳。',
-  'guest-2':'夏澄挽起袖口，等你入局。',
-  'guest-3':'瑟洛理了理袖口，抬眼等你出拳。',
-  'guest-4':'家財萬貫的名門少爺，戴著藍寶石領針赴約。',
+  dealer:'牌桌已經備好了，命運荷官等你入座。',
+  'guest-1':'銀髮工匠把毛巾往肩上一搭，笑著等你出拳。',
+  'guest-2':'夏澄挽起袖口，等你準備好。',
+  'guest-3':'瑟洛抬眼看你，等你先出手。',
+  'guest-4':'這位名門少爺戴著藍寶石領針，已經在桌邊等你。',
 });
