@@ -41,7 +41,7 @@
 | `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：依本機 CG 目錄驗證原圖下載、位元組、CSP 與同源請求，需先部署對應版本的圖庫 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
 | `node scripts/qa/discord-test-activity.js` | 使用已建置前端、真正的 Embedded App SDK 與隔離帳號。三主題各跑 13 種尺寸，驗證橫直切換、人物裁切、文字安全區、開場故障與來源，再跑桌機／手機雙遊戲及共用簽到 |
-| `node scripts/qa/arcade-release.js --production` | 正式 App 雙遊戲建置；正常 CG 解鎖、測試 PNG 拒絕、正式收藏下載路徑，以及隱藏、維護、更新中原局恢復 |
+| `node scripts/qa/arcade-release.js --production` | 正式 App 雙遊戲建置；正常 CG 解鎖、測試 PNG 拒絕、正式收藏下載路徑，以及隱藏、維護、更新中原局恢復。以實際大廳前端連接隔離公告佇列，驗證開大廳即入場、切換兩款遊戲不重複進離場、關閉後唯一離場及本人提及；不帶 `--production` 時驗證零 Bot 請求 |
 | `npm run arcade:preflight -- production-arcade` | 不需雲端憑證；核對正式綁定、前端與 Worker dry-run，絕不部署 |
 | `node scripts/qa/arcade-release.js` | 4206 埠，隔離雙遊戲測試建置與真實 SDK。驗證預告階段封鎖、手機直橫版、共用 Discord 連線、野球拳單一品牌載入畫面、兩款遊戲即時中斷與返回大廳，以及重開後取回原轉輪。`cloud-runtime.integration.js` 另驗證兩個野球拳開關、維護期間阻擋新操作、重新開放續局及備份還原 |
 | `node scripts/qa/test-firestore.js tests/discord-test.integration.js` | 官方 emulator＋真正 workerd：Discord 簽章／頻道、OAuth、每位玩家、共用錢包／簽到與重啟 |

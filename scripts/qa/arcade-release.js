@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
+import {EventEmitter,once} from 'node:events';
 import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {resolve,extname,dirname} from 'node:path';
 import {buildArcadeRelease} from '../build/arcade-release.js';
@@ -8,6 +9,7 @@ import {CG_ORIGIN,CG_ART} from '../../src/games/yakyuken/cg-catalog.js';
 import {arcadeAsset,arcadeLobby,arcadeStatus} from '../../cloud/arcade-routes.js';
 import {secureResponse} from '../../server/http/security-headers.js';
 import {WalletStore} from '../../server/wallet/wallet.js';
+import {CasinoVisits,VISIT_CLOSE_GRACE_MS} from '../../server/discord/casino-visits.js';
 import {duelView} from '../../server/wallet/duel-settlement.js';
 import {launchBrowser} from './helpers/browser.js';
 
@@ -15,7 +17,7 @@ assert.ok(process.argv.slice(2).every(arg=>arg==='--production'),'Only --product
 const production=process.argv.includes('--production'),environment=production?'production':'test';
 const output=resolve(production?'test-results/arcade-production':'test-results/arcade-release'),dist=resolve(output,'dist');
 const clientId=production?PRODUCTION_DISCORD_APP:TEST_DISCORD_APP,guild='100000000000000001',user='100000000000000002';
-const session={token:'isolated-session',guildId:guild,userId:user,environment};
+const session={token:'isolated-session',guildId:guild,userId:user,environment,...(production?{casinoNotifications:true}:{})};
 const env={APP_ENV:environment,DISCORD_CLIENT_ID:clientId,ARCADE_RELEASE_ENABLED:'false'};
 let mode={slot:'open',feature:'hidden',revision:0};
 const state={get:()=>mode};
@@ -68,6 +70,35 @@ for(const [path,content] of [[oldAsset,'slot'],[oldLobby,'lobby'],[oldFeature,'g
 }
 await buildArcadeRelease({clientId,target:production?'production-arcade':'test',outDir:dist,legacy,logLevel:'warn'});
 const wallet=new WalletStore({filename:':memory:',environment,guildIds:[guild]});
+let visitTime=Date.now();
+const visitState=new Map(),announcements=[],presenceRequests=[];
+const presenceEvents=new EventEmitter();
+const lobbyEntryRequested=Promise.withResolvers(),releaseLobbyEntry=Promise.withResolvers();
+const visits=new CasinoVisits({state:visitState,clock:()=>visitTime,
+  bot:{guild,send:async payload=>{announcements.push(payload);return {kind:'sent',messageId:String(announcements.length)};}},
+  readAccount:async()=>{
+    const {balance,revision,history}=wallet.state(guild,user);
+    const sum=key=>history.reduce((total,round)=>total+round[key],0);
+    return {balance,revision,rounds:history.length,net:sum('net'),bet:sum('bet'),payout:sum('payout')};
+  },
+});
+const presenceResponse=(_page,action)=>{
+  const result=once(presenceEvents,action,{signal:AbortSignal.timeout(15000)}).then(([response])=>response)
+    .catch(error=>{throw new Error(`Missing ${action}; received ${JSON.stringify(presenceRequests)}`,{cause:error});});
+  result.catch(()=>{});return result;
+};
+async function closeVisit(page){
+  // Playwright routing cannot continue an intercepted keepalive after its frame unloads.
+  await page.unrouteAll({behavior:'wait'});
+  const leaving=production?presenceResponse(page,'leave'):null;
+  await page.goto(origin+'/__closed');
+  if(leaving)assert.equal((await leaving).status,200);
+  visitTime+=VISIT_CLOSE_GRACE_MS;
+  await visits.sweep();await visits.flush();
+  assert.equal(visits.status().activeVisits,0);
+  visitTime+=1000; // Move past the delivery cooldown before the next independent activity.
+  await page.close();
+}
 const spinAccepted=Promise.withResolvers(),releaseSpin=Promise.withResolvers();
 const secondSpinAccepted=Promise.withResolvers(),releaseSecondSpin=Promise.withResolvers();
 const featureStateRequested=Promise.withResolvers(),releaseFeatureState=Promise.withResolvers();
@@ -76,7 +107,8 @@ const server=createServer(async(req,res)=>{
   const url=new URL(req.url,origin);
   let response;
   try{
-    if(url.pathname==='/__host')response=new Response(host(url.searchParams.get('platform')==='mobile'?'mobile':'desktop'),{headers:{'Content-Type':'text/html; charset=utf-8'}});
+    if(url.pathname==='/__closed')response=new Response('<!doctype html><title>Closed</title>',{headers:{'Content-Type':'text/html'}});
+    else if(url.pathname==='/__host')response=new Response(host(url.searchParams.get('platform')==='mobile'?'mobile':'desktop'),{headers:{'Content-Type':'text/html; charset=utf-8'}});
     else if(url.pathname==='/game-entry.json'&&env.ARCADE_RELEASE_ENABLED==='false')response=Response.json({mode:'open',previewUserIds:[]});
     else if(url.pathname==='/api/token')response=Response.json({access_token:'fixture-token',session});
     else if(url.pathname==='/api/arcade'){
@@ -90,6 +122,17 @@ const server=createServer(async(req,res)=>{
     }
     else if(url.pathname.startsWith('/api/')){
       if(req.headers.authorization!=='Bearer '+session.token)response=Response.json({error:'Login required'},{status:401});
+      else if(url.pathname==='/api/casino-visit'){
+        const chunks=[];for await(const chunk of req)chunks.push(chunk);
+        const input=JSON.parse(Buffer.concat(chunks).toString());presenceRequests.push(input);
+        assert.ok(production,'Bot-free test activity must not send presence requests');
+        if(input.action==='enter'&&presenceRequests.filter(event=>event.action==='enter').length===2){
+          lobbyEntryRequested.resolve();await releaseLobbyEntry.promise;
+        }
+        response=Response.json(await visits.request({guild,user,expires:visitTime+86400000},input));
+        await visits.flush();
+        presenceEvents.emit(input.action,response);
+      }
       else if(url.pathname==='/api/wallet')response=Response.json({state:wallet.state(guild,user)});
       else if(url.pathname==='/api/spin'){
         const chunks=[];for await(const chunk of req)chunks.push(chunk);
@@ -144,6 +187,7 @@ try{
   assert.equal(wallet.state(guild,user).history[0].id,original.round.id);
   assert.match(await (await old.request.get(origin+oldAsset)).text(),/retained old slot bundle/);
   assert.match(await (await old.request.get(origin+oldLobby)).text(),/retained old lobby bundle/);
+  await closeVisit(old);
 
   const failedLogin=Promise.withResolvers(),failedPage=await browser.newPage({viewport:{width:1280,height:800}});
   try{
@@ -155,25 +199,35 @@ try{
   }finally{failedLogin.resolve();await failedPage.close();}
 
   const desktop=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'reduce'});
+  const desktopEntry=production?presenceResponse(desktop,'enter'):null;
   const desktopLobby=await inspect(desktop,'desktop');
+  if(production){
+    await Promise.race([lobbyEntryRequested.promise,desktopEntry]);
+    assert.equal(await desktopLobby.locator('#lobby').evaluate(node=>node.inert),true,
+      'games remain unavailable until the initial ledger snapshot has been acknowledged');
+    releaseLobbyEntry.resolve();
+  }
   await desktopLobby.locator('#launch-screen').waitFor({state:'detached'});
+  if(desktopEntry)assert.equal((await desktopEntry).status,200,'opening the lobby itself announces entry');
   const desktopCard=desktopLobby.getByRole('button',{name:'選擇老虎機',exact:true});
   await desktopCard.waitFor();
   assert.equal(await desktopLobby.getByRole('button',{name:'進入遊戲',exact:true}).count(),0);
   await desktop.screenshot({path:resolve(output,'lobby-desktop.png')});
   await desktopCard.click();
   await desktopLobby.frameLocator('#arcade-game').locator('#spin:enabled').waitFor({timeout:45000});
-  await desktop.close();
+  await closeVisit(desktop);
 
   const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
   const requests=[];
   page.on('request',request=>requests.push(request.url()));
   page.on('pageerror',error=>console.error(error));
   page.on('console',message=>{if(message.type()==='error')console.error(message.text());});
+  const mobileEntry=production?presenceResponse(page,'enter'):null;
   const lobby=await inspect(page,'mobile');
   const slotCard=lobby.getByRole('button',{name:'選擇老虎機',exact:true});
   const featureCard=lobby.getByRole('button',{name:'選擇野球拳',exact:true});
   await lobby.locator('#launch-screen').waitFor({state:'detached'});
+  if(mobileEntry)assert.equal((await mobileEntry).status,200);
   await slotCard.waitFor({timeout:30000});
   assert.equal(await lobby.locator('#feature-status').textContent(),'即將揭曉');
   assert.equal(await featureCard.count(),0);
@@ -300,13 +354,25 @@ try{
   assert.equal(spins,3);
   assert.equal(wallet.state(guild,user).history.length,2);
   assert.equal(wallet.state(guild,user).history[0].id,interrupted.round.id);
+  await closeVisit(page);
+  assert.equal(presenceRequests.filter(event=>event.action==='enter').length,production?3:0,
+    'one visit per activity, including the standalone legacy game; child switches never re-enter');
+  assert.equal(presenceRequests.filter(event=>event.action==='leave').length,production?3:0,
+    'only closing an activity leaves; switching games and maintenance do not');
+  assert.equal(announcements.length,production?6:0);
+  for(const notice of announcements){
+    assert.ok(notice.content.includes(`<@${user}>`));
+    assert.deepEqual(notice.allowed_mentions,{parse:[],users:[user]});
+  }
   mkdirSync(output,{recursive:true});
   writeFileSync(resolve(output,'report.json'),JSON.stringify({ok:true,oldSpinSurvived:true,hiddenAssetGate:true,
     retainedLegacyAssets:true,mobileReveal:true,portraitAndLandscape:true,sharedDiscordConnection:true,
     singleEntryLoader:true,environment,normalUnlocks:production,allTestCGsVisible:!production,
+    activityPresence:true,notificationCount:announcements.length,noChildVisitDuplicates:true,
     testDownloadIsolated:true,loginFailureCleanup:true,liveMaintenance:true,interruptedSpinRecovered:true},null,2)+'\n');
   console.log('Arcade rollout, branded loading, live maintenance and original spin recovery verified.');
 }finally{
+  releaseLobbyEntry.resolve();
   releaseSpin.resolve();
   releaseSecondSpin.resolve();
   releaseFeatureState.resolve();

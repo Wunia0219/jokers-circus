@@ -103,6 +103,12 @@ test('framed previews launch for any member in the game channel without granting
       store,[],[channel],{casinoPreview:true});
     assert.equal(preview.data.flags,64);
     assert.deepEqual(preview.data.allowed_mentions,{parse:[]});
+    if(['enter','idle','exit-mixed','exit-slot','exit-duel'].includes(choice)){
+      assert.ok(preview.data.content.includes(`<@${user}>`));
+      assert.doesNotMatch(preview.data.content,/測試玩家/);
+      assert.match(preview.data.content,choice==='enter'?/入場/:/離場/);
+      assert.equal(preview.data.content.includes('這次還沒下注'),choice==='idle');
+    }
     if(['enter','idle','grant'].includes(choice)){
       assert.equal(preview.data.components,undefined);
       continue;

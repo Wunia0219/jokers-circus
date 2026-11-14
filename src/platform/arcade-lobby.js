@@ -5,6 +5,7 @@ import {authenticateActivity} from './discord-auth.js';
 import {ARCADE_SLOT_PATH,createArcadeHost} from './arcade-session.js';
 import {createLaunchScreen} from './launch-screen.js';
 import {createActivityMusic} from './activity-music.js';
+import {createCasinoPresence} from './casino-presence.js';
 import {icon} from '../ui/shared/icons.js';
 import {createLoadingScreen} from '../ui/shared/loading.js';
 import {showMaintenanceScreen} from '../ui/shared/maintenance-screen.js';
@@ -15,7 +16,7 @@ const status=byId('lobby-status'),retry=byId('lobby-retry'),featureStatus=byId('
 const musicButton=lobby.querySelector('.lobby-music');
 const launch=createLaunchScreen(byId('launch-screen')),music=createActivityMusic();
 const lifetime=new AbortController(),{signal}=lifetime;
-let activity,view,refreshing,lastCard,displayed,refreshTimer,state,game,gameLoading;
+let activity,view,refreshing,lastCard,displayed,refreshTimer,state,game,gameLoading,casinoPresence;
 const timeout=setTimeout(()=>launch.fail(),45000);
 
 function updateMusic(){
@@ -175,6 +176,7 @@ window.addEventListener('pageshow',visibility,{signal});
 window.addEventListener('pagehide',event=>{
   music.setVisible(false);view?.setVisible(false);
   if(event.persisted)return;
+  casinoPresence?.dispose();
   clearTimeout(timeout);clearInterval(refreshTimer);stopGame();
   safeAreaObserver.disconnect();launch.destroy();music.dispose();lifetime.abort();
 },{signal});
@@ -188,10 +190,16 @@ try{
   ]);
   if(!activity.session||!['production','test'].includes(activity.session.environment)||activity.session.discordTest)
     throw new Error('此入口需要 Discord 活動登入。');
-  Object.defineProperty(window,'__circusArcade',{value:createArcadeHost(activity,
+  const host=createArcadeHost(activity,
     ()=>authenticateActivity(activity.sdk,import.meta.env.VITE_DISCORD_CLIENT_ID,fetch,true),frame,music.controls,
-    {entryLoading:()=>gameLoading,onMaintenance:()=>void refresh()})});
+    {entryLoading:()=>gameLoading,onMaintenance:()=>void refresh()});
+  Object.defineProperty(window,'__circusArcade',{value:host});
   if(!await refresh())throw new Error('無法取得遊戲入口狀態。');
+  // Establish the ledger starting point before either child can accept a wager.
+  if(!signal.aborted&&activity.session.casinoNotifications){
+    casinoPresence=createCasinoPresence(activity.session,{fetchImpl:host.fetch});
+    await casinoPresence.start();
+  }
   clearTimeout(timeout);
   if(await launch.finish()){
     lobby.inert=false;
@@ -203,6 +211,7 @@ try{
 }catch(error){
   clearTimeout(timeout);
   clearInterval(refreshTimer);
+  casinoPresence?.dispose();
   lifetime.abort();safeAreaObserver.disconnect();music.dispose();
   console.error('無法開啟遊戲大廳。',error);
   launch.fail();
