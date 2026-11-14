@@ -19,7 +19,7 @@ export function buildGameLobby(root,{width,height,layout,logoTexture,games}){
     node.position.set(width/2,y);root.addChild(node);
   };
   title('選擇你的舞台',layout.headingY,layout.headingSize,PALETTE.cream,{fontWeight:'500'});
-  title('玩轉輪，或挑一位對手猜拳。',layout.subtitleY,height<500?12:13,PALETTE.muted);
+  title('玩老虎機，或挑一位對手猜拳。',layout.subtitleY,height<500?12:13,PALETTE.muted);
   title('聚光燈已亮起，好戲等你入場。',layout.footerY,12,PALETTE.muted);
   return games.map((game,index)=>{
     const card=createGameCover({...game,area:layout.games[index]});

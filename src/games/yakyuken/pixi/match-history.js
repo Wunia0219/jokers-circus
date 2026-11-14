@@ -20,7 +20,7 @@ export function buildMatchHistory(scene,body,mw,mh){
   body.addChild(new Graphics().roundRect(-mw/2,-mh/2,mw,header,18).fill(headFill).rect(-mw/2,-mh/2+18,mw,header-18).fill(headFill));
   body.addChild(new Graphics().moveTo(-mw/2,-mh/2+header).lineTo(mw/2,-mh/2+header).stroke({color:0xc79a5f,alpha:.26,width:1}));
   addText(body,'遊玩紀錄',scene.layout.ui.width<=450?17:19,-mw/2+inset,-mh/2+header/2,PALETTE.gold,{fontWeight:'500'});
-  addText(body,`共 ${records.length} 場 · 點開一場查看對局結果`,12,-mw/2+inset,-mh/2+header+(phone?29:31),0xd5bcbf);
+  addText(body,`最近 ${records.length} 場 · 點開一場查看對局結果`,12,-mw/2+inset,-mh/2+header+(phone?29:31),0xd5bcbf);
   const bounds=new Rectangle(0,0,cw,vh),viewport=new Container({label:'match-history-scroll',eventMode:'static',hitArea:bounds,boundsArea:bounds});viewport.position.set(-mw/2+inset,top);body.addChild(viewport);
   viewport.accessible=true;viewport.accessibleTitle='遊玩紀錄清單，使用方向鍵或滑動查看更多';viewport.accessibleHint=viewport.accessibleTitle;viewport.accessibleType='div';viewport.tabIndex=0;
   viewport.accessiblePointerEvents='none';

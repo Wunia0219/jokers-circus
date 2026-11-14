@@ -3,7 +3,7 @@ export const BOT_COLORS = Object.freeze({ info: 0xd6b775, success: 0x68a880, war
 export function privateReply(environment, description, title = '你的戲籌', tone = 'info', fields = []) {
   return { type: 4, data: {
     embeds: [{ author: { name: 'Joker’s Circus' }, title, description, color: BOT_COLORS[tone], fields,
-      footer: { text: `只有你看得到${environment === 'test' ? ' · 試玩戲籌' : ''}` } }],
+      footer: { text: `只有你看得到${environment === 'test' ? ' · 測試戲籌' : ''}` } }],
     flags: 64, allowed_mentions: { parse: [] },
   } };
 }

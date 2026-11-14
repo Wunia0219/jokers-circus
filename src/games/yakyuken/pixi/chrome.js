@@ -110,7 +110,7 @@ export function updateSlotHud(scene){
   scene.returnButton.setEnabled(results&&!scene.settling&&!scene.rewardPresentation.busy&&!scene.changing&&!scene.entering&&!scene.wallet?.pending);
   const paused=finished&&scene.wallet?.admissionOpen===false;
   const next=finished?(paused?'暫停新場次':'再次挑戰'):'下一拳';
-  const retryName=scene.wallet?.pending?'重試上一拳':'重新同步';
+  const retryName=scene.wallet?.pending?'重試上一拳':'更新進度';
   scene.confirmButton.setText(scene.rewardPresentation.busy?'領獎中…':confirmed?next:retrying?retryName:phase==='confirming'?'正在確認紀錄…':phase==='requesting'?'正在確認出牌…':phase==='presenting'?`${opponent}出牌中…`:'確認出牌');
   scene.confirmButton.caption.scale.set(1);
   scene.confirmButton.caption.scale.set(Math.min(1,(scene.confirmButton.buttonWidth-24)/scene.confirmButton.caption.width));
@@ -125,7 +125,7 @@ export function updateSlotHud(scene){
   if(retrying){scene.status.text='上一拳還沒確認';scene.statusDetail.text=scene.handTurn?.error||`請按「${retryName}」。`;}
   if(confirmed && finished){
     scene.status.text=challenge.status==='won'?'通關了！':'挑戰結束';
-    scene.statusDetail.text=challenge.status==='won'?'獎金 '+challenge.reward.toLocaleString('en-US')+' 戲籌 · '+(scene.wallet?'已入帳':'試玩未入帳'):'這場沒通關，沒有獎金';
+    scene.statusDetail.text=challenge.status==='won'?'獎金 '+challenge.reward.toLocaleString('en-US')+' 戲籌 · '+(scene.wallet?'已入帳':'試玩未入帳'):'這次挑戰未通關';
     if(scene.rewardPresentation.busy)scene.statusDetail.text=scene.rewardPresentation.stage==='counting'?'獎金累計中…':'最後一幕，為你揭曉';
   }
   if(scene.layout.status.autoStack){

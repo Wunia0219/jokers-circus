@@ -39,7 +39,7 @@ export function buildSlotDialog(scene,type){
     const motion=addButton(scene.motion.reduced?'動態效果：減少':'動態效果：標準',start+52,()=>{
       scene.reducePreference=!scene.motion.reduced;scene.motion.reduced=!!scene.reducePreference || scene.media.matches;if(scene.motion.reduced)scene.motion.finish();scene.openModal('settings');
     },'切換動態效果');
-    if(scene.media.matches){motion.setText('動態效果：跟隨系統減少');motion.setEnabled(false);}
+    if(scene.media.matches){motion.setText('動態效果：依系統設定');motion.setEnabled(false);}
     const fullscreen=addButton(document.fullscreenElement?'離開全螢幕':'全螢幕',start+104,async()=>{
       try{if(document.fullscreenElement)await document.exitFullscreen();else await scene.host.requestFullscreen();if(!scene.disposed && scene.modal==='settings')scene.openModal('settings');}
       catch{if(!fullscreen.destroyed)fullscreen.setText('此視窗不支援全螢幕');}

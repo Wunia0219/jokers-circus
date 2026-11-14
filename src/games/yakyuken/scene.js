@@ -32,6 +32,7 @@ import {RewardPresentation} from './reward-presentation.js';
 import {createCheckinDialog} from './checkin-dialog.js';
 import {createCheckinButton} from '../../ui/player/checkin-button.js';
 import {checkinClaimFeedback,playerError} from '../../ui/player/player-copy.js';
+import {duelErrorMessage} from './player-copy.js';
 import {icon} from '../../ui/shared/icons.js';
 
 // Local previews use an archive; deployed games inject their authenticated wallet.
@@ -282,7 +283,7 @@ export class YakyukenScene {
             orig:new Rectangle(0,0,width,height),trim:new Rectangle((width-texture.width)/2,(height-texture.height)/2,texture.width,texture.height)});
         }else this.artTextures[art.id][art.index]=texture;
       }
-      completed++;overlay.update(15+completed/artwork.length*55,'正在載入立繪與牌組…');
+      completed++;overlay.update(15+completed/artwork.length*55,'正在準備角色與牌組…');
     }));
     if(results.some(result=>result.status==='rejected'))throw new Error('Yakyuken entry resources unavailable');
   }
@@ -328,7 +329,7 @@ export class YakyukenScene {
         this.screen='characters';this.phase='selecting';this.matchId=null;this.challenge=null;this.completedRounds=0;this.presentedRound=0;this.dialogue='';this.pose=0;this.ending=false;this.resize();
       }else if(this.screen!==source){this.screen=source;this.phase='selecting';this.resize();}
       const uncertain=!!this.wallet?.pending;
-      overlay.fail(this.wallet&&['table','lobby'].includes(kind)?`${error.message}\n${uncertain?'請重試原操作，以確認戲籌結果。':'請再試一次，或返回上一頁。'}`:undefined,!uncertain);this.updateControls();this.world.interactiveChildren=false;this.world.accessibleChildren=false;return false;
+      overlay.fail(this.wallet&&['table','lobby'].includes(kind)?`${duelErrorMessage(error)}\n${uncertain?'請按「再試一次」，確認剛才的結果。':'你可以再試一次，或返回上一頁。'}`:undefined,!uncertain);this.updateControls();this.world.interactiveChildren=false;this.world.accessibleChildren=false;return false;
     }
   }
   cancelEntry(){
@@ -381,13 +382,13 @@ export class YakyukenScene {
       const data=await this.wallet.hand(this.matchId,turn.move,turn.handIndex);
       if(this.disposed||this.handTurn!==turn)return;
       const record=data.wallet.records.find(r=>r.id===this.matchId);
-      if(!record||data.duel?.player!==turn.move||turn.duel&&(data.duel.outcome!==turn.duel.outcome||data.duel.dealer!==turn.duel.dealer))throw new Error('這拳的結果有變動，請按「重新同步」。');
+      if(!record||data.duel?.player!==turn.move||turn.duel&&(data.duel.outcome!==turn.duel.outcome||data.duel.dealer!==turn.duel.dealer))throw new Error('目前畫面與對局紀錄不一致，請按「更新進度」。');
       if(this.onLobby&&(record.rounds!==turn.handIndex+1||record.status==='left'))
-        throw new Error('這場已在其他裝置更新，請按「重新同步」。');
+        throw new Error('這場已在其他裝置更新，請按「更新進度」。');
       turn.duel=data.duel;turn.settled=true;
       if(record.status==='won'&&record.reward>0)this.rewardPresentation.hold({id:this.matchId,after:data.wallet.balance,reward:record.reward});
       this.challenge={...record,rounds:turn.before.rounds+1,draws:(turn.before.draws||0)+Number(data.duel.outcome==='draw'),last:data.duel};
-    }catch(error){if(!this.disposed&&this.handTurn===turn)turn.error=error.message;}
+    }catch(error){if(!this.disposed&&this.handTurn===turn)turn.error=duelErrorMessage(error);}
     finally{this.settling=false;if(!this.disposed&&this.handTurn===turn)this.updateControls();}
   }
   async animateHandTurn(turn){
@@ -434,7 +435,7 @@ export class YakyukenScene {
         this.challenge={...active,rounds,draws:rounds-active.wins-active.losses,last:null};this.matchId=active.id;this.pose=earnedPose(active.wins,this.characterTextures.length);this.completedRounds=rounds;this.presentedRound=rounds;
       }else{this.screen='characters';this.challenge=null;this.matchId=null;}
       this.resize();
-    }catch(error){turn.error=error.message;}
+    }catch(error){turn.error=duelErrorMessage(error);}
     finally{this.settling=false;if(!this.disposed)this.updateControls();}
   }
   async presentResult(){

@@ -43,12 +43,12 @@ export function settleDuel(previous,intent,now,makePlan=(character,rule)=>create
   }
   const record=state.records[0];
   if(!active||active.id!==matchId||record?.id!==matchId||record.status!=='playing')
-    throw problem(409,'此場挑戰已結束，請重新確認紀錄。','DUEL_MATCH');
+    throw problem(409,'這場挑戰已結束，請按「更新進度」查看目前的紀錄。','DUEL_MATCH');
   if(action==='leave'){
     Object.assign(record,{status:'left',updatedAt:now});state.active=null;
     return {state,delta:0,reason:'挑戰離場',matchId};
   }
-  if(active.index!==handIndex)throw problem(409,'出牌進度已更新，請重新同步。','DUEL_HAND');
+  if(active.index!==handIndex)throw problem(409,'對局進度已更新，請按「更新進度」。','DUEL_HAND');
   const duel=duelForOutcome(move,active.plan[handIndex]);
   if(active.ruleVersion!==DUEL_RULE_VERSION)throw new Error('Unsupported challenge rules');
   Object.assign(record,challengeProgress(record,duel.outcome,DUEL_RULES[record.characterId]),{updatedAt:now});

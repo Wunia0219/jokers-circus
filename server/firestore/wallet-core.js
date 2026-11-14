@@ -211,7 +211,12 @@ export class FirestoreWalletCore {
         const entries=[];
         const credit=(delta,entryKind,actor,reason,reference=null)=>{
           const before=wallet.balance,after=before+delta;
-          if(!Number.isSafeInteger(after)||after<0||after>maxBalance)throw problem(409,'餘額不足或超出可記帳範圍。','BALANCE_LIMIT');
+          if(!Number.isSafeInteger(after)||after<0||after>maxBalance){
+            if(entryKind===DUEL_LEDGER_KIND)throw after<0
+              ?problem(409,'入場需要 1,000 戲籌，目前戲籌不足。','DUEL_BALANCE_LOW')
+              :problem(409,'目前戲籌已接近上限，暫時無法完成這次操作。請聯絡管理員。','DUEL_BALANCE_LIMIT');
+            throw problem(409,'餘額不足或超出可記帳範圍。','BALANCE_LIMIT');
+          }
           if(!Number.isSafeInteger(++meta.nextId))throw problem(503,'帳號戲籌正在維護，請稍後再試。','FIRESTORE_SCHEMA');
           const entry={id:meta.nextId,guild,user,kind:entryKind,delta,before,after,actor,reason,time:new Date(now).toISOString(),day,reference};
           wallet.balance=after;wallet.revision=entry.id;entries.push(entry);return entry;

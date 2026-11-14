@@ -134,7 +134,7 @@ test('balance seeds once and retired checkin commands never award chips, even af
   for (let i = 0; i < 2; i++) {
     const balance = card(await invoke(command('戲籌')));
     assert.match(balance.description, /10,000/);
-    assert.match(balance.footer.text, /試玩戲籌/);
+    assert.match(balance.footer.text, /測試戲籌/);
   }
   // Use different interaction IDs, as repeated clicks do, rather than replaying one request.
   const responses = await Promise.all(Array.from({ length: 8 }, () => invoke(command('簽到'))));
@@ -165,7 +165,7 @@ test('production bot wallets receive welcome chips without a test-environment la
   const { invoke, store } = await fixture(t, { environment: 'production' });
   const balance = card(await invoke(command('戲籌')));
   assert.match(balance.description, /\*\*10,000 戲籌\*\*/);
-  assert.doesNotMatch(JSON.stringify(balance), /測試環境|試玩戲籌/);
+  assert.doesNotMatch(JSON.stringify(balance), /測試環境|測試戲籌/);
   assert.equal(card(await invoke(command('簽到'))).title,'請在遊戲內簽到');
   store.checkin(guild,member);
   assert.match(card(await invoke(command('戲籌'))).description, /\*\*10,500 戲籌/);
