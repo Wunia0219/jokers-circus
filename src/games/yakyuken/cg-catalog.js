@@ -40,7 +40,7 @@ export const CG_ART=Object.freeze({dealer:DEALER_CG,'guest-1':collection('guest-
   {slug:'waistcoat',name:'卸下訂製背心'},
   {slug:'open-collar',name:'解開絲質襯衫'},
   {slug:'sapphire-earrings',name:'摘下藍寶石耳飾'},
-  {slug:'dress-shoes',name:'褪去晚宴皮鞋'},
+  {slug:'dress-shoes',name:'解開銀髮'},
   {slug:'finale',name:'萬世終幕'},
 ])});
 export const ALL_CG=Object.freeze(Object.values(CG_ART).flat());

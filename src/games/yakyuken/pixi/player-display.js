@@ -1,12 +1,12 @@
 import {Container,Graphics,Sprite,Texture} from 'pixi.js';
 import {discordAvatarUrl} from '../../../platform/discord-avatar.js';
-import {label,PALETTE} from './ui.js';
-import {BALANCE_ROW_HEIGHT} from './slot-theme.js';
+import {label,PALETTE} from '../../../ui/pixi/ui.js';
+import {BALANCE_ROW_HEIGHT} from '../../../ui/pixi/slot-theme.js';
 
 export function playerIdentity(scene){
   const user=scene.activity?.user;
   return {name:user?(user.global_name||user.username):(scene.wallet?.wallet.name||'訪客玩家'),
-    detail:user?`ID ${user.id}`:scene.wallet?'測試帳號':'進度保存在這台裝置'};
+    detail:user?`ID ${user.id}`:scene.wallet?(scene.isTestWallet?'測試帳號':'Discord 帳號'):'進度保存在這台裝置'};
 }
 
 // Own one portrait per scene; resizing reuses it without restarting the round.
@@ -37,7 +37,7 @@ export function buildBalance(scene,hud,width,headerHeight){
   group.addChild(new Graphics().roundRect(-w/2,-17,w,34,5).fill({color:0x211a24,alpha:.72})
     .moveTo(-w/2+14,16).lineTo(w/2-14,16).stroke({color:0xd6af6b,width:1,alpha:.45})
     .moveTo(-w/2+91,-8).lineTo(-w/2+91,8).stroke({color:0xd6af6b,width:1,alpha:.25}));
-  const caption=label('COINS',13,PALETTE.gold,{fontFamily:['Georgia','serif'],fontWeight:'bold',letterSpacing:2});caption.label='balance-unit';caption.anchor.x=0;caption.x=-w/2+14;group.addChild(caption);
+  const caption=label('戲籌',13,PALETTE.gold,{fontWeight:'bold',letterSpacing:2});caption.label='balance-unit';caption.anchor.x=0;caption.x=-w/2+14;group.addChild(caption);
   const number=label('',25,PALETTE.bright,{fontFamily:['Georgia','serif'],fontWeight:'bold'});number.anchor.x=1;number.x=w/2-14;group.addChild(number);
   scene.balanceNumber=number;scene.balanceGroup=group;
   const glow=new Graphics().roundRect(-w/2,-16.5,w,33,6).stroke({color:0xffdc8c,width:3,alpha:.35})

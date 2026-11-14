@@ -37,6 +37,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  const settings={projectId:'demo-jokers-circus',environment:'test',namespace,schemaVersion:2,emulator:process.env.FIRESTORE_EMULATOR_HOST,quota:{filename:join(dir,'sdk-quota.sqlite'),projectId:'demo-jokers-circus'}};
  const sdk=new FirestoreWalletStore(settings,{guildIds:[guild]});t.after(()=>sdk.close());const plan=firestoreImportPlan(source,'test',{version:2});await importFirestore(sdk,plan);
  const rsa=generateKeyPairSync('rsa',{modulusLength:2048}),ed=generateKeyPairSync('ed25519'),key=randomBytes(32).toString('hex'),admin=randomBytes(32).toString('hex'),replies=[],announcements=[];let metadataReads=0;
+ const previewUpload=Promise.withResolvers(),previewToken='private-preview-fixture-token';
  const operatorToken=randomBytes(32).toString('hex'),operatorHeaders={Authorization:'Bearer '+operatorToken};
  const config={modules:true,scriptPath:process.env.TEST_CLOUD_BUNDLE||'test-results/cloud-bundle/worker.js',compatibilityDate:'2026-07-30',compatibilityFlags:['nodejs_compat'],durableObjects:{CIRCUS_PROJECT:{className:'CircusProject',useSQLite:true}},resourcePersistencePath:join(dir,'durable'),bindings:{CLOUD_PLAN:'free',APP_ENV:'test',FIRESTORE_PROJECT_ID:settings.projectId,FIRESTORE_NAMESPACE:namespace,DISCORD_CLIENT_ID:client,DISCORD_CLIENT_SECRET:'isolated-fixture-secret',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'https://discord.com/api/webhooks/100000000000000005/isolated-fake-webhook',DISCORD_PUBLIC_KEY:ed.publicKey.export({format:'der',type:'spki'}).subarray(-32).toString('hex'),ALLOWED_GUILD_IDS:guild,CLOUD_ADMIN_TOKEN:admin,CLOUD_ENCRYPTION_KEY:key,GOOGLE_SERVICE_ACCOUNT_JSON:JSON.stringify({type:'service_account',project_id:settings.projectId,client_email:'fixture@example.invalid',private_key:rsa.privateKey.export({format:'pem',type:'pkcs8'})})},outboundService:async request=>{
    const u=new URL(request.url);if(u.hostname==='oauth2.googleapis.com')return MFResponse.json({access_token:'emulator-only',expires_in:3600});
@@ -48,17 +49,29 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
      if(request.headers.get('content-type')?.startsWith('multipart/form-data')){
        const form=await request.formData(),file=form.get('files[0]');
        const payload=JSON.parse(form.get('payload_json'));
-       assert.match(file.name,/^(?:casino-receipt|(?:big|super|mega)-win)\.png$/);assert.equal(file.type,'image/png');
-       assert.equal(Buffer.from(await file.arrayBuffer()).subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+       assert.match(file.name,/^(?:(?:casino-(?:arcade-)?receipt|casino-grant|(?:big|super|mega)-win)\.png|clear-dealer\.webp)$/);
+       const webp=file.name.endsWith('.webp'),bytes=Buffer.from(await file.arrayBuffer());
+       assert.equal(file.type,webp?'image/webp':'image/png');
+       if(webp)assert.equal(bytes.toString('ascii',8,12),'WEBP');
+       else assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
        assert.equal(payload.embeds[0].image.url,'attachment://'+file.name);
-       assert.match(payload.attachments[0].description,file.name==='casino-receipt.png'
-         ? /^這次獲得 [+−]?[\d,]+ 戲籌 · 總遊玩 [\d,]+ 局$/ : /^(?:BIG|SUPER|MEGA) WIN · [\d,.]+×，單局獎金倍率$/);
+       const alt=payload.attachments[0].description;
+       if(file.name==='casino-arcade-receipt.png')assert.match(alt,/^本次戲籌變化 .*戲籌；/);
+       else if(file.name==='casino-grant.png')assert.equal(alt,'這次獲得 +500 戲籌');
+       else if(webp)assert.match(alt,/通關/);
+       else assert.match(alt,file.name==='casino-receipt.png'?/^這次獲得 [+−]?[\d,]+ 戲籌 · 總遊玩 [\d,]+ 局$/:/^(?:BIG|SUPER|MEGA) WIN · [\d,.]+×，單局獎金倍率$/);
        announcements.push(payload);
      }else announcements.push(await request.json());
      return MFResponse.json({id:'100000000000000007',channel_id:'100000000000000006'});
    }
    if(u.pathname===`/api/v10/users/@me/guilds/${guild}/member`)return MFResponse.json({user:{id:user,bot:false},pending:false});
    if(u.pathname==='/api/webhooks/100000000000000005/isolated-fake-webhook'){if(request.method==='GET')return MFResponse.json({type:1,guild_id:guild,channel_id:'100000000000000006'});announcements.push(await request.json());return MFResponse.json({id:'100000000000000007'});}
+   if(u.pathname===`/api/v10/webhooks/${client}/${previewToken}/messages/@original`&&request.method==='PATCH'){
+     const form=await request.formData(),file=form.get('files[0]');
+     previewUpload.resolve({payload:JSON.parse(form.get('payload_json')),name:file.name,type:file.type,
+       signature:Buffer.from(await file.arrayBuffer()).subarray(0,8).toString('hex')});
+     return MFResponse.json({});
+   }
    if(u.pathname.endsWith('/messages/@original')&&request.method==='PATCH'){replies.push(await request.json());return MFResponse.json({});}
    throw new Error('Unapproved external request in test');
  }};
@@ -70,7 +83,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
     writeFileSync(join(directory,path),'/'+path);
   config.assets={directory,binding:'ASSETS',run_worker_first:true,routerConfig:{has_user_worker:true},
     assetConfig:{html_handling:'none',not_found_handling:'none'}};
- }else Object.assign(config.bindings,{ARCADE_CONSOLE_TOKEN:operatorToken,DISCORD_COMMAND_PROFILE:'test-simple'});
+ }else Object.assign(config.bindings,{ARCADE_CONSOLE_TOKEN:operatorToken,DISCORD_COMMAND_PROFILE:'test-simple',DISCORD_COMMAND_CHANNEL_IDS:'100000000000000006'});
  const adminRole='100000000000000009';
  config.bindings[casino?'CHIP_ADMIN_ROLE_IDS':'ADMIN_ROLE_IDS']=` ${adminRole} `;
  config.bindings.FIRESTORE_ENDPOINT='https://firestore.asia-east1.rep.googleapis.com';
@@ -187,6 +200,16 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   assert.equal(fresh.type,9);assert.equal(fresh.data.components.length,3,'test grant form has no public notification option');
   for(let i=0;i<100&&!replies.length;i++)await delay(30);
   assert.match(replies[0].embeds[0].description,new RegExp(forced.state.balance.toLocaleString('en-US')+' 戲籌'),'Discord reads the same balance as the game');
+  const preview={...interaction,token:previewToken,data:{name:'推播預覽',options:[{name:'樣式',value:'exit-mixed'}]}};
+  assert.deepEqual(await signed(preview),{type:5,data:{flags:64}});
+  const stop=new AbortController();
+  try{
+   const {payload,name,type,signature}=await Promise.race([previewUpload.promise,delay(8000,null,{signal:stop.signal}).then(()=>{throw new Error('Private Discord attachment was not uploaded');})]);
+   assert.deepEqual([name,type,signature],['casino-arcade-receipt.png','image/png','89504e470d0a1a0a']);
+   assert.deepEqual(payload.allowed_mentions,{parse:[]});
+   assert.equal(payload.embeds[0].image.url,'attachment://casino-arcade-receipt.png');
+   assert.match(payload.attachments[0].description,/\+2,400.*老虎機.*−600.*野球拳.*\+3,000/);
+  }finally{stop.abort();}
  }
  if(casino){
   const formId=String((BigInt(Date.now())-1420070400000n)<<22n),grant={...interaction,type:5,id:formId,member:{...interaction.member,roles:[adminRole]},data:{custom_id:`jc|gs|${guild}|${user}|${formId}`,components:[
@@ -198,9 +221,8 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   for(let i=0;i<150&&!replies.some(p=>p.embeds?.[0]?.title==='戲籌已發放');i++)await delay(100);
   const delivered=replies.find(p=>p.embeds?.[0]?.title==='戲籌已發放');assert.ok(delivered);assert.match(delivered.embeds[0].description,/已在遊玩文字頻道發送通知/);assert.deepEqual(delivered.allowed_mentions,{parse:[]});
   const notices=()=>announcements.filter(p=>p.embeds?.[0]?.title==='戲籌已發放');assert.equal(notices().length,1);assert.match(notices()[0].content,/500 戲籌/);assert.deepEqual(notices()[0].allowed_mentions,{parse:[],users:[user]});
-  const launchButton=notices()[0].components.at(-1).components[0];
-  assert.equal(launchButton.label,'開啟遊戲');
-  const launchRaw=JSON.stringify({...interaction,type:3,data:{component_type:2,custom_id:launchButton.custom_id}});
+  assert.equal(notices()[0].components,undefined,'grant receipt matches the approved preview without a game button');
+  const launchRaw=JSON.stringify({...interaction,type:3,data:{component_type:2,custom_id:'casino:open-game'}});
   const launchTimestamp=String(Math.floor(Date.now()/1000));
   const launchSignature=sign(null,Buffer.from(launchTimestamp+launchRaw),ed.privateKey).toString('hex');
   const launchReply=await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',
@@ -310,6 +332,10 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  assert.ok(hasWin(),'durable alarm recovers outbox without enqueue hint');
  if(casino){
    const big=announcements.find(p=>p.embeds?.[0]?.image?.url==='attachment://big-win.png');
+   for(let i=0;i<150&&!announcements.some(p=>p.embeds?.[0]?.image?.url==='attachment://clear-dealer.webp');i++)await delay(100);
+   const clears=announcements.filter(p=>p.embeds?.[0]?.image?.url==='attachment://clear-dealer.webp');
+   assert.equal(clears.length,1,'committed challenge clear sends once despite replay and restart');
+   assert.match(clears[0].embeds[0].description,/2,500/);
    assert.match(big.attachments[0].description,/^BIG WIN · [\d,.]+×，單局獎金倍率$/);
    assert.equal(big.components[0].components[0].style,1);
    const previousBackup=(await call('/__ops/status',{headers:monitorHeaders})).data.backup.at;
@@ -319,7 +345,10 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    await call('/api/casino-visit',{token,body:{action:'leave',instanceId:visitId}});
    for(let i=0;i<150&&!announcements.some(p=>p.content?.includes('離開賭場'));i++)await delay(100);
    assert.equal(announcements.filter(p=>p.content?.includes('**入場**')).length,1);
-   const exits=announcements.filter(p=>p.content?.includes('離開賭場'));assert.equal(exits.length,1);assert.equal(exits[0].embeds[0].title,'離場結算');
+   const exits=announcements.filter(p=>p.content?.includes('離開賭場'));assert.equal(exits.length,1);assert.equal(exits[0].embeds[0].title,'賭場・離場結算');
+   assert.equal(exits[0].embeds[0].image.url,'attachment://casino-arcade-receipt.png');
+   assert.match(exits[0].attachments[0].description,/野球拳/);
+   assert.match(exits[0].attachments[0].description,/入場 1 場/);
    assert.ok(announcements.every(p=>p.enforce_nonce===true&&!('flags' in p)));
    for(const announcement of announcements){assert.ok(announcement.content.includes(`<@${user}>`));assert.deepEqual(announcement.allowed_mentions,{parse:[],users:[user]});}
    const deadline=Date.now()+90000;let completed;

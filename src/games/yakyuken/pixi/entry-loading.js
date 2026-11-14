@@ -1,6 +1,6 @@
 import {Container,FillGradient,Graphics,Rectangle,Sprite} from 'pixi.js';
 import {Motion} from './motion.js';
-import {label,PixiButton} from './ui.js';
+import {label,PixiButton} from '../../../ui/pixi/ui.js';
 import {ENTRY_TIMING,entryLoadingLayout} from './entry-state.js';
 
 // Reused within one Yakyuken renderer; released after its shader bindings close.
@@ -107,7 +107,7 @@ export class YakyukenEntryLoading {
     if(this.disposed)return false;
     this.stage='complete';this.notify();return true;
   }
-  fail(message='舞台暫時未能準備好\n請再試一次，或返回大廳。',allowBack=true){
+  fail(message='暫時無法載入遊戲\n請再試一次，或返回大廳。',allowBack=true){
     if(this.disposed)return;
     this.motion.cancel(this.progress);this.stage='error';this.message=message;this.allowBack=allowBack;
     this.cover.value=1;this.contentFade.value=1;this.resize(this.app.screen.width,this.app.screen.height);this.notify();

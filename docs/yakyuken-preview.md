@@ -1,18 +1,19 @@
 # 野球拳：流程、資料與開發入口
 
-本文件描述目前實作；逐次畫面調整、舊原型與歷史測試日誌可從 Git 歷史追溯。角色機率見[機率規則](yakyuken-probability.md)，Discord 設定見[獨立測試活動](discord-test-activity.md)，完整驗證見[測試文件](testing.md)。產品版本以 `package.json` 為準。
+本文件描述目前實作；逐次畫面調整、舊原型與歷史測試日誌可從 Git 歷史追溯。角色機率見[機率規則](yakyuken-probability.md)，Discord 設定見[發布與環境](arcade-release.md)，完整驗證見[測試文件](testing.md)。產品版本以 `package.json` 為準。
 
 ## 執行模式
 
 | 模式 | 入口 | 身分、錢包與紀錄 |
 |---|---|---|
-| 本機預覽 | `node scripts/game/yakyuken-preview.js` | 訪客；不扣款、不發獎，CG／紀錄保存在 localStorage |
+| 本機預覽 | `node scripts/preview/yakyuken.js` | 訪客；不扣款、不發獎，CG／紀錄保存在 localStorage |
 | 合成帳號雲端測試 | 同指令加 `--cloud-test` | 同源私有閘道連專用測試 Worker；`qa-a`／`qa-b`／`qa-low`／`qa-zero` |
-| Discord 測試活動 | `scripts/game/discord-test.js` 與獨立測試 shell | 真正 Discord 授權；每群每人一個測試錢包，老虎機與野球拳共用餘額及簽到 |
+| 現行 Discord 雙遊戲 | `scripts/build/arcade-release.js`、`src/platform/arcade-lobby.js` | 正式／測試各自的 Discord App 與 Firestore v2 帳本；同環境的兩款遊戲共用餘額與簽到 |
+| 舊 Discord 隔離測試 | `scripts/cloud/discord-test.js` 與獨立測試 shell | 舊每玩家 DO；僅供隔離 QA 與回退，見[歷史文件](history/discord-test-activity.md) |
 
 本機入口為 `http://127.0.0.1:4195/yakyuken-preview.html`，只監聽 loopback。一般模式不讀環境憑證；雲端模式的私有設定存於忽略版控的 `.tools/yakyuken-playtest.json`，不能由瀏覽器讀取。`?testPlayer=qa-b` 僅供合成帳號入口，Discord 身分不能指定其他玩家。
 
-專用測試身分固定為 Firestore project `slot-game-203db`、namespace `yakyuken-playtest-20261105-test`、Worker `jokers-circus-yakyuken-test`。正式 Worker／Firestore 與舊 SQLite `data/validation/wallet.sqlite` 不屬於此資料範圍。修改這些字串不能當作資料遷移方式。
+舊合成帳號測試身分固定為 Firestore project `slot-game-203db`、namespace `yakyuken-playtest-20261105-test`、Worker `jokers-circus-yakyuken-test`。正式 Worker／Firestore 與舊 SQLite `data/validation/wallet.sqlite` 不屬於此資料範圍。修改這些字串不能當作資料遷移方式。
 
 ## 遊戲流程
 
@@ -27,24 +28,22 @@
 
 ## 後端與資料庫
 
-`TestWalletClient → 同源 API → 測試授權 → 每玩家 Durable Object → PlaytestService → Firestore 交易`。
+現行路徑為 `ProductionDuelWallet → 大廳共用的授權 fetch → /api/feature/* → CircusProject DO → FirestoreWalletCore`。正式與測試使用同一份後端程式，各自的 App、DO、namespace、Secrets 與備份保持隔離。早期 `TestWalletClient`／每玩家 DO 的規格見[舊測試活動](history/discord-test-activity.md)，不代表現行服務。
 
-- Worker 根據已授權身分選擇玩家；Discord 鍵為 `d_<guildId>_<userId>`。DO 將所有該玩家請求序列化，包含兩款遊戲的操作。
-- Firestore 文件為 `circus_wallet_v1/<namespace>/players/<player>`，以 `state` JSON 保存 version 1 錢包；文件另有 environment／namespace 身分檢查。
-- 錢包包含 balance／revision、最近 100 場摘要、activeId、每角色最高 CG 解鎖、週簽到、老虎機近期歷史與最後開轉時間。單場包含入場費、獎金及淨變化，不累計平手次數。進行中新場另存私有 `duelPlan`，只供伺服器推進，不包含在公開錢包或場次歷史，終局／離場移除。
-- 只有伺服器決定每拳結果與獎金。`characters.js` 是規則唯一來源；`challengeProgress()` 共用勝敗門檻，錢包層處理扣費／發獎。請求與場次編號必須是 16–80 字元字串，不接受陣列或數字的隱式轉換。
-- 有變更的操作先將抽樣結果與原請求存為 DO `pending`，再交易讀取並更新玩家文件。Firestore `lastReceipt` 識別已成功但回應遺失的提交，避免重扣／重發；最後在同一 DO storage transaction 保存 `receipt:<requestId>` 並刪除 pending。
-- 原請求重播回傳當時收據；相同 ID 改動操作內容會拒絕。前端的恢復、明確重試與 refresh 共用一個進行中請求，不重複發送。
-- 新場 DO 的 `hand-cursor` 和每拳收據於同一 storage transaction 推進；決勝拳先沿用 Firestore `pending` 恢復契約，再原子保存游標和收據。平手只推進 DO 游標及收據，熱對局不讀寫 Firestore；冷啟動需先讀一次玩家文件。紀錄、解鎖與餘額由同一交易更新，沒有額外的背景輪詢或推播。只持有未來單拳結果不能跳拳、改序或提交自訂勝敗；舊請求回應不倒退前端已預取的順序。
-- DO 收據保留完整原回應，尚無到期清除機制；最近 100 場上限只作用於錢包摘要。不能直接刪除收據，否則會破壞舊請求去重；擴展長期用量前需另行設計收據保存與恢復策略。
+- Firestore v2 的 `wallets` 保存玩家餘額、revision 與 `duel`（最近 100 場、各角色最高解鎖與進行中場次）。`operations` 保存原請求收據，`ledger` 保存扣費／派彩；收據不隨近期摘要裁切。
+- `settlement-rules-v1.js` 保存權威結算規則，`characters.js` 加入角色名稱及呈現資料；`challenge.js` 共用勝敗推進。入場、出拳與離場經權威交易及原請求去重，不能從前端提供勝敗或跳過手數。
+- 入場解鎖該角色初始 CG；每次獲勝更新最高解鎖。正式收藏依權威進度，只有測試環境可啟用全 CG 預覽；預覽不寫進度或餘額。
+- 公開回應由 `duelView` 移除私有挑戰計畫，只提供目前場次與下一手的編號。現行正式 client 在缺少預取結果時等待權威回覆；舊測試引擎的單拳預取／平手零 Firestore 讀寫不可套用為現行正式後端保證。
+- `ProductionDuelWallet` 以環境、群、玩家、walletEpoch 分區保存待確認請求；網路結果不明沿用原 ID，舊 revision 不覆蓋新狀態。大廳代管 Discord SDK 與授權更新，遊戲切換不重建登入。
+- 隱藏／維護開關由同一 DO 保存；後端阻擋新操作，同時允許已提交的原收據重播。備份與恢復重播野球拳收據並核對解鎖與權威餘額。
 
-不需新增索引或遷移。維護不刪除玩家帳本、舊相容紀錄、備份或私有設定。
+本次不新增帳本 schema 或遷移，不刪除歷史收據。現行服務與舊測試資料不可透過修改 namespace 字串互換。
 
 ## 本機紀錄、CG 與素材
 
 `PlayerArchive` 使用 `jokers-circus:yakyuken:archive:v1:<player>:`；每場與每張 CG 各自一鍵，讓不同分頁不覆寫其他場次。存檔損壞僅忽略該項，容量／權限失敗仍保留可讀資料與本頁暫存。舊紀錄缺 reward 時依當時狀態補讀，舊 draws／rounds 欄位不再寫回。
 
-CG 收藏可獨立切換荷官、優然、夏澄、瑟洛與萬世，顯示各自的解鎖進度。每個視窗尺寸共用固定的卡片與縮圖尺寸，張數超過當頁容量就翻頁；尚未解鎖的格子只顯示條件。首次遊玩的五位角色共 31 張皆上鎖。入場只解鎖當前角色的初始 CG，每勝一次解鎖下一張，命運荷官共三張，優然共四張，夏澄共六張，瑟洛共八張，萬世共十張。點選已解鎖卡片後，在活動視窗中以最大可用尺寸顯示全身原構圖，不裁切；上方保留「下載原圖」。可用畫面按鈕或左右方向鍵切換同角色的已解鎖圖片，返回時會回到目前圖片所在的頁面。收藏回顧不更改牌桌進度。歷史使用可捲動、可展開的單場清單。普通本機重載不續玩原場；測試雲端可由伺服器恢復未完成場次。
+CG 收藏可獨立切換荷官、優然、夏澄、瑟洛與萬世，顯示各自的解鎖進度。每個視窗尺寸共用固定的卡片與縮圖尺寸，張數超過當頁容量就翻頁；尚未解鎖的格子只顯示條件。首次遊玩的五位角色共 31 張皆上鎖。入場只解鎖當前角色的初始 CG，每勝一次解鎖下一張，命運荷官共三張，優然共四張，夏澄共六張，瑟洛共八張，萬世共十張。點選已解鎖卡片後，在活動視窗中以最大可用尺寸顯示全身原構圖，不裁切；上方保留「下載原圖」。可用畫面按鈕或左右方向鍵切換同角色的已解鎖圖片，返回時會回到目前圖片所在的頁面。收藏回顧不更改牌桌進度。歷史使用可捲動、可展開的單場清單。普通本機重載不續玩原場；現行正式／測試雲端皆由伺服器恢復未完成場次。
 
 測試服啟用 `ARCADE_CG_PREVIEW_ALL` 時，所有通過 Discord 測試服登入的玩家都可預覽 31 張 CG。這個設定只控制收藏的顯示和下載，不寫入通關進度或戲籌帳本。測試服優然終幕的浴巾版 PNG 由測試 Worker 提供，和牌桌及收藏使用的 WebP 採同一構圖。
 
@@ -52,7 +51,7 @@ CG 收藏外框與老虎機「遊戲規則」使用同一套尺寸、圓角、�
 
 牌桌使用 `images/yakyuken/{dealer,youran,xiache,selo,wanshi}/` 的 WebP。荷官與優然的各階段採用同一個 1024×1536 畫布，上身對齊中央，鞋底各自共用同一基準。荷官只以平移對齊。新版優然四張採同一縮放比例，鞋底對齊至 y=1505（透明度至少 128，座標不含該列）。五位角色共 31 張 1024×1536 透明 PNG 位於 `public/downloads/yakyuken/`，供玩家下載，不納入牌桌預載。荷官的 PNG 也可由 `scripts/assets/export-yakyuken-cg.py` 以相同像素重建。
 
-萬世以藍寶石蝴蝶領針、毛領披肩及全套高訂禮裝入場。先卸下領針、手套，再逐步卸下披肩、外套和背心。解開絲質襯衫後，依序收起耳飾及皮鞋，最後只留下黑色皮帶束起的高訂西裝褲。十張立繪共用 1024×1536 透明畫布、全身構圖與冷色主光，牌桌使用與收藏下載版同構圖的 WebP。
+萬世以藍寶石蝴蝶領針、毛領披肩及全套高訂禮裝入場。先卸下領針、手套，再逐步卸下披肩、外套和背心。解開絲質襯衫並收起耳飾後，第八勝解開銀髮，第九勝褪下襯衫，保留黑色皮帶、高訂西裝褲與黑色繫帶皮鞋。十張立繪共用 1024×1536 透明畫布、全身構圖、冷白膚色與冷淡無笑意的神情，牌桌使用與收藏下載版同構圖的 WebP。
 
 夏澄第六張依第五張調整頭肩和腿部比例，保留貝殼及泡泡。新版 PNG 與 WebP 使用同一構圖，兩張的可見頭頂和腳底在 1024×1536 畫布上分別對齊 y=17 與 y=1521（透明度閾值 180，底部座標不含該列）。
 
@@ -64,15 +63,17 @@ CG 收藏外框與老虎機「遊戲規則」使用同一套尺寸、圓角、�
 |---|---|
 | `main.js`、`scene.js` | 入口、生命週期、畫面及互動協調 |
 | `characters.js`、`rules.js`、`challenge.js` | 角色資料、手勢勝負、加權抽樣、共用勝敗推進與機率驗算 |
-| `test-wallet-client.js` | 測試身分、原請求保存與單一送出鎖、授權恢復、revision 防倒退 |
+| `production.js`、`production-wallet.js` | 現行雙遊戲入口、權威收藏、授權請求與原操作恢復 |
+| `test-wallet-client.js`（舊隔離測試） | 測試身分、原請求保存與單一送出鎖、授權恢復、revision 防倒退 |
 | `player-archive.js` | 本機玩家分區紀錄、相容讀取與 CG 解鎖 |
 | `reward-presentation.js`、`audio.js` | 領獎時序與聲音，不處理財務結算 |
 | `pixi/lobby*`、`layout.js`、`chrome.js`、`dialogs.js` | 大廳、選角、牌桌排版與介面 |
 | `pixi/card*`、`motion.js`、`wardrobe-transition.js` | 卡牌、實際 elapsedMS 動畫與換裝資源 |
 | `pixi/entry-loading.js`、`entry-state.js`、`screen-fade.js` | 入場準備、錯誤恢復與純轉場 |
 | `pixi/archive-dialogs.js`、`match-history.js`、`cg-*.js` | 收藏、紀錄與圖片下載 |
-| `cloud/yakyuken-playtest-core.js` | 權威錢包、交易意圖、去重及恢復 |
-| `cloud/yakyuken-playtest-worker.js` | HTTP、授權路由、DO 序列化與 Firestore adapter |
+| `server/wallet/duel-settlement.js`、`server/firestore/wallet-core.js` | 現行正式／測試的權威結算與收據 |
+| `cloud/yakyuken-playtest-core.js`（舊隔離測試） | 權威錢包、交易意圖、去重及恢復 |
+| `cloud/yakyuken-playtest-worker.js`（舊隔離測試） | HTTP、授權路由、DO 序列化與 Firestore adapter |
 
 ## 驗證
 
@@ -88,4 +89,4 @@ CG 收藏外框與老虎機「遊戲規則」使用同一套尺寸、圓角、�
 | `node scripts/qa/test-firestore.js tests/yakyuken-playtest.integration.js` | 官方 emulator＋真正 workerd 的交易、隔離與重啟 |
 | `npm run verify:ci` | 完整本機回歸；與遠端 Actions 結果分開報告 |
 
-手動預覽與部分 QA 共用連接埠，執行前確認 `docs/testing.md` 的說明。所有預設測試使用隔離資料；`yakyuken-cloud-test.js --live` 會操作遠端測試玩家 B，必須明確選用。此次維護不自動執行部署、正式資料清理、commit 或 merge。
+手動預覽與部分 QA 共用連接埠，執行前確認 `docs/testing.md` 的說明。所有預設測試使用隔離資料；`yakyuken-cloud-test.js --live` 會操作遠端測試玩家 B，必須明確選用。一般 QA 不執行部署或資料清理；Git 與雲端發布依當次授權範圍操作，發布步驟見[發布文件](arcade-release.md)。

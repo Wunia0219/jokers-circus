@@ -13,16 +13,16 @@ import {HandCard} from './pixi/card.js';
 import {tableLayout,TABLE_MOVES} from './pixi/layout.js';
 import {Motion} from './pixi/motion.js';
 import {WardrobeTransition,createWardrobeGradients,createWardrobeBackdrop,destroyWardrobeBackdrop} from './pixi/wardrobe-transition.js';
-import {earnedPose,resultDialogue} from './duel-presentation.js';
+import {earnedPose,openingDialogue,resultDialogue} from './duel-presentation.js';
 import {createChallenge,playChallengeRound,applyChallengeDuel} from './challenge.js';
 import {PlayerArchive} from './player-archive.js';
 import {createTable} from './pixi/table.js';
-import {label,PALETTE,PixiButton} from './pixi/ui.js';
+import {label,PALETTE,PixiButton} from '../../ui/pixi/ui.js';
 import {buildSlotHud,updateSlotHud} from './pixi/chrome.js';
 import {buildSlotDialog} from './pixi/dialogs.js';
 import {buildLobby} from './pixi/lobby.js';
 import {CHARACTERS,canEnterCharacter,characterRule} from './characters.js';
-import {installPointerFeedback} from './pixi/pointer-feedback.js';
+import {installPointerFeedback} from '../../ui/pixi/pointer-feedback.js';
 import {YakyukenEntryLoading,createYakyukenEntryGradients} from './pixi/entry-loading.js';
 import {YakyukenScreenFade} from './pixi/screen-fade.js';
 import {waitForEntryTask} from './pixi/entry-state.js';
@@ -32,9 +32,10 @@ import {RewardPresentation} from './reward-presentation.js';
 import {createCheckinDialog} from './checkin-dialog.js';
 import {createCheckinButton} from '../../ui/player/checkin-button.js';
 import {checkinClaimFeedback,playerError} from '../../ui/player/player-copy.js';
+import {duelErrorMessage} from './player-copy.js';
 import {icon} from '../../ui/shared/icons.js';
 
-// Local previews use an archive; cloud and Discord tests inject a test wallet.
+// Local previews use an archive; deployed games inject their authenticated wallet.
 export class YakyukenScene {
   app = new Application();
   motion = new Motion();
@@ -70,6 +71,7 @@ export class YakyukenScene {
 
   get characterTextures(){return this.artTextures?.[this.selectedCharacter];}
   get characterCG(){return CG_ART[this.selectedCharacter];}
+  get isTestWallet(){return Boolean(this.wallet && (this.wallet.environment ?? this.wallet.wallet?.environment)==='test');}
 
   constructor({playerId='local-guest',storage,wallet=null,music=null,onLobby=null}={}){
     this.onLobby=onLobby;
@@ -113,7 +115,7 @@ export class YakyukenScene {
     loading.destroy();
     if(resources.some(value => value.status === 'rejected')) {
       await this.unload();
-      const message = label('舞台素材載入失敗\n請重新載入試玩',17,PALETTE.gold,{lineHeight:30});
+      const message = label('暫時無法載入遊戲\n請重新載入',17,PALETTE.gold,{lineHeight:30});
       message.position.set(this.app.screen.width/2,this.app.screen.height/2-40);
       const retry = new PixiButton({text:'重新載入',width:200,onPress:() => location.reload(),primary:true});
       retry.position.set(this.app.screen.width/2,this.app.screen.height/2+65);
@@ -281,7 +283,7 @@ export class YakyukenScene {
             orig:new Rectangle(0,0,width,height),trim:new Rectangle((width-texture.width)/2,(height-texture.height)/2,texture.width,texture.height)});
         }else this.artTextures[art.id][art.index]=texture;
       }
-      completed++;overlay.update(15+completed/artwork.length*55,'正在準備角色與典藏牌組…');
+      completed++;overlay.update(15+completed/artwork.length*55,'正在準備角色與牌組…');
     }));
     if(results.some(result=>result.status==='rejected'))throw new Error('Yakyuken entry resources unavailable');
   }
@@ -290,18 +292,19 @@ export class YakyukenScene {
       await overlay.open();if(this.disposed)return false;
       if(kind==='game' && !await waitForEntryTask(this.prepareEntry(overlay),this.abort.signal))return false;
       if(this.wallet&&kind==='table'&&!resume){
-        overlay.update(24,'正在確認入場與戲籌…');
+        overlay.update(24,'正在確認入場…');
         await this.wallet.begin(this.selectedCharacter);
       }
       if(this.wallet&&kind==='lobby')await this.wallet.leave(this.matchId);
       if(this.disposed)return false;
-      overlay.update?.(76,kind==='table'?'正在準備牌桌…':'正在準備選角舞台…');
+      overlay.update?.(76,kind==='table'?'正在準備牌桌…':'正在準備遊戲畫面…');
       this.screen=kind==='table'?'table':kind==='game' || kind==='reselect'?'characters':'games';this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.handTurn=null;
       if(kind==='table'){
         const active=this.wallet?.active();this.selectedCharacter=active?.characterId??this.selectedCharacter;
         const rounds=this.wallet?.nextHand&&this.wallet.nextHand.matchId===active?.id?this.wallet.nextHand.index:active?active.wins+active.losses:0;
         this.challenge=active?{...active,rounds,draws:rounds-active.wins-active.losses,last:null}:createChallenge(this.selectedCharacter);
-        this.completedRounds=this.challenge.rounds;this.pose=earnedPose(this.challenge.wins,this.characterTextures.length);this.presentedRound=this.challenge.rounds;this.dialogue='';
+        this.completedRounds=this.challenge.rounds;this.pose=earnedPose(this.challenge.wins,this.characterTextures.length);this.presentedRound=this.challenge.rounds;
+        this.dialogue=active && rounds>0?'':openingDialogue(this.selectedCharacter);
       }
       this.resize();
       const portraits=kind==='game'?Object.values(this.artTextures).flat():this.characterTextures;
@@ -326,7 +329,7 @@ export class YakyukenScene {
         this.screen='characters';this.phase='selecting';this.matchId=null;this.challenge=null;this.completedRounds=0;this.presentedRound=0;this.dialogue='';this.pose=0;this.ending=false;this.resize();
       }else if(this.screen!==source){this.screen=source;this.phase='selecting';this.resize();}
       const uncertain=!!this.wallet?.pending;
-      overlay.fail(this.wallet&&['table','lobby'].includes(kind)?`${error.message}\n${uncertain?'請重試原操作，以確認戲籌結果。':'請再試一次，或返回上一頁。'}`:undefined,!uncertain);this.updateControls();this.world.interactiveChildren=false;this.world.accessibleChildren=false;return false;
+      overlay.fail(this.wallet&&['table','lobby'].includes(kind)?`${duelErrorMessage(error)}\n${uncertain?'請按「再試一次」，確認剛才的結果。':'你可以再試一次，或返回上一頁。'}`:undefined,!uncertain);this.updateControls();this.world.interactiveChildren=false;this.world.accessibleChildren=false;return false;
     }
   }
   cancelEntry(){
@@ -351,7 +354,8 @@ export class YakyukenScene {
         this.challenge=createChallenge(this.selectedCharacter);this.completedRounds=0;this.presentedRound=0;
         this.matchId=this.archive.begin(this.selectedCharacter);
       }
-      this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';this.dialogue='';this.handTurn=null;
+      this.phase='selecting';this.selected=null;this.duel=null;this.dealerStage='idle';
+      this.dialogue=restarting?openingDialogue(this.selectedCharacter):'';this.handTurn=null;
       this.playerCards.forEach((card,index) => {card.lock(false);card.choose(false);card.rotation=(index-1)*.055;});
       this.dealerCards.forEach(card => {card.choose(false);card.setFaceUp(false);card.visual.scale.x=1;card.rotation=0;});
       this.updateControls();if(restarting && this.pose!==0)await this.changePose(0);return;
@@ -378,13 +382,13 @@ export class YakyukenScene {
       const data=await this.wallet.hand(this.matchId,turn.move,turn.handIndex);
       if(this.disposed||this.handTurn!==turn)return;
       const record=data.wallet.records.find(r=>r.id===this.matchId);
-      if(!record||data.duel?.player!==turn.move||turn.duel&&(data.duel.outcome!==turn.duel.outcome||data.duel.dealer!==turn.duel.dealer))throw new Error('出牌進度不符，請重新同步。');
+      if(!record||data.duel?.player!==turn.move||turn.duel&&(data.duel.outcome!==turn.duel.outcome||data.duel.dealer!==turn.duel.dealer))throw new Error('目前畫面與對局紀錄不一致，請按「更新進度」。');
       if(this.onLobby&&(record.rounds!==turn.handIndex+1||record.status==='left'))
-        throw new Error('此拳已確認，場次已在其他裝置更新。請重新同步進度。');
+        throw new Error('這場已在其他裝置更新，請按「更新進度」。');
       turn.duel=data.duel;turn.settled=true;
       if(record.status==='won'&&record.reward>0)this.rewardPresentation.hold({id:this.matchId,after:data.wallet.balance,reward:record.reward});
       this.challenge={...record,rounds:turn.before.rounds+1,draws:(turn.before.draws||0)+Number(data.duel.outcome==='draw'),last:data.duel};
-    }catch(error){if(!this.disposed&&this.handTurn===turn)turn.error=error.message;}
+    }catch(error){if(!this.disposed&&this.handTurn===turn)turn.error=duelErrorMessage(error);}
     finally{this.settling=false;if(!this.disposed&&this.handTurn===turn)this.updateControls();}
   }
   async animateHandTurn(turn){
@@ -431,13 +435,13 @@ export class YakyukenScene {
         this.challenge={...active,rounds,draws:rounds-active.wins-active.losses,last:null};this.matchId=active.id;this.pose=earnedPose(active.wins,this.characterTextures.length);this.completedRounds=rounds;this.presentedRound=rounds;
       }else{this.screen='characters';this.challenge=null;this.matchId=null;}
       this.resize();
-    }catch(error){turn.error=error.message;}
+    }catch(error){turn.error=duelErrorMessage(error);}
     finally{this.settling=false;if(!this.disposed)this.updateControls();}
   }
   async presentResult(){
     if(this.disposed || this.phase!=='confirmed' || !this.challenge || this.presentedRound===this.challenge.rounds)return;
     this.presentedRound=this.challenge.rounds;
-    this.dialogue=resultDialogue({outcome:this.duel.outcome,round:this.challenge.rounds,status:this.challenge.status});
+    this.dialogue=resultDialogue({characterId:this.selectedCharacter,outcome:this.duel.outcome,round:this.challenge.rounds,status:this.challenge.status});
     this.updateControls();
     if(this.duel.outcome==='win'){
       await this.changePose(earnedPose(this.challenge.wins,this.characterTextures.length));
@@ -462,10 +466,10 @@ export class YakyukenScene {
       wins:String(this.challenge?.wins || 0),losses:String(this.challenge?.losses || 0),draws:String(this.challenge?.draws || 0),challengeStatus:this.challenge?.status || '',reward:String(this.challenge?.reward || 0),rewardStage:this.rewardPresentation.stage});
     const selectedCharacter=characterRule(this.selectedCharacter);
     const opponent=this.selectedCharacter==='dealer'?'荷官':selectedCharacter.name;
-    const entryNote=this.wallet?.admissionOpen===false?'目前暫停新場次。':this.onLobby?'入場將扣除戲籌。':
-      this.wallet?'入場將扣除測試戲籌。':'本機入場暫不扣款。';
+    const entryNote=this.wallet?.admissionOpen===false?'目前暫停新場次。':this.wallet?
+      (this.isTestWallet?'入場會扣除測試戲籌。':'入場會扣除戲籌。'):'試玩不扣戲籌。';
     const selectionDescription=`目前選擇${selectedCharacter.name}。${CHARACTER_INTROS[this.selectedCharacter]}${entryNote}`;
-    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳第一人稱牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。${this.dialogue?opponent+'說：'+this.dialogue+'。':''}右側${opponent}牌${fronts?'已翻開':'尚未揭曉'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':`野球拳角色選擇，共五個角色位置。目前開放${CHARACTERS.filter(character=>character.enabled).map(character=>character.name).join('、')}。${selectionDescription}`);
+    this.app.canvas.setAttribute('aria-label',this.entering?(this.app.canvas.dataset.entryKind==='game'?'野球拳，正在載入遊戲。':'正在切換畫面。'):this.screen==='table'?`野球拳牌桌。${this.scoreDescription}。${this.status.text.replaceAll('\n','。')}。${this.statusDetail.text.replaceAll('\n','。')}。${this.dialogue?opponent+'說：'+this.dialogue:''}${opponent}的牌${fronts?'已翻開':'還沒翻開'}。`:this.screen==='games'?'Joker’s Circus 遊戲大廳，請選擇老虎機或野球拳。':`野球拳，請選擇對手。目前開放${CHARACTERS.filter(character=>character.enabled).map(character=>character.name).join('、')}。${selectionDescription}`);
   }
 
   updateLobbyMusic(){
@@ -568,7 +572,7 @@ export class YakyukenScene {
     const transition=this.wardrobe=new WardrobeTransition({app:this.app,background:this.root,
       to:this.characterTextures[index],name:this.characterCG[index].name,backdrop:this.wardrobeBackdrop,
       subject:()=>this.dealer,
-      dialogue:this.dialogue || '準備好了？那就再來一拳。',reduced:this.motion.reduced || this.motion.suspended,
+      reduced:this.motion.reduced || this.motion.suspended,
       gradients:this.wardrobeGradients,
       onCommit:()=>{if(!this.disposed){this.pose=index;this.dealer.texture=this.characterTextures[index];this.updateControls();}},
       onChange:frame=>{if(!this.disposed){Object.assign(this.app.canvas.dataset,{wardrobeStage:frame.complete?'complete':frame.committed?'revealing':'focusing',wardrobeElapsed:String(Math.round(frame.elapsed))});}},

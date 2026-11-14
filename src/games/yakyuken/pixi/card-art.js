@@ -1,5 +1,5 @@
 import {Container,Sprite} from 'pixi.js';
-import {label} from './ui.js';
+import {label} from '../../../ui/pixi/ui.js';
 import {TABLE_MOVE_NAMES} from './layout.js';
 
 function surface(texture){

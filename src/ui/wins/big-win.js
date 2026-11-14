@@ -36,7 +36,7 @@ export class BigWinPresentation {
     for(const key of Object.keys(WIN_TITLES))this.element.querySelector(`.bigwin-title-${key}`).hidden=key!==tier;
     this.element.classList.toggle('reduced',reduced);
     this.element.setAttribute('aria-hidden','false');
-    this.element.setAttribute('aria-label',`${WIN_TITLES[tier]}，中獎 ${amount.toLocaleString('en-US')} 分`);
+    this.element.setAttribute('aria-label',`${WIN_TITLES[tier]}，獲得 ${amount.toLocaleString('en-US')} 戲籌`);
     setBitmapNumber(this.score,reduced?amount.toLocaleString('en-US'):'0');
     // Restart the authored entrance even when a new preview interrupts a prior one.
     void this.element.offsetWidth;

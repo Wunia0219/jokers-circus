@@ -4,7 +4,7 @@ import {parseEnv} from 'node:util';
 import {randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {build} from 'vite';
-import {discordTestBuildOptions} from './discord-test-build.js';
+import {discordTestBuildOptions} from '../build/discord-test.js';
 import {PLAYTEST_IDENTITY,assertPlaytestIdentity} from '../../cloud/yakyuken-playtest-core.js';
 import {assertDiscordTestApp,TEST_CHANNEL,TEST_GUILD,LIVE_APP} from '../../cloud/discord-test-auth.js';
 import {configureQuietLaunch} from '../../server/discord/entry-point.js';

@@ -36,4 +36,9 @@ test('arcade audit verifies the loaded entry and keeps the test App out of produ
     ['arcade/lobby.html','<script src="/arcade/assets/lobby-87654321.js"></script>'],
     ['arcade/assets/lobby-87654321.js',JSON.stringify(productionApp)]];
   assert.throws(()=>assertArcadeArtifact(stale,TEST_DISCORD_APP),/configured Discord Application ID/);
+  const release=files.filter(([name])=>!name.endsWith('youran-finale.png')).map(([name,content])=>[name,content.replaceAll(TEST_DISCORD_APP,productionApp)]);
+  assert.doesNotThrow(()=>assertArcadeArtifact(release,productionApp));
+  for(const content of [TEST_DISCORD_APP,'https://jokers-circus-arcade-test.nini900219.workers.dev','/arcade/feature/youran-finale.png'])
+    assert.throws(()=>assertArcadeArtifact([...release,['arcade/feature/assets/leak-12345678.js',content]],productionApp));
+  assert.throws(()=>assertArcadeArtifact([...release,['arcade/feature/youran-finale.png','test image']],productionApp));
 });

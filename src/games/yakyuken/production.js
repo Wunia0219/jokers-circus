@@ -2,6 +2,7 @@ import './yakyuken.css';
 import {arcadeHost} from '../../platform/arcade-session.js';
 import {ProductionDuelWallet} from './production-wallet.js';
 import {YakyukenScene} from './scene.js';
+import {duelErrorMessage} from './player-copy.js';
 
 const root=document.getElementById('yakyuken-app'),host=arcadeHost();
 let scene,loading;
@@ -17,14 +18,14 @@ try{
   addEventListener('pagehide',event=>event.persisted?scene.pause():void scene.destroy());
   addEventListener('pageshow',event=>{if(event.persisted)scene.resume();});
   await scene.init(root);
-  if(scene.app.canvas.dataset.phase==='error')throw new Error('舞台素材載入失敗。');
+  if(scene.app.canvas.dataset.phase==='error')throw new Error('暫時無法載入遊戲，請再試一次。');
   if(await scene.beginEntry('game',{loading})&&wallet.active())await scene.beginEntry('table',{resume:true});
 }catch(error){
   await scene?.destroy();
-  if(loading)loading.fail(error.message);
+  if(loading)loading.fail(duelErrorMessage(error));
   else{
     const message=document.createElement('p'),retry=document.createElement('button');
-    message.role='status';message.textContent=error.message||'舞台暫時無法載入。';
+    message.role='status';message.textContent=duelErrorMessage(error);
     retry.textContent='重新載入';retry.onclick=()=>location.reload();
     const back=document.createElement('button');
     back.textContent='返回大廳';back.onclick=()=>host?.back(window);back.hidden=!host;

@@ -1,7 +1,7 @@
 import {resolve} from 'node:path';
 import base from '../../vite.config.js';
 import {securityHeaders,contentSecurityPolicy} from '../../server/http/security-headers.js';
-import {launchScreenMarkup} from '../build/launch-screen-markup.js';
+import {launchScreenMarkup} from './launch-screen-markup.js';
 
 // Dedicated test builds have extra entry chunks. Cache their verified hashed
 // assets with one rule instead of exceeding Cloudflare's 100-rule limit.

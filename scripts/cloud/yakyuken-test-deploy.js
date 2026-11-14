@@ -6,7 +6,7 @@ import {spawn} from 'node:child_process';
 import {PLAYTEST_IDENTITY,assertPlaytestIdentity} from '../../cloud/yakyuken-playtest-core.js';
 
 if(process.argv.slice(2).join(' ')!=='--deploy')throw new Error('Explicit --deploy required for the dedicated test Worker');
-if(existsSync('.tools/discord-test-app.json')&&JSON.parse(readFileSync('.tools/discord-test-app.json','utf8')).clientId)throw new Error('Discord test App is configured; use node scripts/game/discord-test.js deploy to preserve its assets and login configuration');
+if(existsSync('.tools/discord-test-app.json')&&JSON.parse(readFileSync('.tools/discord-test-app.json','utf8')).clientId)throw new Error('Discord test App is configured; use node scripts/cloud/discord-test.js deploy to preserve its assets and login configuration');
 const configPath='wrangler.yakyuken-test.jsonc',config=JSON.parse(readFileSync(configPath,'utf8'));
 assertPlaytestIdentity(config.vars);
 if(config.name!==PLAYTEST_IDENTITY.worker||config.main!=='cloud/yakyuken-playtest-worker.js'||config.assets||config.triggers||config.env||config.routes)throw new Error('Unexpected test deployment configuration');
@@ -32,4 +32,4 @@ const origin=match[0],health=await fetch(origin+'/healthz',{redirect:'error',sig
 if(!health.ok||health.environment!=='test'||health.worker!==PLAYTEST_IDENTITY.worker||health.projectId!==PLAYTEST_IDENTITY.projectId||health.namespace!==PLAYTEST_IDENTITY.namespace)throw new Error('Dedicated test health identity mismatch');
 writeFileSync(gatewayPath,JSON.stringify({origin,token},null,2)+'\n');
 writeFileSync('test-results/yakyuken-test-deployment.json',JSON.stringify({origin,health,deployedAt:new Date().toISOString()},null,2)+'\n');
-console.log('Dedicated test deployment ready; run node scripts/game/yakyuken-preview.js --cloud-test');
+console.log('Dedicated test deployment ready; run node scripts/preview/yakyuken.js --cloud-test');

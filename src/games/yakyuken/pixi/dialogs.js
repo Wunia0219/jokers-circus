@@ -1,7 +1,7 @@
 import {Container,Graphics,Rectangle} from 'pixi.js';
 import {icon} from '../../../ui/shared/icons.js';
-import {label,panel,PALETTE,PixiButton} from './ui.js';
-import {SLOT_UI} from './slot-theme.js';
+import {label,panel,PALETTE,PixiButton} from '../../../ui/pixi/ui.js';
+import {SLOT_UI} from '../../../ui/pixi/slot-theme.js';
 import {buildArchiveDialog} from './archive-dialogs.js';
 
 export function buildSlotDialog(scene,type){
@@ -21,7 +21,7 @@ export function buildSlotDialog(scene,type){
     const node=label(text,size,color,{wordWrap:true,wordWrapWidth:mw-44,lineHeight:size*1.9,align:'left'});node.anchor.set(0,0);node.position.set(-mw/2+22,y);body.addChild(node);return node;
   };
   if(type==='leave'){
-    paragraph(scene.wallet?'本場尚未完成，入場已扣除 1,000 戲籌。\n現在離開，不會退還入場費。':'本場尚未完成。\n現在離開，將結束這場挑戰。',-mh/2+92,14);
+    paragraph(scene.wallet?'這場還沒打完，入場時已扣除 1,000 戲籌。\n現在離開，入場費不會退還。':'本場尚未完成。\n現在離開，將結束這場挑戰。',-mh/2+92,14);
     const bw=Math.min(210,(mw-56)/2);
     for(const [text,x,onPress,variant] of [['繼續遊戲',-bw/2-6,()=>scene.closeModal(),'panel'],['確認離開',bw/2+6,()=>scene.confirmLeave(),'duel']]){
       const button=new PixiButton({text,name:text,width:bw,height:48,variant,onPress});button.position.set(x,mh/2-54);body.addChild(button);
@@ -39,7 +39,7 @@ export function buildSlotDialog(scene,type){
     const motion=addButton(scene.motion.reduced?'動態效果：減少':'動態效果：標準',start+52,()=>{
       scene.reducePreference=!scene.motion.reduced;scene.motion.reduced=!!scene.reducePreference || scene.media.matches;if(scene.motion.reduced)scene.motion.finish();scene.openModal('settings');
     },'切換動態效果');
-    if(scene.media.matches){motion.setText('動態效果：跟隨系統減少');motion.setEnabled(false);}
+    if(scene.media.matches){motion.setText('動態效果：依系統設定');motion.setEnabled(false);}
     const fullscreen=addButton(document.fullscreenElement?'離開全螢幕':'全螢幕',start+104,async()=>{
       try{if(document.fullscreenElement)await document.exitFullscreen();else await scene.host.requestFullscreen();if(!scene.disposed && scene.modal==='settings')scene.openModal('settings');}
       catch{if(!fullscreen.destroyed)fullscreen.setText('此視窗不支援全螢幕');}

@@ -1,12 +1,13 @@
-import {BOT_COLORS} from './bot-replies.js';
 import {playerMention,playerMentions,playerName} from './player-display.js';
+import {GRANT_RECEIPT_NAME,receiptColors} from './casino-receipt.js';
 
 const escapeText=value=>String(value).replace(/@/g,'＠').replace(/[\\`*_{}\[\]()<>~|#]/g,'\\$&');
 
 export function grantAnnouncement({name, user, amount, reason, recordCode}) {
   return {
     content:`${playerMention(user)??playerName(name)}，你收到 **${amount.toLocaleString('en-US')} 戲籌**！`,
-    embeds:[{title:'戲籌已發放',description:`發放原因：${escapeText(reason)}`,color:BOT_COLORS.success,footer:{text:'紀錄編號：'+recordCode}}],
+    embeds:[{title:'戲籌已發放',description:`發放原因：${escapeText(reason)}`,color:receiptColors.even,image:{url:'attachment://'+GRANT_RECEIPT_NAME},footer:{text:'紀錄編號：'+recordCode}}],
+    grantReceipt:{amount},
     allowed_mentions:playerMentions([user]),
   };
 }

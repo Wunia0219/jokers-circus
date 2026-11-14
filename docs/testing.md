@@ -2,13 +2,23 @@
 
 所有負載、故障及資料清理演練使用隔離資料；不拿真實玩家下注測效能。
 
+## 私有歷史快照補驗
+
+一般 CI 不攜帶玩家備份，因此三個歷史快照案例會在未提供來源時略過。它們檢查完整加密還原、Firestore 還原，以及 v2 遷移／全部原請求重播／v1 回退；不能以一般合成案例通過取代這些結果。
+
+本機補驗時，先確認來源是已驗帳、環境為 `test` 的完整歷史 SQLite 快照，核對 SHA-256。`CLOUD_RESTORE_SNAPSHOT` 與 `FIRESTORE_RESTORE_SNAPSHOT` 指向該檔案後執行 `npm run verify:ci`。後者只允許 `127.0.0.1:8787` 的 `demo-jokers-circus` emulator，使用隨機 namespace；不載入正式設定或憑證。完成後清除這兩個環境變數，私有快照、金鑰及原始輸出不提交 Git／CI artifact。不要修改正式備份的環境欄位來套用此歷史案例。
+
+完整重播與備份維護共用演練的用量檔及原有模擬器專用全域額度，不清空累積用量；維護專用額度仍保留。這些設定僅存在於隔離測試，不改動正式額度或額度不足的反向測試。來源 SHA-256 與所有餘額、歷史及原請求結果都必須保持不變，新增的演練進度也必須能回退保留。
+
+要核對當前正式資料格式，另依 [備份與恢復](recovery.md) 的 `wallet:recovery backup` 下載既有有效加密快照，再用 `drill` 還原至全新的本機目錄。此流程不觸發新備份、不 pause／export、不寫回正式資料。記錄備份的實際 readTime；驗收證明的是該時間點快照，不是所有當下線上餘額。
+
 ## 自動測試
 
 | 指令 | 範圍 |
 |---|---|
 | `npm run verify` | 固定順序：一般回歸、前端／Worker dry-run、啟動／荷官／數字／停輪／CSP 瀏覽器驗證 |
 | `npm run verify:full` | 上述全部，再跑官方 emulator、REST／workerd、備份恢復、重設與監控 |
-| `npm run verify:ci` | 完整驗證＋Discord 測試活動雙遊戲＋野球拳領獎順序＋慢幀／輸入延遲＋CSP 延遲通知，共 16 項；彙整獨立失敗 |
+| `npm run verify:ci` | 完整驗證＋Discord 測試活動雙遊戲＋野球拳領獎順序＋正式雙遊戲隔離／預檢＋慢幀／輸入延遲＋CSP 延遲通知，共 18 項；彙整獨立失敗 |
 | `node scripts/qa/check-toolchain.js` | 安裝相依前核對 Node／npm、lockfile、Netlify、Docker 與 CI 的版本設定 |
 | `npm test` | 算獎、介面契約、Discord 權限、SQLite、備份、同步與防重送 |
 | `npm run test:bot` | 指令、HTTP、帳本與維運 |
@@ -18,19 +28,21 @@
 | `npm run test:reset` | 測試帳本清除、未知提交結果、重啟續作、舊登入拒絕 |
 | `npm run test:experience` | Edge：正常／快停、慢結果、慢歷史、慢幀與手機觸控 |
 | `npm run test:dealer` | Edge：荷官完整影格、短期重用、背景／到期釋放及故障清理 |
-| `npm run test:startup` | Edge：六種啟動失敗、立即停止渲染、晚到素材回收與重試畫面 |
+| `npm run test:startup` | Edge：六種老虎機啟動失敗與五種大廳資源生命週期：部分圖片失敗、解碼／renderer 初始化中止、正常離開及封面回收 |
 | `node scripts/qa/game-entry.js` | 先用 Discord 登入與錢包開關建置；隔離驗證維修海報、帳號放行、重新開放與結算途中關閉，包含回應中斷及原請求保留 |
 | `npm run test:numbers` | 數字、符號、空值與後備文字的像素／尺寸／無障礙基準，以及 Canvas 重設次數 |
 | `npm run test:security` | 先 build；Edge：CSP、腳本注入阻擋、SQLite 結算 |
 | `npm run test:discord-sdk` | 隔離父頁／iframe：真實 SDK 握手、OAuth、方向鎖定及大型非法集合拒絕 |
 | `npm run test:monitor` | scheduled handler、持久去重、故障與恢復通知 |
 | `node --test tests/yakyuken*.test.js` | 野球拳規則、紀錄、測試錢包邊界、原請求恢復與去重 |
-| `node scripts/qa/yakyuken-cloud-test.js` | 隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道 |
+| `node scripts/qa/yakyuken-cloud-test.js` | 早期獨立測試引擎的隔離瀏覽器：測試錢包、扣款發獎、四尺寸金額、平手零 Firestore 存取、簽到重試與私有閘道；不代表現行正式權威後端的存取保證 |
 | `node scripts/qa/cg-responsive.js` | 隔離瀏覽器：14 種尺寸及 3 組短視窗／安全區、共用外框、等尺寸縮圖、全畫面檢視、手機翻頁與 PNG 下載 |
 | `node scripts/qa/yakyuken-reward.js` | 隔離錢包：造型先於領獎、金額與音效同步、獨立靜音、縮放／背景恢復、重載不重播、勝敗再次挑戰／返回、新場只扣一次費，以及預取後 330ms 翻牌規劃、暫扣結算、原拳重試、缺票券與跨裝置進度衝突 |
 | `node scripts/qa/cg-gallery-live.js` | 唯讀公開 Cloudflare Pages：依本機 CG 目錄驗證原圖下載、位元組、CSP 與同源請求，需先部署對應版本的圖庫 |
 | `node scripts/qa/yakyuken-cloud-test.js --live` | 明確連接獨立測試 Worker 與 Firestore，只用玩家 B 實際扣測試戲籌；不屬於自動 CI |
 | `node scripts/qa/discord-test-activity.js` | 使用已建置前端、真正的 Embedded App SDK 與隔離帳號。三主題各跑 13 種尺寸，驗證橫直切換、人物裁切、文字安全區、開場故障與來源，再跑桌機／手機雙遊戲及共用簽到 |
+| `node scripts/qa/arcade-release.js --production` | 正式 App 雙遊戲建置；正常 CG 解鎖、測試 PNG 拒絕、正式收藏下載路徑，以及隱藏、維護、更新中原局恢復 |
+| `npm run arcade:preflight -- production-arcade` | 不需雲端憑證；核對正式綁定、前端與 Worker dry-run，絕不部署 |
 | `node scripts/qa/arcade-release.js` | 4206 埠，隔離雙遊戲測試建置與真實 SDK。驗證預告階段封鎖、手機直橫版、共用 Discord 連線、野球拳單一品牌載入畫面、兩款遊戲即時中斷與返回大廳，以及重開後取回原轉輪。`cloud-runtime.integration.js` 另驗證兩個野球拳開關、維護期間阻擋新操作、重新開放續局及備份還原 |
 | `node scripts/qa/test-firestore.js tests/discord-test.integration.js` | 官方 emulator＋真正 workerd：Discord 簽章／頻道、OAuth、每位玩家、共用錢包／簽到與重啟 |
 | `node --test tests/cloudflare-usage.test.js tests/monitor.test.js` | Free 門檻／Paid 觀測、方案切換、跨日、通知意圖、429／未知送出、可信附件恢復；不聯絡正式服務 |
@@ -47,6 +59,8 @@
 
 Discord 雙遊戲測試的 `timings.json` 記錄建置、開場各主題、桌機／手機主要操作階段，以及實際截圖耗時；階段耗時包含其中的截圖，不可再相加。這些量測只存在於 QA，不修改正式遊戲或等待門檻。GitHub CI（`CI=true`）預設只在失敗時擷取診斷圖片並上傳；全通過流程原本的 63 次 PNG 擷取（含登入故障注入案例）不參與像素比對，省去擷取仍完整檢查所有尺寸、裁切、動畫、來源、帳號及遊戲行為。數字像素基準與其他測試不受此策略影響。本機預設保留完整擷取，可用 `QA_SCREENSHOTS=all` 強制保存全部，或 `QA_SCREENSHOTS=failure` 重現 CI；失敗擷取最多等待 5 秒，擷取失敗也不覆蓋原本的測試錯誤。
 
+Discord 跨遊戲背景音樂以實際 `timeupdate` 的前進事件驗證，並拒絕額外播放器、暫停、程式 seek、重新載入或換曲。曲目循環會讓 `currentTime` 歸零，不能將前後時間必須遞增當作不中斷的判準。`music-continuity.test.js` 包含自然循環與停播／重設反向案例；診斷保存前後事件計數及曲目長度，正式音樂與玩法計時不變。
+
 Discord 雙遊戲的荷官圖片恢復檢查，以 `verifySlotAtlasRecovery` 將故障注入、回應觀察與「選擇老虎機」動作放在同一階段；原 60 秒門檻保留，不把前面的野球拳／CG 流程計入。桌機與手機都必須實際收到 503→200、恰好兩次圖片請求，並等待老虎機就緒；報告保存各回應的階段耗時，失敗報告也保存已觀察結果。`tests/slot-atlas-recovery.test.js` 覆蓋超過 60 秒的前段延遲、即時回應、不發請求、不重試、恢復失敗、額外重試及未就緒等情境；真實缺圖仍須失敗。這些都只作用於隔離 QA，不調整正式遊戲的載入、停輪或重試參數。
 
 數字測試以 `willReadFrequently: true` 固定 Canvas 軟體繪製，避免 GPU／CPU 切換造成像素雜湊差異；此設定僅限隔離測試頁，正式遊戲不受影響。固定基準位於 `tests/fixtures/number-rendering.json`，仍逐一核對像素、尺寸及無障礙文字。僅在有意更改字型／外觀，或已證實需要統一測試繪圖路徑時，用 `npm run test:numbers -- --baseline` 更新並審查差異；失敗時也會保存 `test-results/number-rendering/after.json`。
@@ -61,7 +75,7 @@ CSP 注入測試等待非同步違規通知，確認 `script-src-elem` 對 `inli
 
 `node scripts/qa/verify.js --full --list` 或 `--ci --list` 只列出步驟。檢查清單與依賴集中在 `scripts/qa/helpers/verification-plan.js`；一般驗證第一個失敗即停止，CI 模式則繼續獨立檢查。建置失敗時，依賴它的 CSP／Worker／整合測試標為受阻，絕不當成通過。每一步結束都更新 `test-results/verification.json`；任何失敗／受阻都保留非零結束碼。Windows ARM 的 workerd 步驟使用 `.tools/node-x64/` 中與 `.node-version` 一致的 Node；其他步驟使用啟動驗證的 Node。
 
-手動 `yakyuken-preview.js` 與 `dealer-resources.js` 共用 4196 埠；先結束前者，再執行後者或完整 CI，不要與 CI 同時啟動。
+手動 `scripts/preview/yakyuken.js` 與 `scripts/qa/dealer-resources.js` 共用 4196 埠；先結束前者，再執行後者或完整 CI，不要與 CI 同時啟動。
 `cg-responsive.js` 與數字繪製像素檢查共用 4198 埠，也應循序執行。
 
 GitHub Actions 使用四個獨立 runner 並行驗證，各組內仍循序執行：
@@ -75,7 +89,7 @@ GitHub Actions 使用四個獨立 runner 並行驗證，各組內仍循序執行
 
 重現單組使用 `npm run verify:ci -- --suite=browser`（或 `discord`／`wallet`／`services`）；漏洞稽核由 workflow 另跑 `npm audit --audit-level=high`。本機完整重驗仍用 `npm run verify:ci`，不可在同一個目錄同時啟動多組，因為會共用模擬器連接埠及輸出目錄。分組覆蓋測試會檢查完整清單不遺漏、所有整合測試檔均分配且不重複、workflow 啟動所有組；新增檢查請同步維護清單。Discord 測試仍完整執行並保留兩個帳號的隔離檢查，不改動畫、等待門檻或案例。任一組失敗仍讓其餘組完成診斷，最後的 `Verify / verify` 只有全部成功才通過。
 
-同一事件與分支的新執行會取消舊執行；PR、main 推送與手動執行使用不同取消群組，避免互相中斷。四組並行縮短等待時間，但不等於減少 GitHub Actions 累計用量，額外 runner 仍有安裝成本。流程不觸發 Netlify 或 Cloudflare 部署。
+同一事件與分支的新執行會取消舊執行；PR、main 推送與手動執行使用不同取消群組，避免互相中斷。四組並行縮短等待時間，但不等於減少 GitHub Actions 累計用量，額外 runner 仍有安裝成本。流程不觸發 Netlify 或 Cloudflare 部署。services 組另建置 Docker 映像並載入正式 HTTP／恢復模組；本機沒有 Docker 時，只能回報相依閉包檢查，不能宣稱容器已實測。
 
 CI 每組保留 7 天的 `verification-<suite>-<run_id>-<attempt>` 診斷附件，並在執行摘要列出各步驟結果與耗時。附件只包含指定的 QA JSON 與 Discord 隔離測試失敗畫面，不包含 SQLite、真實玩家資料、備份或環境檔。一般停輪報告在 `test-results/reel-experience/`，壓力測試在 `test-results/reel-experience-stress/`；CSP 每次使用獨立 `run-*` 目錄，互不覆蓋。
 

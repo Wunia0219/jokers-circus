@@ -25,6 +25,8 @@ export function verificationPlan({ci=false,full=false,suite='all',node=process.e
     if(ci)steps.push(
       step('discord-test-ui','Discord 測試活動雙遊戲',['scripts/qa/discord-test-activity.js']),
       step('yakyuken-reward','野球拳造型與領獎順序',['scripts/qa/yakyuken-reward.js']),
+      step('arcade-production','正式雙遊戲發布與收藏隔離',['scripts/qa/arcade-release.js','--production']),
+      step('arcade-preflight','正式雙遊戲設定與發布產物',['scripts/qa/arcade-preflight.js','production-arcade']),
       step('reels-stress','慢幀與輸入延遲',['scripts/qa/reel-experience.js','--slow-frames','--slow-input']),
       step('security-stress','CSP 延遲通知',['scripts/qa/security-smoke.js','--delayed-csp-report'],['build']),
     );
@@ -39,7 +41,7 @@ export function verificationPlan({ci=false,full=false,suite='all',node=process.e
   // The Discord fixture builds its own isolated frontend and keeps both accounts
   // together, preserving the cross-player assertions without shared runner state.
   if(suite==='discord')return steps.filter(step=>step.id==='discord-test-ui');
-  if(suite==='browser')return steps.filter(step=>!['worker','monitor-build','discord-test-ui'].includes(step.id));
-  if(suite==='services')return steps.filter(step=>['build','worker','monitor-build','firestore','monitor'].includes(step.id));
+  if(suite==='browser')return steps.filter(step=>!['worker','monitor-build','discord-test-ui','arcade-preflight'].includes(step.id));
+  if(suite==='services')return steps.filter(step=>['build','worker','monitor-build','arcade-preflight','firestore','monitor'].includes(step.id));
   return steps;
 }

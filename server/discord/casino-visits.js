@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {playerName,playerMention,playerMentions} from './player-display.js';
 import {problem} from '../wallet/wallet-common.js';
 import {RECEIPT_NAME, receiptColors, receiptLabels, receiptSummary} from './casino-receipt.js';
+import {ARCADE_RECEIPT_NAME,arcadeReceiptSummary} from './arcade-receipt.js';
 
 export const VISIT_HEARTBEAT_MS=45000,VISIT_TIMEOUT_MS=180000,VISIT_CLOSE_GRACE_MS=10000;
 const id=value=>/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value||''),keyOf=session=>session.guild+':'+session.user;
@@ -27,6 +28,13 @@ export function visitMessage(visit,end,reason){
   if(!Number.isSafeInteger(net)||!Number.isSafeInteger(rounds)||rounds<0)throw new Error('Visit accounting moved backwards');
   const goodbye=reason==='timeout'?'暫時離開賭場':'離開賭場';
   const content=`♣ **離場** · ${name} ${goodbye}`;
+  if(Number.isSafeInteger(visit.start.revision)){
+    const duel=end.duel??{entries:0,clears:0,net:0};
+    if(rounds===0&&!duel.entries&&!duel.clears)return {content:`${content} · 這次還沒下注。`,allowed_mentions};
+    const arcadeReceipt={slot:{rounds,net},duel},summary=arcadeReceiptSummary(arcadeReceipt);
+    return {content,allowed_mentions,arcadeReceipt,embeds:[{title:'賭場・離場結算',color:receiptColors[summary.tone],
+      description:summary.description.replaceAll('；','\n')+`\n手上還有 **${fmt(end.balance)} 戲籌**`,image:{url:`attachment://${ARCADE_RECEIPT_NAME}`}}]};
+  }
   if(rounds===0)return {content:`${content} · 這次還沒下注。`,allowed_mentions};
   const {tone,amount,games}=receiptSummary(net,rounds);
   return {
@@ -62,7 +70,7 @@ export class CasinoVisits {
     this.data.events.push({id:randomUUID(),at:this.clock(),payload,status:'pending'});
   }
   async finish(key,visit,reason){
-    const end=account(await this.readAccount(visit.guild,visit.user));
+    const end=account(await this.readAccount(visit.guild,visit.user,visit.start));
     this.enqueue(visitMessage(visit,end,reason));delete this.data.visits[key];this.save();
   }
   request(session,input){return this.serial(async()=>{

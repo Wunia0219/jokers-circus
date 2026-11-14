@@ -45,7 +45,7 @@ export class ProductionDuelWallet {
       !Number.isSafeInteger(data.wallet.revision)||!Array.isArray(data.wallet.records)||
       (data.wallet.activeId!==null&&(!data.nextHand||data.nextHand.matchId!==data.wallet.activeId||
         !Number.isSafeInteger(data.nextHand.index)||data.nextHand.index<0)))
-      throw new Error('戲籌回應無法驗證。');
+      throw new Error('暫時無法確認戲籌，請重新開啟遊戲。');
     if(!this.wallet||data.wallet.revision>=this.wallet.revision){
       this.wallet=data.wallet;this.nextHand=data.nextHand;
       this.admissionOpen=data.admissionOpen;
@@ -69,13 +69,13 @@ export class ProductionDuelWallet {
     },error=>{
       if([400,409].includes(error.status)){this.pending=null;this.persist();throw error;}
       const code=this.supportCode;
-      throw new Error(code?`回應尚未確認，請重試原操作。\n回報碼 ${code}`:'簽到尚未確認，請重試。',{cause:error});
+      throw new Error(code?`剛才的結果還在確認，請再試一次。\n回報碼 ${code}`:'簽到尚未確認，請重試。',{cause:error});
     }).finally(()=>{this.inFlight=null;});
     return this.inFlight;
   }
   act(action,body={}){
     if(this.pending&&(this.pending.action!==action||Object.entries(body).some(([key,value])=>this.pending.body[key]!==value)))
-      throw new Error('請先重試上一個尚未確認的操作。');
+      throw new Error('請先確認剛才的結果，再繼續遊戲。');
     this.pending ||= {action,body:{...body,requestId:crypto.randomUUID()}};
     this.persist();
     return this.sendPending();

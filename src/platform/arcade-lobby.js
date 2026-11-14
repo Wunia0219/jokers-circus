@@ -124,7 +124,7 @@ async function watchGame(gameSignal){
     try{
       const response=await fetch('/api/arcade?after='+state.revision,{cache:'no-store',
         signal:AbortSignal.any([gameSignal,AbortSignal.timeout(15000)])});
-      if(!response.ok)throw new Error('營運狀態暫時無法更新。');
+      if(!response.ok)throw new Error('暫時無法確認遊戲是否開放，請再試一次。');
       if(response.status!==204){
         const next=await response.json();
         // A previous Worker version may return a snapshot for a watch request.
@@ -139,13 +139,13 @@ async function watchGame(gameSignal){
 function refresh(){
   refreshing ||= (async()=>{
     const response=await fetch('/api/arcade',{cache:'no-store',signal:AbortSignal.timeout(5000)});
-    if(!response.ok)throw new Error('營運狀態暫時無法更新。');
+    if(!response.ok)throw new Error('暫時無法確認遊戲是否開放，請再試一次。');
     await render(await response.json());
     status.textContent='';
     retry.hidden=true;
     return true;
   })().catch(()=>{
-    status.textContent='營運狀態暫時無法更新。';
+    status.textContent='暫時無法確認遊戲是否開放，請再試一次。';
     retry.hidden=false;
     return false;
   }).finally(()=>{refreshing=null;});
@@ -202,6 +202,8 @@ try{
   }
 }catch(error){
   clearTimeout(timeout);
+  clearInterval(refreshTimer);
+  lifetime.abort();safeAreaObserver.disconnect();music.dispose();
   console.error('無法開啟遊戲大廳。',error);
   launch.fail();
 }

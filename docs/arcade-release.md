@@ -7,17 +7,17 @@
 | Worker | `jokers-circus-arcade-test` | `jokers-circus-production` |
 | 後台網址（部署後） | [測試後台](https://jokers-circus-arcade-test.nini900219.workers.dev/operator) | [正式後台](https://jokers-circus-production.nini900219.workers.dev/operator) |
 | Discord App | Joker’s Circus · Test | Joker’s Circus |
-| 遊戲入口 | 雙遊戲大廳，野球拳預設模糊預告 | 直接進入老虎機 |
+| 遊戲入口 | 雙遊戲大廳，由後台控制揭曉／維護 | 1.1.1 起使用相同雙遊戲大廳 |
 | Discord | 原有指令，私下回覆 | 原有指令、聊天室機器人與 @ 通知 |
 | 帳本 | `slot-game-203db` / `jokers-circus-arcade-test` | `jokers-circus-production` / `jokers-circus-v2-20261030-production` |
-| Wrangler 設定 | `wrangler.arcade-test.jsonc` | `wrangler.production.local.jsonc` |
+| Wrangler 設定 | `wrangler.arcade-test.jsonc` | `wrangler.arcade-production.jsonc` |
 | 監控 Worker | `jokers-circus-arcade-test-monitor` | `jokers-circus-monitor` |
 
 ## 四項發布前檢查
 
 1. **保留前版產物。** 首次雙遊戲測試從空白帳本開始，可以省略舊產物。後續更新測試服時保存它自己上一版的產物。正式服第一次接入也要保存當時實際上線的老虎機 `dist`。建置會保留原本的雜湊素材，讓換版時開著的頁面能完成當局。
 2. **共用自動測試，在測試服做完整真人演練。** 每個提交跑一份 `npm run verify:ci`，另跑 `node scripts/qa/arcade-release.js` 與 `node scripts/qa/operator-console.js`。用測試帳號與手機、桌面 Discord 驗證登入、入場、暫停、繼續未結算回合和收據查詢。原請求重試應只結算一次。正式部署後只做健康、大廳、舊頁面與隱藏閘道的驗收，揭曉及暫停演練留在測試服。
-3. **分別建置並稽核。** `npm run arcade:preflight -- test` 產出 `dist-arcade-test`，`npm run arcade:preflight -- production` 產出僅含老虎機的 `dist`。更新時以 `--legacy <該環境上次實際部署的產物路徑>` 保留前版素材。兩個指令都檢查環境綁定、建置對應的 Discord App 並做 Wrangler `--dry-run`，報告存到 `test-results/arcade-preflight/`。
+3. **分別建置並稽核。** `npm run arcade:preflight -- test` 產出 `dist-arcade-test`，`npm run arcade:preflight -- production-arcade` 產出正式雙遊戲的 `dist-arcade-production`。更新時以 `--legacy <該環境上次實際部署的產物路徑>` 保留前版素材。兩個指令都檢查環境綁定、建置對應的 Discord App 並做 Wrangler `--dry-run`，報告存到 `test-results/arcade-preflight/`。
 4. **各自備份與核對回退。** 測試服可用自己的帳本演練更新備份、核對備份、離線還原及 `S-`／`D-` 原請求。正式切換前核對正式服的最新快照與回退版本。備份解密與完整還原在隔離環境執行，入口與備份的日常操作走後台。參見[備份與恢復](recovery.md)。
 
 ## 測試服首次接入
@@ -25,9 +25,24 @@
 1. 將[測試維運範本](../deploy/arcade-test.env.example)複製成 `.env.arcade-test.local`，填入測試專案服務帳戶的絕對路徑。首次在新的 SQLite 路徑用 `node --env-file=.env.arcade-test.local scripts/database/init-db.js` 準備空白測試帳本。接入測試時用 `node --env-file=.env.arcade-test.local scripts/firestore/import-firestore.js --from <空白 SQLite>` 初始化新 namespace，接著用同一份設定執行 `scripts/firestore/backup-firestore.js`。這兩個遠端步驟需要在該私有設定中暫時啟用 `FIRESTORE_LIVE_ENABLED=true`。
 2. 把測試快照連同三份用量資料庫交給 `cloud:handoff -- prepare --env .env.arcade-test.local --from <測試快照> --to <交接檔> --writers-stopped true`。全新且未啟用 Discord 公告時，缺少的 `.highlights.sqlite` 可用 `FirestoreQuota` 以同一測試 project 初始化為空。使用新 Worker 專屬的 `CLOUD_ADMIN_TOKEN`、`CLOUD_ENCRYPTION_KEY` 和 `ARCADE_CONSOLE_TOKEN`，以及測試 App 的 `DISCORD_CLIENT_SECRET`、測試專案的 `GOOGLE_SERVICE_ACCOUNT_JSON`。部署測試 Worker 後，以 `.env.arcade-test.local` 為目標，用既有 `cloud:control` 的 `seed`、`verify`、`activate` 完成測試帳本接入。測試後台管理金鑰與正式服分開設定。
 3. 測試 Worker 就緒後，在 **測試 App** 把根映射及 Interactions Endpoint 分別指向新測試 Worker 及其 `/api/interactions`。Discord 不須重新註冊指令；兩款遊戲和指令使用同一個現行測試帳本。切換後請重新輸入指令以開啟新的管理表單。舊測試 Worker 和帳本可保留供回退，餘額與紀錄不自動搬移。
-4. 用 `wrangler.arcade-test-monitor.jsonc` 部署測試監控。為測試遊戲 Worker 的 `CLOUD_MONITOR_TOKEN` 和測試監控的 `MONITORED_TOKEN` 設定同一把測試專用唯讀金鑰。測試監控每十分鐘查看測試服狀態，結果可在監控的 `/__ops/status` 查詢。一般測試發布維持公告停用，可用 `/推播預覽` 查看私人卡片。需要演練自動公告時，參見[公告的測試服設定](casino-announcements.md#discord-測試服)。
+4. 用 `wrangler.arcade-test-monitor.jsonc` 部署測試監控。為測試遊戲 Worker 的 `CLOUD_MONITOR_TOKEN` 和測試監控的 `MONITORED_TOKEN` 設定同一把測試專用唯讀金鑰。測試監控每十分鐘查看測試服狀態，結果可在監控的 `/__ops/status` 查詢。測試服固定不配置公告 Bot 或 Bot Token，不啟用真實公開通知；僅用 `/推播預覽` 查看私人示例卡片，通知邏輯由隔離自動測試驗證。維持 `test-simple` 與發布前的公告隔離檢查，參見[測試服私人預覽規則](casino-announcements.md#discord-測試服)。
 
-## 正式服接入
+## 正式雙遊戲發布準備
+
+正式雙遊戲使用 `wrangler.arcade-production.jsonc` 與 `dist-arcade-production`。沿用正式 Worker、Discord App、DO、Firestore、週簽到、管理額度與公告設定；只將 `ARCADE_RELEASE_ENABLED` 開啟，讓兩款遊戲共用同一錢包。不搬移或重建玩家資料，也不把測試服的簡化指令、全 CG 預覽或優然浴巾下載帶入正式版。
+
+```sh
+npm run arcade:preflight -- production-arcade --legacy <目前正式服實際上線產物>
+node scripts/qa/arcade-release.js --production
+```
+
+預檢只建置及執行 Wrangler dry-run，**不部署**。初次啟用會沿用正式 DO 已保存的老虎機狀態，未設定的野球拳預設為「即將揭曉」。正式揭曉須在實際部署後從正式 `/operator` 操作。兩款遊戲皆支援維護、返回大廳與原請求恢復；正式服管理員的 @ 發放通知保留。
+
+實際發布前要核對當時線上版本、可用備份、Secrets、完整前版雜湊素材與下載站。不能用本機重新建置的舊版本冒充「實際上線產物」。若尚未取得該產物，預檢不加 `--legacy` 只能證明候選版可建置，不能宣稱已完成更新不中斷準備。
+
+授權正式部署後才執行 `wrangler deploy --config wrangler.arcade-production.jsonc`。1.1.1 已取得正式部署與合併授權；驗證及實際發布狀態見 [1.1.1 發布紀錄](releases/1.1.1.md)。以下單一老虎機流程僅適用舊版配置。
+
+## 單一老虎機正式服接入
 
 正式設定使用 `./dist`，不啟用 `ARCADE_RELEASE_ENABLED`。把 `/operator`、`/__operator/*`、`/game-entry.json` 加到現有 `assets.run_worker_first` 路由。正式 Worker 保留既有 Discord App、聊天室機器人、@ 通知、DO、Firestore 及既有 Secrets。首次接入後台時新增正式服專用 Worker Secret `ARCADE_CONSOLE_TOKEN`（64 字元十六進位）。
 
@@ -47,16 +62,16 @@
 
 | 遊戲 | 選項 | 玩家行為 |
 |---|---|---|
-| 老虎機（測試服） | 開啟維護／重新開放 | 維護時中斷遊戲，顯示「維護中」和「返回大廳」。重新開放後可確認原請求。 |
-| 野球拳（測試服） | 揭曉野球拳／顯示模糊預告 | 決定大廳顯示遊戲名稱與完整卡圖或「即將揭曉」的模糊預告。切回預告會引導遊戲中的玩家返回大廳。 |
-| 野球拳（測試服） | 開啟維護／結束維護 | 維護時中斷遊戲，顯示「維護中」和「返回大廳」。重新開放後可續玩已付費的場次。 |
-| 老虎機（正式服） | 開啟維護／重新開放 | 維護時中斷遊戲，顯示「維護中」和「返回 Discord」。重新開放後可確認原請求。 |
+| 老虎機（雙遊戲正式／測試服） | 開啟維護／重新開放 | 維護時中斷遊戲，顯示「維護中」和「返回大廳」。重新開放後可確認原請求。 |
+| 野球拳（雙遊戲正式／測試服） | 揭曉野球拳／顯示模糊預告 | 決定大廳顯示遊戲名稱與完整卡圖或「即將揭曉」的模糊預告。切回預告會引導遊戲中的玩家返回大廳。 |
+| 野球拳（雙遊戲正式／測試服） | 開啟維護／結束維護 | 維護時中斷遊戲，顯示「維護中」和「返回大廳」。重新開放後可續玩已付費的場次。 |
+| 老虎機（舊單遊戲配置） | 開啟維護／重新開放 | 維護時中斷遊戲，顯示「維護中」和「返回 Discord」。重新開放後可確認原請求。 |
 
 野球拳要同時揭曉且結束維護才可入場。已開啟且可見的大廳約 15 秒內刷新，遊戲中的畫面收到維護通知後立即中斷。DO 重啟會保留狀態，舊版的「暫停新場次」會讀成已揭曉且維護中。重建全新的 DO 時會從模糊預告開始。
 
 已開啟的正式活動要重新開啟一次才會載入即時維護功能。舊版活動仍受伺服器的入口開關約束。
 
-測試服的兩款遊戲沿用同一位玩家的 Firestore v2 錢包及週簽到。野球拳的入場、出拳、離場、派彩與收藏進度可用原請求重播。平手不扣戲籌，會保存出拳進度。備份用收據重建場次和收藏，並核對權威錢包的校驗值。
+兩款遊戲沿用各自環境中同一位玩家的 Firestore v2 錢包及週簽到。野球拳的入場、出拳、離場、派彩與收藏進度可用原請求重播。平手不扣戲籌，會保存出拳進度。備份用收據重建場次和收藏，並核對權威錢包的校驗值。
 
 現有公開 CG 下載站仍可由既有外部連結開啟。測試大廳直到揭曉才會載入遊戲的下載功能。
 

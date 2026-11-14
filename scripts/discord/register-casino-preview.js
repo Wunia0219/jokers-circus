@@ -23,4 +23,5 @@ const response = await fetch(base + '/applications/' + id + '/guilds/' + guild +
 assert.ok(response.ok, 'Test command registration returned HTTP ' + response.status);
 const command = await response.json();
 assert.deepEqual([command.application_id, command.guild_id, command.name], [id, guild, casinoPreviewCommand.name]);
+assert.deepEqual(command.options?.[0]?.choices?.map(({name,value})=>({name,value})), casinoPreviewCommand.options[0].choices);
 console.log('已註冊測試伺服器專用 /' + command.name);

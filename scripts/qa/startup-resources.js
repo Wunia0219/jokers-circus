@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {freshState} from '../../src/game/index.js';
 import {launchBrowser,createQaServer} from './helpers/browser.js';
+import {verifyLobbyResources} from './helpers/lobby-resources.js';
 
 const out='test-results/startup-resources';await mkdir(out,{recursive:true});
 const observe={name:'isolated-startup-cleanup',enforce:'pre',transform(source,id){
@@ -66,6 +67,7 @@ try{
   report.checks.push({name:options.name,cleanup});await context.close();
  }
  assert.deepEqual(report.errors,[]);
+ report.lobby=await verifyLobbyResources(browser,'http://127.0.0.1:4197');
  await writeFile(out+'/report.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
 }catch(error){await writeFile(out+'/failure.json',JSON.stringify({...report,failure:error.stack},null,2));throw error;}
 finally{await browser?.close();await vite.close();}

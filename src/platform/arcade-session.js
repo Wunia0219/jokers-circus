@@ -34,7 +34,7 @@ export function createArcadeHost(activity,renew,frame,music,{entryLoading,onMain
           const {session}=activity;
           if(next.session.environment!==session.environment||next.session.userId!==session.userId||
             next.session.guildId!==session.guildId||next.session.walletEpoch!==session.walletEpoch)
-            throw new Error('登入身分或帳本已變更，請重新開啟活動。');
+            throw new Error('登入資訊已更新，請關閉遊戲後重新開啟。');
           activity.session=next.session;
         }).finally(()=>{renewal=null;});
         await renewal;

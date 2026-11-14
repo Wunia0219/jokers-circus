@@ -21,9 +21,10 @@ const targets={
     guild:'1503958213454856252',channel:'1565731918107115690',region:'asia-east1',
   },
 };
+targets['production-arcade']={...targets.production,config:'wrangler.arcade-production.jsonc',dist:'dist-arcade-production'};
 const [target,...args]=process.argv.slice(2);
 if(!Object.hasOwn(targets,target)||args.length&&!(args.length===2&&args[0]==='--legacy'&&args[1]))
-  throw new Error('Usage: npm run arcade:preflight -- <test|production> [--legacy PREVIOUS_DIST]');
+  throw new Error('Usage: npm run arcade:preflight -- <test|production|production-arcade> [--legacy PREVIOUS_DIST]');
 
 checkToolchain();
 const expected=targets[target],legacy=args.length?resolve(args[1]):null;
@@ -34,7 +35,7 @@ assert.deepEqual(config.durable_objects.bindings,[{name:'CIRCUS_PROJECT',class_n
 const vars=config.vars;
 assert.deepEqual([vars.APP_ENV,vars.FIRESTORE_PROJECT_ID,vars.FIRESTORE_NAMESPACE,vars.DISCORD_CLIENT_ID,
   vars.ALLOWED_GUILD_IDS,vars.DISCORD_COMMAND_CHANNEL_IDS,vars.FIRESTORE_ENDPOINT],[
-  target,expected.project,expected.namespace,expected.app,expected.guild,expected.channel,
+  target==='test'?'test':'production',expected.project,expected.namespace,expected.app,expected.guild,expected.channel,
   `https://firestore.${expected.region}.rep.googleapis.com`,
 ]);
 assert.ok(!Object.hasOwn(vars,'ARCADE_CONSOLE_TOKEN'),'Set the console key as a Worker Secret');
@@ -53,13 +54,19 @@ if(target==='test'){
   assert.ok(Object.keys(vars).every(key=>!/^DISCORD_(?:BOT|CASINO|HIGHLIGHTS)/.test(key)),
     'Test Worker must have no Discord announcement configuration');
 }else{
-  assert.ok(!vars.ARCADE_RELEASE_ENABLED||vars.ARCADE_RELEASE_ENABLED==='false');
+  if(target==='production-arcade'){
+    assert.equal(vars.ARCADE_RELEASE_ENABLED,'true');
+    assert.equal(config.assets.run_worker_first,true);
+    assert.equal(config.assets.html_handling,'none');
+    assert.equal(config.assets.not_found_handling,'none');
+    assert.deepEqual(config.migrations,[{tag:'v1',new_sqlite_classes:['CircusProject']}]);
+  }else assert.ok(!vars.ARCADE_RELEASE_ENABLED||vars.ARCADE_RELEASE_ENABLED==='false');
   assert.notEqual(vars.ARCADE_CG_PREVIEW_ALL,'true');
   assert.ok(!vars.DISCORD_COMMAND_PROFILE);
   assert.equal(vars.DISCORD_CASINO_ENABLED,'true');
   assert.equal(vars.DISCORD_CASINO_GUILD_ID,expected.guild);
   assert.equal(vars.DISCORD_CASINO_CHANNEL_ID,expected.channel);
-  for(const path of ['/api/*','/__ops/*','/healthz','/readyz','/assets/*.mp3','/game-entry.json','/operator','/__operator/*'])
+  if(target==='production')for(const path of ['/api/*','/__ops/*','/healthz','/readyz','/assets/*.mp3','/game-entry.json','/operator','/__operator/*'])
     assert.ok(config.assets.run_worker_first.includes(path),'Missing production Worker route: '+path);
 }
 
@@ -79,7 +86,7 @@ const dist=resolve(expected.dist);
 if(existsSync(dist))assert.equal(relative(realpathSync('.'),realpathSync(dist)),expected.dist,'Release output must be inside this workspace');
 await buildArcadeRelease({clientId:expected.app,target,legacy,outDir:dist,logLevel:'warn'});
 const files=readReleaseFiles(dist);
-if(target==='test')assertArcadeArtifact(files,expected.app);
+if(target!=='production')assertArcadeArtifact(files,expected.app);
 else{assertProductionArtifact(files);assertEntryApp(files,'index.html',expected.app);}
 checkOtherApp(files);
 

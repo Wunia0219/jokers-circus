@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {createServer} from 'vite';
 import {launchBrowser} from './helpers/browser.js';
-import {buildCGGallery} from '../game/build-cg-gallery.js';
+import {buildCGGallery} from '../build/cg-gallery.js';
 import {CG_ART,DEALER_CG} from '../../src/games/yakyuken/cg-catalog.js';
 import {securityHeaders,contentSecurityPolicy} from '../../server/http/security-headers.js';
 
@@ -90,7 +90,7 @@ try{
         const s=window.__responsiveScene,b=s.confirmButton.getBounds(),d=s.statusDetail.getBounds(),t=s.status.getBounds();
         return {caption:s.confirmButton.caption.width,buttonWidth:s.confirmButton.buttonWidth,detailTop:d.y,detailBottom:d.y+d.height,detailRight:d.x+d.width,titleBottom:t.y+t.height,buttonTop:b.y,buttonBottom:b.y+b.height,x:b.x,right:b.x+b.width,unit:s.balanceGroup.getChildByLabel('balance-unit').text};
       });
-      assert.equal(controls.unit,'COINS');
+      assert.equal(controls.unit,'戲籌');
       assert.ok(controls.caption<=controls.buttonWidth-20,'button caption fits even in short landscape windows');
       assert.ok(controls.titleBottom<controls.detailTop,'heading and description remain separate');
       assert.ok(controls.detailBottom<controls.buttonTop||controls.detailRight<controls.x,`${width}x${height}: status never overlaps confirm: ${JSON.stringify(controls)}`);

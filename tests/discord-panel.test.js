@@ -85,7 +85,10 @@ test('grant notices opt in, use committed amounts, ping only the recipient and d
     if(url.endsWith('/users/@me'))return Response.json({id:applicationId,bot:true});
     if(url.endsWith('/channels/'+channel))return Response.json({id:channel,guild_id:guild,type:0});
     assert.equal(url,'https://discord.com/api/v10/channels/'+channel+'/messages');
-    posts.push(JSON.parse(options.body));return Response.json({id:snowflake(),channel_id:channel});
+    assert.ok(options.body instanceof FormData);
+    const image=options.body.get('files[0]');assert.equal(image.name,'casino-grant.png');
+    assert.equal(Buffer.from(await image.arrayBuffer()).subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+    posts.push(JSON.parse(options.body.get('payload_json')));return Response.json({id:snowflake(),channel_id:channel});
   }}),notify=createGrantNotifier(bot,[channel]),panel=await run(base(),s);
   for(const preference of [undefined,'no']){
     const modal=await run(click(panel,'發放戲籌'),s),fields={member:target,amount:'100',reason:'quiet'};

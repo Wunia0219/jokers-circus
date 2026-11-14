@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {tableLayout,TABLE_MOVES,resultActionLayout} from '../src/games/yakyuken/pixi/layout.js';
 import {Motion} from '../src/games/yakyuken/pixi/motion.js';
 import {revealCard} from '../src/games/yakyuken/pixi/card-flip.js';
-import {slotChrome,SLOT_UI} from '../src/games/yakyuken/pixi/slot-theme.js';
+import {slotChrome,SLOT_UI} from '../src/ui/pixi/slot-theme.js';
 import {slotHeaderLayout,yakyukenHeaderLayout} from '../src/games/yakyuken/pixi/header-layout.js';
 import {lobbyLayout} from '../src/games/yakyuken/pixi/lobby-layout.js';
 import {CHARACTERS,canEnterCharacter} from '../src/games/yakyuken/characters.js';

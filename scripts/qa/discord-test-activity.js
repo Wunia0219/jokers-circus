@@ -4,7 +4,7 @@ import {createServer} from 'node:http';
 import {resolve} from 'node:path';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {build} from 'vite';
-import {discordTestBuildOptions} from '../game/discord-test-build.js';
+import {discordTestBuildOptions} from '../build/discord-test.js';
 import {createActivityHandler} from '../../server/http/app-handler.js';
 import {PlaytestService,discordTestPlayer,slotTestState,slotTestCheckinResult} from '../../cloud/yakyuken-playtest-core.js';
 import {TEST_GUILD,TEST_CHANNEL} from '../../cloud/discord-test-auth.js';
@@ -13,12 +13,14 @@ import {createQaTimings} from './helpers/qa-timings.js';
 import {createQaScreenshots} from './helpers/qa-screenshots.js';
 import {verifyLaunchScreen} from './helpers/launch-screen.js';
 import {verifySlotAtlasRecovery} from './helpers/slot-atlas-recovery.js';
+import {assertMusicContinuity} from './helpers/music-continuity.js';
 import {setGameSafeArea,yakyukenHeaderBounds,assertSameGameHeader} from './helpers/game-safe-area.js';
 
 const output='test-results/discord-test-activity',clientId='100000000000000003',port=4203,origin='http://127.0.0.1:'+port;
 mkdirSync(output,{recursive:true});const dist=resolve(output,'dist');
 const timing=createQaTimings(output+'/timings.json');
 const screenshots=createQaScreenshots({timing});
+const musicContinuity=[];
 const screenshot=(page,options)=>screenshots.capture(page,options.path);
 const buildOptions=discordTestBuildOptions(dist,clientId);
 buildOptions.plugins.push({name:'isolated-player-scene',transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/games/yakyuken/scene.js'))return {code:code.replace('this.host = host;','globalThis.__playerScene=this;this.host = host;'),map:null};}});
@@ -94,9 +96,14 @@ try{
       window.Audio=function(source){
         const media=new NativeAudio(source);
         if(String(source).includes('circus-background-optimized')){
-          const trace={media,pauses:0,blocked:0};
+          const trace={media,pauses:0,blocked:0,advances:0,positionWrites:0,empties:0};
           __musicPlayers.push(trace);
           media.addEventListener('pause',()=>trace.pauses++);
+          let lastTime=media.currentTime;
+          media.addEventListener('timeupdate',()=>{if(!media.paused&&media.currentTime!==lastTime)trace.advances++;lastTime=media.currentTime;});
+          media.addEventListener('emptied',()=>trace.empties++);
+          const position=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'currentTime');
+          Object.defineProperty(media,'currentTime',{get(){return position.get.call(this);},set(value){trace.positionWrites++;position.set.call(this,value);}});
           const play=media.play.bind(media);
           media.play=()=>{
             if(!window.__musicGesture){
@@ -119,6 +126,7 @@ try{
     assert.ok((await page.evaluate(()=>__commands)).includes('AUTHENTICATE'));
     const lobbyMusic=frame.getByRole('button',{name:'背景音樂',exact:true});
     const musicState=()=>shell.evaluate(()=>{const [{media,pauses,blocked}]=__musicPlayers;return {count:__musicPlayers.length,time:media.currentTime,paused:media.paused,volume:media.volume,pauses,blocked};});
+    const musicProgress=async()=>({...await musicState(),...await shell.evaluate(()=>{const t=__musicPlayers[0];return {advances:t.advances,positionWrites:t.positionWrites,empties:t.empties,source:t.media.currentSrc,duration:t.media.duration};})});
     const verifyLobbyMusic=async()=>{
       await lobbyMusic.waitFor();
       const layout=await lobbyMusic.evaluate(button=>{
@@ -208,7 +216,7 @@ try{
         return {stage:app.canvas.dataset.entryStage,progress:entryOverlay.target,visible:entryOverlay.content.visible,
           logo:logo.width>0&&logo.height>0,status:entryOverlay.status.text,entries};
       });
-      assert.deepEqual(loading,{stage:'loading',progress:24,visible:true,logo:true,status:'正在確認入場與戲籌…',entries:0});
+      assert.deepEqual(loading,{stage:'loading',progress:24,visible:true,logo:true,status:'正在確認入場…',entries:0});
       assert.equal(await frame.getByRole('button',{name:'確認出牌',exact:true}).count(),0);
       await screenshot(page,{path:output+'/'+who+'-yakyuken-entry-wait.png'});
     }finally{releaseEntry();await page.unroute('**/api/playtest/begin',holdEntry);}
@@ -224,7 +232,7 @@ try{
       context.createOscillator=()=>{window.__tableSounds.tones++;return createTone();};
     });
     for(let i=0;i<2;i++){
-      if(i){await frame.getByRole('button',{name:'下一局',exact:true}).click();await phase('selecting');}
+      if(i){await frame.getByRole('button',{name:'下一拳',exact:true}).click();await phase('selecting');}
       const hand=frame.getByRole('button',{name:'選擇拳頭',exact:true}),confirm=frame.getByRole('button',{name:'確認出牌',exact:true});
       if(mobile)await hand.tap();else await hand.click();
       assert.deepEqual(await frame.evaluate(()=>window.__tableSounds),{samples:i,tones:0},'selection leaves the background track alone');
@@ -242,7 +250,7 @@ try{
     await frame.getByRole('button',{name:'關閉視窗',exact:true}).click();await screenshot(page,{path:output+'/'+who+'-yakyuken.png'});
     await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');
     timing.mark(who+'/cg-download');
-    const beforeSlotMusic=await musicState();
+    const beforeSlotMusic=await musicProgress();
     atlasRecovery.push({device:mobile?'mobile':'desktop',...await verifySlotAtlasRecovery(page,async()=>{
       let releaseWallet;
       const walletHeld=new Promise(resolve=>{releaseWallet=resolve;});
@@ -258,10 +266,11 @@ try{
       }finally{releaseWallet();await page.unroute('**/api/wallet',holdWallet);}
       await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);
     })});
-    const inSlotMusic=await musicState();
+    await shell.waitForFunction(advances=>__musicPlayers[0].advances>advances,beforeSlotMusic.advances);
+    const inSlotMusic=await musicProgress();
     timing.mark(who+'/slot-entry-recovery');
-    assert.equal(inSlotMusic.count,1);assert.equal(inSlotMusic.paused,false);assert.equal(inSlotMusic.pauses,beforeSlotMusic.pauses);
-    assert.ok(inSlotMusic.time>beforeSlotMusic.time,'the original track advances through the child navigation');
+    musicContinuity.push({who,before:beforeSlotMusic,after:inSlotMusic});
+    assertMusicContinuity(beforeSlotMusic,inSlotMusic);
     assert.equal(await frame.evaluate(()=>__musicPlayers.length),0,'slot leaves music playback in the shell');
     assert.equal(await frame.locator('#music').getAttribute('aria-pressed'),'true');
     assert.equal(new URL(frame.url()).pathname,'/slot/');assert.equal((await page.evaluate(()=>__commands)).filter(x=>x==='HANDSHAKE').length,1,'persistent shell retains one live SDK connection across games');for(const [key,value] of Object.entries({discord_shim:'1',location_id:'fixture-location',mobile_app_version:'300.0'}))assert.equal(new URL(frame.url()).searchParams.get(key),value);assert.equal(new URL(frame.url()).searchParams.get('channel_id'),TEST_CHANNEL);assert.equal((await frame.locator('#balance').textContent()).replaceAll(',',''),'11500');
@@ -336,10 +345,10 @@ try{
     timing.mark(who+'/reload-leave-reentry');
     checks.push((mobile?'mobile touch':'desktop')+': persistent soundtrack and mute across games, real SDK handshake/OAuth, scoped identity, Yakyuken reward, sandbox-safe CG external link/download/cancel after round trip, shared slot balance/checkin, persistent SDK and child/host reload');await context.close();
   }
-  assert.deepEqual(errors,[]);assert.notEqual(docs.get('A').player,docs.get('B').player);writeFileSync(output+'/report.json',JSON.stringify({ok:true,checks,launch,atlasRecovery,errors,screenshotMode:screenshots.mode},null,2)+'\n');console.log(JSON.stringify({ok:true,checks:checks.length,launchChecks:launch.length,output,screenshotMode:screenshots.mode}));
+  assert.deepEqual(errors,[]);assert.notEqual(docs.get('A').player,docs.get('B').player);writeFileSync(output+'/report.json',JSON.stringify({ok:true,checks,launch,atlasRecovery,musicContinuity,errors,screenshotMode:screenshots.mode},null,2)+'\n');console.log(JSON.stringify({ok:true,checks:checks.length,launchChecks:launch.length,output,screenshotMode:screenshots.mode}));
 }catch(error){
   timing.mark('failure');
-  writeFileSync(output+'/failure.json',JSON.stringify({message:error.message,checks,errors,atlasRecovery:error.atlasRecovery||atlasRecovery},null,2)+'\n');
+  writeFileSync(output+'/failure.json',JSON.stringify({message:error.message,checks,errors,musicContinuity,atlasRecovery:error.atlasRecovery||atlasRecovery},null,2)+'\n');
   if(activePage&&!activePage.isClosed())await screenshots.failure(activePage,output+'/failure.png');
   throw error;
 }

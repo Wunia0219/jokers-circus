@@ -7,7 +7,7 @@ import {DIALOG_BRAND,DIALOG_FOOTER,PROGRAMME,programmeScrollbarWidth} from '../.
 import {downloadCG} from '../cg-download.js';
 import {buildMatchHistory} from './match-history.js';
 import {cgGridLayout,cgGridPage,cgViewerLayout} from './cg-layout.js';
-import {label,PALETTE,PixiButton,slotIcon} from './ui.js';
+import {label,PALETTE,PixiButton,slotIcon} from '../../../ui/pixi/ui.js';
 
 const lock='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1"/></svg>';
 const downloadGlyph='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v10.75m-3.75-3.5L12 14.5l3.75-3.75"/><path d="M4.5 15.5V19a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-3.5"/></svg>';
@@ -19,7 +19,7 @@ function navigation(text,name,direction,onPress){
   button.caption.x=direction<0?8:-8;button.addChild(arrow);return button;
 }
 function storageCaption(scene,body,mw,y){
-  text(scene.archive.cloud?'收藏與紀錄儲存在測試雲端':scene.archive.persistent?'收藏與紀錄儲存在這台裝置':'目前無法儲存，資料只保留在此頁',11,0,y,body,PALETTE.muted,{wordWrap:true,wordWrapWidth:mw-32,lineHeight:15});
+  text(scene.isTestWallet&&scene.wallet?.previewAllCG?'測試期間開放全部造型預覽':scene.archive.cloud?(scene.isTestWallet?'收藏與紀錄已儲存在測試服':'收藏與紀錄已儲存'):scene.archive.persistent?'收藏與紀錄儲存在這台裝置':'目前無法儲存，資料只保留在此頁',11,0,y,body,PALETTE.muted,{wordWrap:true,wordWrapWidth:mw-32,lineHeight:15});
 }
 function collectionFooter(scene,body,mw,mh,inline,mini,mastheadY,mobile,scrollbar){
   const bottom=mh/2;
@@ -60,8 +60,11 @@ function buildCollection(scene,body,{frame,panelWidth:mw,panelHeight:mh,mini,inl
   const top=-mh/2,contentX=-scrollbar/2;
   const character=scene.galleryCharacter??=scene.selectedCharacter;
   const characters=CHARACTERS.filter(c=>c.enabled&&CG_ART[c.id]);
+  const preview=scene.isTestWallet&&scene.wallet?.previewAllCG;
   const unlocked=c=>CG_ART[c].map(({index})=>scene.archive.isUnlocked(c,index));
+  const collected=(c,index)=>preview?(scene.wallet.wallet?.unlocks[c]??-1)>=index:scene.archive.isUnlocked(c,index);
   const owned=unlocked(character),art=CG_ART[character];
+  if(preview)body.children.find(child=>child.label==='programme-title').text='CG 收藏・預覽';
   const mastheadInset=PROGRAMME.border+(frame.mobile?PROGRAMME.smallMastheadInset:PROGRAMME.mastheadInset),mastheadY=top+mastheadTop+mastheadHeight/2;
   const logo=place(new Sprite(scene.logoTexture),stackedLogo?contentX:-mw/2+mastheadInset,top+mastheadTop+mastheadPad,body);
   logo.label='collection-brand-logo';logo.anchor.set(stackedLogo?.5:0,0);logo.width=logoWidth;logo.scale.y=logo.scale.x;logo.eventMode='none';
@@ -76,9 +79,9 @@ function buildCollection(scene,body,{frame,panelWidth:mw,panelHeight:mh,mini,inl
     .moveTo(left,tabTop+.5).lineTo(right,tabTop+.5).moveTo(left,tabTop+tabHeight-.5).lineTo(right,tabTop+tabHeight-.5).stroke({color:PROGRAMME.line,alpha:.2,width:1}));
   const tabWidth=(contentWidth-gap*(characters.length-1))/characters.length;
   characters.forEach(({id,name},i)=>{
-    const states=id===character?owned:unlocked(id),count=states.filter(Boolean).length;
+    const states=id===character?owned:unlocked(id),count=CG_ART[id].filter(({index})=>collected(id,index)).length;
     const active=id===character;
-    const tab=new PixiButton({name:`${name}收藏，已解鎖 ${count} / ${states.length}${active?'，目前顯示':''}`,variant:'quiet',width:tabWidth,height:PROGRAMME.tab,onPress:()=>scene.selectGalleryCharacter(id,tab.focused)});
+    const tab=new PixiButton({name:`${name}收藏，已解鎖 ${count} / ${states.length}${preview?'，測試期間可預覽全部造型':''}${active?'，目前顯示':''}`,variant:'quiet',width:tabWidth,height:PROGRAMME.tab,onPress:()=>scene.selectGalleryCharacter(id,tab.focused)});
     tab.label=`gallery-tab:${id}`;
     const style=new Graphics().roundRect(-tabWidth/2,-PROGRAMME.tab/2,tabWidth,PROGRAMME.tab,8).fill(active?0x65343a:0x201525).stroke({color:PROGRAMME.edge,width:1,alpha:active?1:.3});
     if(active)style.roundRect(-12,PROGRAMME.tab/2-1.5,24,3,1.5).fill(PROGRAMME.gold);
@@ -115,7 +118,7 @@ function buildCollection(scene,body,{frame,panelWidth:mw,panelHeight:mh,mini,inl
     const nameY=h/2-captionHeight+(short?10:12),infoY=h/2-(short?9:11);
     text(name,short?12:14,0,nameY,tile,available?PALETTE.cream:0xdeced9,{fontWeight:'600'});
     const condition=index?`${index} 勝解鎖`:'入場解鎖';
-    text(available?(index?`第 ${index} 勝`:'初始造型'):condition,11,0,infoY,tile,available?PALETTE.gold:PALETTE.muted);
+    text(preview&&!collected(character,index)?'測試預覽':available?(index?`第 ${index} 勝`:'初始造型'):condition,11,0,infoY,tile,available?PALETTE.gold:PALETTE.muted);
     if(!available){tile.setEnabled(false);tile.alpha=1;}
     else tile.setChildIndex(tile.outline,tile.children.length-1);
   });
@@ -154,8 +157,8 @@ function buildViewer(scene,body,width,height,layout){
   const status=text('',12,0,top+barHeight+14,body,PALETTE.bright);
   const download=place(new PixiButton({text:'下載原圖',name:'下載高畫質去背 PNG',icon:downloadGlyph,iconSize:18,variant:'tool',width:downloadWidth,height:44,onPress:async()=>{
     download.setEnabled(false);status.text='';
-    try{const opened=await downloadCG(scene.archive,character,index,scene.activity);if(!body.destroyed)status.text=opened?'':'已取消，可再次點選下載';}
-    catch{if(!body.destroyed)status.text='暫時無法開啟下載，請稍後再試';}
+    try{const opened=await downloadCG(scene.archive,character,index,scene.activity);if(!body.destroyed)status.text=opened?'':'已取消下載，可以再試一次';}
+    catch{if(!body.destroyed)status.text='暫時無法下載，請稍後再試';}
     finally{if(!body.destroyed)download.setEnabled(true);}
   }}),left+downloadLeft+downloadWidth/2,y,body);
   download.setActive(true);

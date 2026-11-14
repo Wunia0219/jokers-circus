@@ -199,7 +199,7 @@ try {
   await page.mouse.click(l.playerCards.x+l.playerCards.gap,l.playerCards.y);
   assert.equal((await canvasState(page)).selected,'scissors','locked cards cannot replace a confirmed choice');
   await page.screenshot({path:`${output}/desktop-selected.png`});
-  await page.getByRole('button',{name:'下一局',exact:true}).click();await phase(page,'selecting');
+  await page.getByRole('button',{name:'下一拳',exact:true}).click();await phase(page,'selecting');
   assert.equal((await canvasState(page)).selected,'');
   assert.equal((await canvasState(page)).dealerMove,'');
   assert.equal((await canvasState(page)).dealerFrontCount,'0','next round restores all backs');
@@ -235,7 +235,7 @@ try {
   await page.getByRole('button',{name:'關閉音樂',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'遊玩紀錄',exact:true}).count(),1);
   assert.equal(await page.evaluate(()=>window.__yakyukenTest.archive.records().length),1,'all throws update the same match record');
-  await page.getByRole('button',{name:'下一局',exact:true}).click();
+  await page.getByRole('button',{name:'下一拳',exact:true}).click();
   await page.getByRole('button',{name:'選擇布',exact:true}).focus();
   await page.keyboard.press('Enter');assert.equal((await canvasState(page)).selected,'paper');
   await page.keyboard.press('Enter');await phase(page,'confirmed');
@@ -317,7 +317,7 @@ try {
     await page.evaluate(value=>{window.__duelWeights=[value];},{win:0,loss:4000,draw:8000}[outcome]);
     await page.getByRole('button',{name:'選擇拳頭',exact:true}).click();await page.getByRole('button',{name:'確認出牌',exact:true}).click();await phase(page,'confirmed');
   };
-  const advance=page=>page.getByRole('button',{name:'下一局',exact:true}).click();
+  const advance=page=>page.getByRole('button',{name:'下一拳',exact:true}).click();
   assert.equal(await archiveA.evaluate(()=>window.__yakyukenTest.openCG(2)),false);
   for(const [i,outcome] of ['draw','loss','win'].entries()){if(i)await advance(archiveA);await archivePlay(archiveA,outcome);}
   await archiveA.getByRole('button',{name:'CG 收藏',exact:true}).click();
@@ -454,22 +454,22 @@ try {
     };
     await play('draw');assert.equal((await canvasState(challengePage)).draws,'1');
     assert.equal((await canvasState(challengePage)).wins,'0');assert.equal((await canvasState(challengePage)).losses,'0');
-    await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
-    await play('loss');await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
+    await challengePage.getByRole('button',{name:'下一拳',exact:true}).click();
+    await play('loss');await challengePage.getByRole('button',{name:'下一拳',exact:true}).click();
     for(let wins=1;wins<=rule.winsRequired;wins++){
       await play('win');
       const state=await canvasState(challengePage);assert.equal(state.wins,String(wins));assert.equal(state.losses,'1');
       assert.equal(state.challengeStatus,wins===rule.winsRequired?'won':'playing');
-      if(wins<rule.winsRequired)await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
+      if(wins<rule.winsRequired)await challengePage.getByRole('button',{name:'下一拳',exact:true}).click();
     }
     assert.equal((await canvasState(challengePage)).reward,String(rule.reward));
-    assert.equal(await challengePage.getByRole('button',{name:'下一局',exact:true}).count(),0);
+    assert.equal(await challengePage.getByRole('button',{name:'下一拳',exact:true}).count(),0);
     await challengePage.screenshot({path:`${output}/character-dealer-${width}-won.png`});
     await challengePage.getByRole('button',{name:'再次挑戰',exact:true}).click();
     assert.deepEqual([(await canvasState(challengePage)).wins,(await canvasState(challengePage)).losses,(await canvasState(challengePage)).round],['0','0','0']);
     for(let losses=1;losses<=rule.lossLimit;losses++){
       await play('loss');assert.equal((await canvasState(challengePage)).challengeStatus,losses===rule.lossLimit?'lost':'playing');
-      if(losses<rule.lossLimit)await challengePage.getByRole('button',{name:'下一局',exact:true}).click();
+      if(losses<rule.lossLimit)await challengePage.getByRole('button',{name:'下一拳',exact:true}).click();
     }
     assert.equal((await canvasState(challengePage)).reward,'0');
     assert.equal(await challengePage.getByRole('button',{name:'再次挑戰',exact:true}).count(),1,'defeat offers an explicit new match');
@@ -544,14 +544,14 @@ try {
   await wardrobePage.evaluate(()=>window.__yakyukenTest.app.start());
   await wardrobePage.screenshot({path:`${output}/wardrobe-first-win.png`});
   for(const outcome of ['loss','draw']){
-    await wardrobePage.getByRole('button',{name:'下一局',exact:true}).click();await phase(wardrobePage,'selecting');
+    await wardrobePage.getByRole('button',{name:'下一拳',exact:true}).click();await phase(wardrobePage,'selecting');
     await wardrobePlay();await phase(wardrobePage,'confirmed');
     const state=await canvasState(wardrobePage);assert.equal(state.outcome,outcome);assert.equal(state.pose,'1');assert.ok(state.dialogue.length>0);assert.equal(state.changing,'false');
     assert.ok(await wardrobePage.evaluate(()=>window.__yakyukenTest.dialogueBubble.visible));
     await wardrobePage.screenshot({path:`${output}/dialogue-${outcome}.png`});
   }
   await wardrobePage.emulateMedia({reducedMotion:'reduce'});
-  await wardrobePage.getByRole('button',{name:'下一局',exact:true}).click();await phase(wardrobePage,'selecting');
+  await wardrobePage.getByRole('button',{name:'下一拳',exact:true}).click();await phase(wardrobePage,'selecting');
   await wardrobePlay();await phase(wardrobePage,'confirmed');
   assert.deepEqual([(await canvasState(wardrobePage)).wins,(await canvasState(wardrobePage)).pose,(await canvasState(wardrobePage)).challengeStatus],['2','2','won']);
   await wardrobePage.getByRole('button',{name:'再次挑戰',exact:true}).click();await phase(wardrobePage,'selecting');
@@ -796,7 +796,7 @@ try {
     await guest.getByRole('button',{name:'選擇'+name,exact:true}).click();
     assert.equal((await canvasState(guest)).character,id);
     if(id==='guest-4'){
-      assert.match(await guest.locator('canvas').getAttribute('aria-label'),/目前選擇萬世。家財萬貫的名門少爺/);
+      assert.match(await guest.locator('canvas').getAttribute('aria-label'),/目前選擇萬世。這位名門少爺/);
       await guest.screenshot({path:`${output}/${key}-selection-mobile.png`});
     }
     await guest.getByRole('button',{name:'進入野球拳試玩',exact:true}).click();await phase(guest,'selecting');
@@ -814,7 +814,7 @@ try {
       const cleared=wins===winsRequired,state=await canvasState(guest);
       assert.deepEqual([state.wins,state.challengeStatus,state.reward],[String(wins),cleared?'won':'playing',cleared?String(reward):'0']);
       assert.equal(await guest.evaluate(({id,winsRequired})=>window.__yakyukenTest.archive.isUnlocked(id,winsRequired),{id,winsRequired}),cleared);
-      if(!cleared){await guest.getByRole('button',{name:'下一局',exact:true}).click();await phase(guest,'selecting');}
+      if(!cleared){await guest.getByRole('button',{name:'下一拳',exact:true}).click();await phase(guest,'selecting');}
     }
     if(id==='guest-4')await guest.screenshot({path:`${output}/${key}-table-mobile.png`});
     await guest.getByRole('button',{name:'CG 收藏',exact:true}).click();

@@ -9,7 +9,8 @@ export const validInteractionToken=token=>typeof token==='string'&&/^[-A-Za-z0-9
 export async function completeDeferredCommand(interaction,wallet,{fetchImpl=fetch,wait=delay,warn=()=>console.warn('Discord command reply unavailable')}={}){
   const result=await handleCommand(interaction,wallet.store,wallet.adminRoles,wallet.commandChannelIds,wallet);
   const {flags,...body}=result.data;
-  const message=discordMessageBody(body);
+  const art=body.previewCard?(await import('./casino-preview-art.js')).previewArt:undefined;
+  const message=discordMessageBody(body,art);
   const url=`https://discord.com/api/v10/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`;
   for(let attempt=0;attempt<3;attempt++){
     let response;

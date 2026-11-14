@@ -13,6 +13,6 @@ else{
   download.href=view.href=src;download.download=art.filename;
   download.hidden=view.hidden=false;
   image.onload=()=>{status.hidden=true;image.hidden=false;};
-  image.onerror=()=>{status.textContent='圖片暫時無法顯示，請點選下載圖片。';};
+  image.onerror=()=>{status.textContent='圖片暫時無法顯示，可以試著下載原圖。';};
   image.src=src;
 }

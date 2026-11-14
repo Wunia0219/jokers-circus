@@ -190,6 +190,11 @@ export class CircusProject extends DurableObject {
     // into a per-second database poll. Notification failures never pause play.
     try{
       const r=await this.runtime();
+      if(r.duelAnnouncements&&(this.state.get('duel-announcements-dirty')||!r.duelAnnouncementsChecked||now>=due)){
+        try{await r.duelAnnouncements.flush();r.duelAnnouncementsChecked=true;this.state.set('duel-announcements-dirty',r.duelAnnouncements.nextAttempt<now+600000);
+          await this.schedule(Math.max(1000,r.duelAnnouncements.nextAttempt-Date.now()));
+        }catch{this.state.set('duel-announcements-dirty',true);await this.schedule(30000);}
+      }
       const highlightDue=r.highlights&&(!r.casinoMaintenanceChecked||this.state.get('highlights-dirty'))&&now>=r.highlights.nextAttempt;
       const retry=this.state.get('backup-retry');
       if(now>=due||highlightDue||this.state.get('backup-job')||retry&&now>=retry.nextAttempt){await this.runMaintenanceAlarm();r.casinoMaintenanceChecked=true;if(now>=due)this.state.set('casino-maintenance-at',now+600000);}

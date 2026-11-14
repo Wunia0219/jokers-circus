@@ -8,3 +8,8 @@ backups
 test-results
 .tools
 dist
+dist-arcade*
+.wrangler
+.netlify
+wrangler.*.local.json*
+.dev.vars*

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CasinoBot,casinoBotSettings} from '../server/discord/casino-bot.js';
 import {highlightAnnouncement} from '../server/discord/highlight-card.js';
-import {casinoPreviewMessage} from '../server/discord/casino-preview.js';
+import {visitMessage} from '../server/discord/casino-visits.js';
 import {handleCommand} from '../server/discord/commands.js';
 import {completeDeferredCommand} from '../server/discord/deferred-command.js';
 const guild='100000000000000001',channel='100000000000000002',applicationId='100000000000000003',token='isolated-bot-token-'.repeat(3);
@@ -34,32 +34,59 @@ test('wrong bot or guild never receives a message',async()=>{
     const f=fixture(options);assert.equal((await f.bot.send({content:'test'},'one')).kind,'retry');assert.equal(f.calls.some(c=>c.options.method==='POST'),false);
   }
 });
-test('test preview uploads a real receipt only through the original private interaction reply',async()=>{
+test('new cards upload only to the original private reply, with accessible text and the rendered image',async()=>{
   const user='100000000000000009';
   const interaction={type:2,application_id:applicationId,token:'isolated-interaction-token',guild_id:guild,
-    channel_id:channel,member:{user:{id:user}},data:{name:'推播預覽',options:[{name:'樣式',value:'loss'}]}};
+    channel_id:channel,member:{user:{id:user}},data:{name:'推播預覽',options:[{name:'樣式',value:'exit-mixed'}]}};
   const wallet={store:{environment:'test',backend:'firestore',validate:(g,u)=>assert.deepEqual([g,u],[guild,user])},
     commandChannelIds:[channel],casinoPreview:true};
   const handle=(i,w=wallet)=>handleCommand(i,w.store,[],w.commandChannelIds,w);
   assert.equal((await handle(interaction)).data.flags,64);
-  assert.equal((await handle({...interaction,channel_id:user})).data.receipt,undefined);
-  assert.equal((await handle(interaction,{...wallet,store:{...wallet.store,environment:'production'}})).data.receipt,undefined);
-  assert.equal(await completeDeferredCommand(interaction,wallet,{fetchImpl:async(url,options)=>{
-    assert.equal(url,`https://discord.com/api/v10/webhooks/${applicationId}/${interaction.token}/messages/@original`);
-    assert.equal(options.method,'PATCH');
-    const data=JSON.parse(options.body.get('payload_json'));
-    assert.deepEqual(data.allowed_mentions,{parse:[]});
-    assert.equal(data.receipt,undefined);
-    assert.equal(data.embeds[0].image.url,'attachment://casino-receipt.png');
-    assert.equal(data.components[0].components[0].label,'開啟遊戲');
-    assert.equal(data.attachments[0].description,'這次獲得 −320 戲籌 · 總遊玩 16 局');
-    const file=options.body.get('files[0]'),bytes=Buffer.from(await file.arrayBuffer());
-    assert.equal(file.type,'image/png');
-    assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
-    return Response.json({});
-  }}),true);
+  for(const [i,w] of [[{...interaction,channel_id:user},wallet],
+    [interaction,{...wallet,store:{...wallet.store,environment:'production'}}],
+    [interaction,{...wallet,casinoPreview:false}],
+    [{...interaction,data:{...interaction.data,options:[{name:'樣式',value:'loss'}]}},wallet]]){
+    assert.equal((await handle(i,w)).data.previewCard,undefined);
+  }
+  const samples={
+    'exit-mixed':['本次戲籌變化 +2,400','老虎機 12 局：−600','野球拳 入場 2 場 · 通關 1 場：+3,000'],
+    'exit-slot':['本次戲籌變化 −850','老虎機 18 局：−850'],
+    'exit-duel':['本次戲籌變化 0','野球拳 入場 5 場 · 通關 1 場：0'],
+    'clear-dealer':['命運荷官','累積 2 勝','2,500'], 'clear-youran':['優然','累積 3 勝','5,000'],
+    'clear-xiache':['夏澄','累積 5 勝','10,000'], 'clear-selo':['瑟洛','累積 7 勝','25,000'],
+    'clear-wanshi':['萬世','累積 9 勝','50,000'],
+  };
+  const uploads=new Set();
+  for(const [choice,fragments] of Object.entries(samples)){
+    const i={...interaction,data:{...interaction.data,options:[{name:'樣式',value:choice}]}};
+    assert.equal(await completeDeferredCommand(i,wallet,{fetchImpl:async(url,options)=>{
+      assert.equal(url,`https://discord.com/api/v10/webhooks/${applicationId}/${i.token}/messages/@original`);
+      assert.equal(options.method,'PATCH');
+      const data=JSON.parse(options.body.get('payload_json'));
+      assert.deepEqual(data.allowed_mentions,{parse:[]});
+      assert.equal(data.previewCard,undefined);
+      const receipt=choice.startsWith('exit-'),filename=receipt?'casino-arcade-receipt.png':`${choice}.webp`;
+      assert.equal(data.arcadeReceipt,undefined);
+      assert.equal(data.embeds[0].image.url,`attachment://${filename}`);
+      assert.equal(data.components[0].components[0].label,'開啟遊戲');
+      const alt=data.attachments[0].description;
+      for(const fragment of fragments)assert.ok(alt.includes(fragment),alt);
+      const file=options.body.get('files[0]'),bytes=Buffer.from(await file.arrayBuffer());
+      assert.equal(file.name,filename);assert.equal(file.type,receipt?'image/png':'image/webp');
+      if(receipt)assert.equal(bytes.toString('hex',0,8),'89504e470d0a1a0a');
+      else{assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,16),'WEBPVP8L');}
+      assert.ok(bytes.length<512*1024);
+      uploads.add(bytes.toString('base64'));
+      return Response.json({});
+    }}),true);
+  }
+  assert.equal(uploads.size,8);
+});
+test('existing casino visit receipts still send through the bot',async()=>{
   const f=fixture();
-  assert.equal((await f.bot.send(casinoPreviewMessage('gain'),'visit:receipt')).kind,'sent');
+  const start={net:0,rounds:0,bet:0,payout:0,balance:1506};
+  assert.equal((await f.bot.send(visitMessage({name:'測試玩家',start},
+    {net:1498,rounds:43,bet:2000,payout:3498,balance:3004},'closed'),'visit:receipt')).kind,'sent');
   const sent=JSON.parse(f.calls.at(-1).options.body.get('payload_json'));
   assert.equal(sent.enforce_nonce,true);assert.ok(sent.nonce);
 });
@@ -71,7 +98,7 @@ test('framed previews launch for any member in the game channel without granting
   }};
   const interaction={type:2,guild_id:guild,channel_id:channel,member:{user:{id:user}},
     data:{name:'推播預覽'}};
-  for(const choice of ['big','super','mega','gain','loss','even','grant','enter','idle']){
+  for(const choice of ['big','super','mega','exit-mixed','exit-slot','exit-duel','clear-wanshi','grant','enter','idle']){
     const preview=await handleCommand({...interaction,data:{...interaction.data,options:[{name:'樣式',value:choice}]}},
       store,[],[channel],{casinoPreview:true});
     assert.equal(preview.data.flags,64);

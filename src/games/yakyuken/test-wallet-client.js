@@ -5,7 +5,7 @@ const profiles=new Set(['qa-a','qa-b','qa-low','qa-zero']);
 const sessionStorage=()=>{try{return globalThis.sessionStorage;}catch{return null;}};
 export class TestWalletClient{
   constructor({player='qa-a',fetchImpl=globalThis.fetch.bind(globalThis),storage=sessionStorage(),session=null,reauthorize=null}={}){
-    if(session){if(session.environment!=='test'||!session.discordTest||!/^\d{17,20}$/.test(session.userId)||!/^\d{17,20}$/.test(session.guildId))throw new Error('Discord 測試會話無效。');player=`d_${session.guildId}_${session.userId}`;}
+    if(session){if(session.environment!=='test'||!session.discordTest||!/^\d{17,20}$/.test(session.userId)||!/^\d{17,20}$/.test(session.guildId))throw new Error('Discord 測試登入失效，請重新開啟活動。');player=`d_${session.guildId}_${session.userId}`;}
     else if(!profiles.has(player))throw new Error('無效的測試玩家。');
     Object.assign(this,{player,fetchImpl,storage,session,reauthorize});this.key='jokers-circus:yakyuken:cloud-test:pending:'+player;
     try{const pending=JSON.parse(storage?.getItem(this.key)||'null');if(pending&&['begin','hand','leave','checkin'].includes(pending.action)&&typeof pending.body?.requestId==='string'&&/^[-a-zA-Z0-9]{16,80}$/.test(pending.body.requestId))this.pending=pending;}catch{}

@@ -179,6 +179,7 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
             const input=await readJson(req);
             result=duelAction==='checkin'?await wallet.store.checkin(guild,user,{compact:true,duel:true,day:input?.day??'',allowPlay:admissionOpen}):
               await wallet.store.duelAction(guild,user,duelAction,input,{allowNew:admissionOpen,allowPlay:admissionOpen});
+            if(result.entry?.delta>0&&duelAction==='hand')try{wallet.duelAnnouncementWake?.();}catch{console.warn('Challenge announcement wake deferred');}
           }
           const previewAllCG=wallet.store.environment==='test'&&wallet.previewAllCG===true;
           return json(res,200,{...result,admissionOpen:admissionOpen(),...(previewAllCG?{previewAllCG:true}:{})});
@@ -236,7 +237,7 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
       const status = error.status || (['ENOENT','ENOTDIR'].includes(error.code) ? 404 : 502);
       const cooldown=status===429&&['SPIN_COOLDOWN','SETTLEMENT_BUSY'].includes(error.code);
       if(cooldown&&!res.headersSent)res.setHeader('Retry-After',String(Math.ceil(error.retryAfterMs/1000)));
-      const playerCode=['FIRESTORE_BUDGET','SLOT_MAINTENANCE','DUEL_MAINTENANCE','DUEL_CLOSED','DUEL_HAND','DUEL_MATCH','DUEL_INPUT','REQUEST_CONFLICT'].includes(error.code)?error.code:null;
+      const playerCode=['FIRESTORE_BUDGET','SLOT_MAINTENANCE','DUEL_MAINTENANCE','DUEL_CLOSED','DUEL_HAND','DUEL_MATCH','DUEL_INPUT','DUEL_BALANCE_LOW','DUEL_BALANCE_LIMIT','REQUEST_CONFLICT'].includes(error.code)?error.code:null;
       if (!res.headersSent) json(res, status, { error:error.status ? error.message : status === 404 ? '找不到檔案。' : '暫時無法完成請求，請稍後重試。',...(cooldown?{code:error.code,retryAfterMs:error.retryAfterMs}:playerCode?{code:playerCode}:{}) });
       else res.end();
     }

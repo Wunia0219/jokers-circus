@@ -1,6 +1,6 @@
 import {Container,FillGradient,Graphics,Rectangle} from 'pixi.js';
 import {characterRule} from '../characters.js';
-import {label,PALETTE,PixiButton} from './ui.js';
+import {label,PALETTE,PixiButton} from '../../../ui/pixi/ui.js';
 
 const addText=(parent,value,size,x,y,color=PALETTE.cream,options={},anchor=.0)=>{
   const node=label(value,size,color,options);node.anchor.x=anchor;node.position.set(x,y);parent.addChild(node);return node;
@@ -13,13 +13,14 @@ function score(parent,record,x,y,size){
 }
 export function buildMatchHistory(scene,body,mw,mh){
   const phone=scene.layout.ui.width<=700,inset=phone?16:24,header=phone?64:72,top=-mh/2+header+(phone?58:60),vh=mh-(top+mh/2)-50,cw=mw-inset*2-10;
+  const chipNote=scene.wallet?(scene.isTestWallet?'測試戲籌':'戲籌'):'試玩未入帳';
   const summaryHeight=cw<420?104:84,detailHeight=88,pad=phone?14:20,records=scene.archive.records();
   scene.historyExpanded ||= new Set();
   const headFill=new FillGradient({start:{x:0,y:0},end:{x:1,y:0},colorStops:[{offset:0,color:0x3b1d2d},{offset:1,color:0x291c2b}]});
   body.addChild(new Graphics().roundRect(-mw/2,-mh/2,mw,header,18).fill(headFill).rect(-mw/2,-mh/2+18,mw,header-18).fill(headFill));
   body.addChild(new Graphics().moveTo(-mw/2,-mh/2+header).lineTo(mw/2,-mh/2+header).stroke({color:0xc79a5f,alpha:.26,width:1}));
   addText(body,'遊玩紀錄',scene.layout.ui.width<=450?17:19,-mw/2+inset,-mh/2+header/2,PALETTE.gold,{fontWeight:'500'});
-  addText(body,`共 ${records.length} 場 · 點開一場查看對局結果`,12,-mw/2+inset,-mh/2+header+(phone?29:31),0xd5bcbf);
+  addText(body,`最近 ${records.length} 場 · 點開一場查看對局結果`,12,-mw/2+inset,-mh/2+header+(phone?29:31),0xd5bcbf);
   const bounds=new Rectangle(0,0,cw,vh),viewport=new Container({label:'match-history-scroll',eventMode:'static',hitArea:bounds,boundsArea:bounds});viewport.position.set(-mw/2+inset,top);body.addChild(viewport);
   viewport.accessible=true;viewport.accessibleTitle='遊玩紀錄清單，使用方向鍵或滑動查看更多';viewport.accessibleHint=viewport.accessibleTitle;viewport.accessibleType='div';viewport.tabIndex=0;
   viewport.accessiblePointerEvents='none';
@@ -37,9 +38,9 @@ export function buildMatchHistory(scene,body,mw,mh){
     for(const {record,y,height} of visible){
       const expanded=scene.historyExpanded.has(record.id),row=new Container({label:`match:${record.id}`,eventMode:'passive'});row.position.set(0,y-offset);content.addChild(row);
       row.addChild(new Graphics().roundRect(0,0,cw,height,12).fill(new FillGradient({start:{x:0,y:0},end:{x:1,y:0},colorStops:[{offset:0,color:0x3c2637},{offset:1,color:0x2a1e30}]})).stroke({color:0xc79a5f,alpha:.31,width:1}));
-      const status={won:'這場挑戰已通關。',lost:'這場挑戰未通關。',left:'這場已中途離場。',playing:record.id===scene.matchId?'這場仍在進行中。':'這場尚未完成。'}[record.status];
+      const status={won:'這場已通關。',lost:'這場沒通關。',left:'這場中途離開了。',playing:'這場還沒打完。'}[record.status];
       const date=new Date(record.startedAt).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Taipei'});
-      const net=record.net ?? record.reward,prize=Math.abs(net).toLocaleString('en-US'),title=record.reward?`獲得 ${record.reward.toLocaleString('en-US')} 戲籌`:'這場沒有得獎';
+      const net=record.net ?? record.reward,prize=Math.abs(net).toLocaleString('en-US'),title=record.reward?`獲得 ${record.reward.toLocaleString('en-US')} 戲籌`:record.status==='playing'?'這場還沒打完':'這場沒有獎金';
       const summary=new PixiButton({name:`${expanded?'收合':'展開'} ${date} ${characterRule(record.characterId).name} 對局結果`,variant:'quiet',width:cw,height:summaryHeight,onPress:()=>{
         if(dragMoved)return;const keyboard=summary.focused;
         if(expanded)scene.historyExpanded.delete(record.id);else scene.historyExpanded.add(record.id);
@@ -63,9 +64,9 @@ export function buildMatchHistory(scene,body,mw,mh){
         addText(row,status,12,pad,summaryHeight+66,0xdac0cb);
       }
     }
-    if(!records.length){addText(content,'第一場挑戰，等你開場',19,cw/2,vh/2-18,PALETTE.gold,{wordWrap:true,wordWrapWidth:cw-24},.5);addText(content,'開始一場野球拳，這裡就會留下對局結果與通關獎勵。',14,cw/2,vh/2+25,PALETTE.muted,{wordWrap:true,wordWrapWidth:cw-24,lineHeight:22},.5);}
+    if(!records.length){addText(content,'第一場挑戰，等你開場',19,cw/2,vh/2-18,PALETTE.gold,{wordWrap:true,wordWrapWidth:cw-24},.5);addText(content,'玩過的場次和獎金會記在這裡。',14,cw/2,vh/2+25,PALETTE.muted,{wordWrap:true,wordWrapWidth:cw-24,lineHeight:22},.5);}
     thumb.clear();if(max){const h=Math.max(32,vh*vh/(max+vh));thumb.roundRect(mw/2-12,top,3,vh,1.5).fill({color:PALETTE.gold,alpha:.12});thumb.roundRect(mw/2-12,top+(vh-h)*offset/max,3,h,1.5).fill({color:PALETTE.gold,alpha:.55});}
-    viewport.accessibleText=visible.map(({record:r})=>`${characterRule(r.characterId).name}，${r.wins} 勝 ${r.losses} 敗，戲籌變化 ${r.net??r.reward}，${scene.wallet?'測試戲籌':'試玩未入帳'}`).join('。');
+    viewport.accessibleText=visible.map(({record:r})=>`${characterRule(r.characterId).name}，${r.wins} 勝 ${r.losses} 敗，戲籌變化 ${r.net??r.reward}，${chipNote}`).join('。');
     if(viewport._accessibleDiv)viewport._accessibleDiv.textContent=viewport.accessibleText;
     if(focus){scene.app.render();focus._accessibleDiv?.focus();}
   };
@@ -75,8 +76,8 @@ export function buildMatchHistory(scene,body,mw,mh){
   viewport.on('pointerdown',event=>{dragMoved=false;drag={id:event.pointerId,y:event.global.y,offset:scene.historyScroll || 0};});
   viewport.on('pointermove',event=>{if(drag && drag.id===event.pointerId && Math.abs(drag.y-event.global.y)>6){dragMoved=true;scene.historyScroll=drag.offset+(drag.y-event.global.y);show();}});
   for(const name of ['pointerup','pointerupoutside','pointercancel'])viewport.on(name,()=>{drag=null;queueMicrotask(()=>{dragMoved=false;});});
-  addText(body,`${scene.wallet?'測試戲籌':'試玩獎勵未入帳'} · 所有時間皆為台灣時間`,10,0,mh/2-31,PALETTE.muted,{},.5);
-  addText(body,scene.archive.cloud?'紀錄儲存在測試雲端':scene.archive.persistent?'紀錄儲存在這台裝置':'目前無法儲存，資料只保留在此頁',10,0,mh/2-15,PALETTE.muted,{},.5);measure();show();
+  addText(body,scene.wallet&&!scene.isTestWallet?'台灣時間':`${chipNote} · 台灣時間`,10,0,mh/2-31,PALETTE.muted,{},.5);
+  addText(body,scene.archive.cloud?(scene.isTestWallet?'紀錄已儲存在測試服':'紀錄已儲存'):scene.archive.persistent?'紀錄儲存在這台裝置':'目前無法儲存，資料只保留在此頁',10,0,mh/2-15,PALETTE.muted,{},.5);measure();show();
   // Header controls remain above the title strip and scrolling content.
   const close=body.children.find(node=>node.accessibleTitle==='關閉視窗');if(close)body.setChildIndex(close,body.children.length-1);
 }

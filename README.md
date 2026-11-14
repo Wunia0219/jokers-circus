@@ -1,6 +1,6 @@
 # Joker’s Circus
 
-Discord Activity：5×3 轉輪、243 路，後端負責算獎、戲籌、週簽到及請求去重，各群錢包獨立。產品版本 **1.0.4**，唯一版本來源為 `package.json`；玩法識別碼 `circus-243-v2` 另行維護。
+Discord Activity：老虎機（5×3 轉輪、243 路）與野球拳共用權威戲籌、週簽到及請求去重，各群錢包獨立。產品版本以 `package.json` 為唯一來源，線上版本另查各環境 health；老虎機玩法識別碼 `circus-243-v2` 另行維護。
 
 儲存庫為 [Wunia0219/jokers-circus](https://github.com/Wunia0219/jokers-circus)，本機資料夾使用 `jokers-circus`。儲存庫與資料夾改名不變更正式服務網址、Discord 應用程式或資料庫；本機環境設定的備份基準路徑以儲存庫根目錄為相對起點。
 
@@ -37,9 +37,9 @@ npm run dev
 |---|---|
 | 程式與專案結構 | [架構／資料流程／檔案分類](docs/architecture.md)、[測試](docs/testing.md) |
 | 雲端與資料庫 | [部署](docs/deployment.md)、[Firestore 結算儲存](docs/settlement-storage.md)、[Cloudflare 費用](docs/cloudflare-costs.md)、[監控](docs/monitoring.md) |
-| 維運與交付 | [正式服交付](docs/customer-handoff.md)、[備份恢復](docs/recovery.md)、[資料保護](docs/security.md) |
+| 維運與交付 | [正式服交付](docs/customer-handoff.md)、[1.1.0 發布準備](docs/releases/1.1.0.md)、[備份恢復](docs/recovery.md)、[資料保護](docs/security.md) |
 | Discord | [指令與管理](docs/discord-commands.md)、[賭場公告](docs/casino-announcements.md) |
 | 遊戲與素材 | [玩家體驗](docs/player-experience.md)、[停輪基準](docs/reel-timing-baseline.md)、[數學](docs/game-math.md)、[素材](docs/assets.md) |
-| 野球拳 | [流程、資料與開發入口](docs/yakyuken-preview.md)、[角色機率](docs/yakyuken-probability.md)、[Discord 測試活動](docs/discord-test-activity.md) |
+| 野球拳 | [流程、資料與開發入口](docs/yakyuken-preview.md)、[角色機率](docs/yakyuken-probability.md)、[發布與環境](docs/arcade-release.md)、[舊測試活動紀錄](docs/history/discord-test-activity.md) |
 
 Cloudflare 已升級 Workers Paid（2026-10-31 使用者確認）。正式服使用獨立 Worker／DO 與台灣 `asia-east1` Firestore v2 帳本，雲端為唯一 writer，本機 `FIRESTORE_LIVE_ENABLED=false`。發布版本、來源與驗收結果見[正式服交付](docs/customer-handoff.md)；Git 合併與部署分開處理。

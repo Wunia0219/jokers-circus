@@ -45,7 +45,7 @@ export async function verifyYakyukenPrefetch({page,holdHand,dropHandResponse,han
   await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>window.__rewardScene.app.start());
   gate.release();await confirmed();assert.equal((await scene()).ticket.index,1);assert.equal(serverWallet().balance,before);
 
-  await page.getByRole('button',{name:'下一局',exact:true}).click();await selecting();
+  await page.getByRole('button',{name:'下一拳',exact:true}).click();await selecting();
   dropHandResponse();await choose();await confirm();
   await page.waitForFunction(()=>window.__rewardScene.phase==='retrying');
   const uncertain=await scene(),original=handRequests.at(-1);
@@ -63,12 +63,12 @@ export async function verifyYakyukenPrefetch({page,holdHand,dropHandResponse,han
   const missing=holdHand();await choose();await confirm();await requestStarted(missing);
   assert.equal((await scene()).phase,'requesting');assert.equal((await scene()).front,false);
   missing.release();await confirmed();
-  await page.getByRole('button',{name:'下一局',exact:true}).click();await selecting();
+  await page.getByRole('button',{name:'下一拳',exact:true}).click();await selecting();
   const stale=(await scene()).ticket,paidBalance=serverWallet().balance;
   await otherHand(stale);assert.equal(serverWallet().balance,paidBalance+2500);
-  await choose();await confirm();await page.getByRole('button',{name:'重新同步',exact:true}).waitFor();
+  await choose();await confirm();await page.getByRole('button',{name:'更新進度',exact:true}).waitFor();
   assert.equal((await scene()).pending,null,'a definitive stale-ticket rejection is not a new pending throw');
-  await page.getByRole('button',{name:'重新同步',exact:true}).click();
+  await page.getByRole('button',{name:'更新進度',exact:true}).click();
   await page.waitForFunction(()=>window.__rewardScene.screen==='characters'&&!window.__rewardScene.settling);
   assert.equal(serverWallet().balance,paidBalance+2500,'resync charges no fee and awards no second prize');
   return 'prefetched hand flips in the planned 330ms before settlement; delayed response, resize/background, missing packet, original retry and stale-device conflict retain authoritative money';

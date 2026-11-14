@@ -1,22 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {earnedPose,resultDialogue,wardrobeFrame,WARDROBE_DURATION} from '../src/games/yakyuken/duel-presentation.js';
+import {earnedPose,openingDialogue,resultDialogue,wardrobeFrame,WARDROBE_DURATION} from '../src/games/yakyuken/duel-presentation.js';
+import {CHARACTERS} from '../src/games/yakyuken/characters.js';
 
 test('winning hands advance to the next existing artwork, capped at the final pose',()=>{
   assert.deepEqual([0,1,2,3,9].map(wins=>earnedPose(wins,3)),[0,1,2,2,2]);
 });
 
 test('dialogue covers each outcome and respects terminal wins/losses without rerolling on resize',()=>{
+  assert.equal(new Set(CHARACTERS.map(({id})=>openingDialogue(id))).size,5);
   for(const outcome of ['win','loss','draw']){
-    const lines=[1,2,3].map(round=>resultDialogue({outcome,round,status:'playing'}));
-    assert.equal(new Set(lines).size,3);
-    for(const [index,line] of lines.entries()){
-      assert.equal(line,resultDialogue({outcome,round:index+1,status:'playing'}));assert.match(line,/[。？]$/);
+    const firstLines=new Set();
+    for(const {id:characterId} of CHARACTERS){
+      const lines=[1,2,3].map(round=>resultDialogue({characterId,outcome,round,status:'playing'}));
+      assert.equal(new Set(lines).size,3);
+      firstLines.add(lines[0]);
+      assert.equal(resultDialogue({characterId,outcome,round:4,status:'playing'}),lines[0]);
     }
+    assert.equal(firstLines.size,5);
   }
-  assert.match(resultDialogue({outcome:'win',round:2,status:'won'}),/你贏了/);
-  assert.match(resultDialogue({outcome:'loss',round:2,status:'lost'}),/下次/);
-  assert.throws(()=>resultDialogue({outcome:'invalid',round:1}));
+  assert.equal(resultDialogue({characterId:'guest-2',outcome:'loss',round:2,status:'playing'}),'這拳我贏了。慢慢來。');
+  assert.equal(resultDialogue({characterId:'guest-2',outcome:'win',round:5,status:'won'}),'你贏了。看來我剛剛鬆懈了。');
+  assert.equal(resultDialogue({characterId:'guest-3',outcome:'win',round:7,status:'won'}),'你贏了。我沒話說。');
+  assert.equal(resultDialogue({characterId:'guest-4',outcome:'loss',round:4,status:'lost'}),'今天就到這裡吧。謝謝你來。');
+  assert.throws(()=>resultDialogue({characterId:'dealer',outcome:'invalid',round:1}));
 });
 
 test('wardrobe presents only the new outfit and commits when its fade-in completes',()=>{
