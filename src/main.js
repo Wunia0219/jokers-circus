@@ -473,7 +473,7 @@ async function startGame() {
     activityMode=activity.mode;
     activityUser=activity.user || null;
     if(activity.session){walletClient=createWalletClient(activity.session,arcade?.fetch??(discordTestBuild?testSessionFetch(activity):undefined));state=(await walletClient.state()).state;if(maintenanceShown)return;renderState();}
-    if(activityMode==='discord'&&activity.session?.casinoNotifications)casinoSession=activity.session;
+    if(!arcade&&activityMode==='discord'&&activity.session?.casinoNotifications)casinoSession=activity.session;
     if(activityMode==='discord'&&import.meta.env.VITE_DISCORD_WALLET_ENABLED==='true'&&!walletClient)throw new Error('帳號錢包尚未連接，請重新開啟活動。');
     renderPlayer();
     loading.update(20, '正在準備舞台');

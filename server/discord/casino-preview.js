@@ -26,13 +26,16 @@ const visit = {name: '測試玩家', start};
 const wins = {big: 15, super: 48, mega: 128};
 
 export function casinoPreviewMessage(choice,{user}={}) {
-  if (choice === 'enter') return visitMessage(visit);
-  if (choice === 'idle') return visitMessage(visit, start, 'closed');
+  const playerVisit={...visit,user};
+  if (choice === 'enter') return visitMessage(playerVisit);
+  if (choice === 'idle') return visitMessage(playerVisit, start, 'closed');
   const sample = previews.find(({key}) => key === choice);
   if(sample?.rows){
     const arcadeReceipt={slot:sample.rows.find(r=>r.icon==='slot')??{rounds:0,net:0},duel:sample.rows.find(r=>r.icon==='duel')??{entries:0,clears:0,net:0}};
     const summary=arcadeReceiptSummary(arcadeReceipt);
-    return {embeds:[{title:sample.title,description:summary.description.replaceAll('；','\n'),color:receiptColors[summary.tone],image:{url:`attachment://${ARCADE_RECEIPT_NAME}`}}],arcadeReceipt};
+    const {content,allowed_mentions}=visitMessage({...playerVisit,start:{...start,revision:0}},
+      {...start,rounds:arcadeReceipt.slot.rounds,net:arcadeReceipt.slot.net,duel:arcadeReceipt.duel},'closed');
+    return {content,allowed_mentions,embeds:[{title:sample.title,description:summary.description.replaceAll('；','\n'),color:receiptColors[summary.tone],image:{url:`attachment://${ARCADE_RECEIPT_NAME}`}}],arcadeReceipt};
   }
   if (sample) return {
     embeds: [{title: sample.title, description: sample.description,

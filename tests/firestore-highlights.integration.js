@@ -15,6 +15,7 @@ import {firestoreImportPlan,importFirestore} from '../server/firestore/import.js
 import {createActivityServer} from '../server/http/app.js';
 import {firestoreWalletConfig} from '../server/firestore/config.js';
 import {FirestoreDuelAnnouncements,duelNoticeId} from '../server/firestore/duel-announcements.js';
+import {DUEL_RULES} from '../src/games/yakyuken/settlement-rules-v1.js';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:8787');
 const guild='100000000000000001',user='100000000000000002',other='100000000000000003',messageId='100000000000000004';
@@ -251,6 +252,39 @@ test('challenge award atomically queues one real card; visit totals exclude chec
   await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now+1000}).flush();assert.equal(calls,1,'persisted 429 delay survives restart');
   now+=900000;await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now}).flush();assert.equal(calls,2);assert.equal((await h.s.read(ref)).status,'sent');
   await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now+1000}).flush();assert.equal(calls,2);
+});
+
+test('all five challenge clears queue only after committed final hands and deliver once across restart/replay',async t=>{
+  const h=await fixture(t);h.s.duelAnnouncementsGuild=guild;
+  const messages=[],matches=[],expectedKeys=['clear-dealer','clear-youran','clear-xiache','clear-selo','clear-wanshi'];
+  let now=Date.now();
+  const bot={guild,send:async(payload,id)=>{messages.push({payload,id});return {kind:'sent',messageId};}};
+  for(const [characterId,rule] of Object.entries(DUEL_RULES)){
+    const begin={requestId:randomUUID(),characterId};
+    const match=await h.s.duelAction(guild,user,'begin',begin,{allowNew:()=>true,makePlan:()=>Array(rule.winsRequired).fill('win')});
+    const ref=h.s.root.collection('duelAnnouncements').doc(duelNoticeId({guild,user,matchId:match.matchId}));
+    assert.equal(await h.s.read(ref),null,'entry alone never announces a clear');
+    for(let handIndex=0;handIndex<rule.winsRequired;handIndex++){
+      const hand={requestId:randomUUID(),matchId:match.matchId,move:'rock',handIndex};
+      await h.s.duelAction(guild,user,'hand',hand);
+      assert.equal((await h.s.duelAction(guild,user,'hand',hand)).duplicate,true);
+      const event=await h.s.read(ref);
+      if(handIndex+1<rule.winsRequired)assert.equal(event,null,'partial wins never announce a clear');
+      else{assert.equal(event.status,'pending');assert.equal(event.reward,rule.reward);}
+    }
+    matches.push(ref);
+    // A newly constructed delivery worker represents a cold restart after settlement.
+    await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now}).flush();
+    now+=1000;
+    await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now}).flush();
+  }
+  assert.equal(messages.length,5);assert.equal(new Set(messages.map(m=>m.id)).size,5);
+  assert.deepEqual(messages.map(m=>m.payload.previewCard.key),expectedKeys);
+  for(const {payload} of messages){
+    assert.ok(payload.content.includes(`<@${user}>`));
+    assert.deepEqual(payload.allowed_mentions,{parse:[],users:[user]});
+  }
+  for(const ref of matches)assert.equal((await h.s.read(ref)).status,'sent');
 });
 
 test('visit reads reuse committed wallet state but never expired or invalidated cache',async t=>{

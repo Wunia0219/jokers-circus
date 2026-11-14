@@ -1,6 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCasinoPresence} from '../src/platform/casino-presence.js';
+import {createArcadeHost} from '../src/platform/arcade-session.js';
+
+test('lobby presence uses the shared renewed session for heartbeats and keepalive exit',async t=>{
+  const original=Object.getOwnPropertyDescriptor(globalThis,'location');
+  Object.defineProperty(globalThis,'location',{configurable:true,value:new URL('https://activity.example/arcade/lobby.html')});
+  t.after(()=>{if(original)Object.defineProperty(globalThis,'location',original);else delete globalThis.location;});
+  const activity={session:{token:'expired',userId:'player',guildId:'guild',environment:'production',walletEpoch:'epoch'}};
+  const calls=[],target=new EventTarget();let renewals=0;
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    const authorization=new Headers(options.headers).get('Authorization');
+    calls.push({authorization,body:JSON.parse(options.body),keepalive:options.keepalive});
+    return authorization==='Bearer expired'?new Response(null,{status:401}):Response.json({enabled:true,active:true});
+  });
+  const host=createArcadeHost(activity,async()=>{renewals++;return {session:{...activity.session,token:'renewed'}};},{},{});
+  const presence=createCasinoPresence(activity.session,{fetchImpl:host.fetch,target,setTimer:()=>1,clearTimer:()=>{}});
+  await presence.start();await presence.pulse();presence.dispose();
+  assert.equal(renewals,1);
+  assert.deepEqual(calls.map(call=>call.body.action),['enter','enter','heartbeat','leave']);
+  assert.deepEqual(calls.map(call=>call.authorization),['Bearer expired',...Array(3).fill('Bearer renewed')]);
+  assert.equal(new Set(calls.map(call=>call.body.instanceId)).size,1);
+  assert.equal(calls.at(-1).keepalive,true);
+});
 test('browser hides keep the visit; closing sends one authenticated keepalive without client accounting',async()=>{
   const target=new EventTarget();target.document=new EventTarget();target.document.visibilityState='visible';const calls=[];let interval;
   const presence=createCasinoPresence({token:'private-session',walletEpoch:'epoch'},{target,setTimer:fn=>{interval=fn;return 1;},clearTimer:()=>{},fetchImpl:async(url,options)=>{calls.push({url,options,body:JSON.parse(options.body)});return Response.json({enabled:true,active:true});}});
