@@ -29,9 +29,10 @@ test('actual snapshot migrates to v2, replays every original request, and rolls 
   const settings=firestoreSettings(env),wallets=plan.resources.filter(r=>/^wallets\/[^/]+$/.test(r.path));
   const guildIds=[...new Set(wallets.map(r=>r.data.guild))];
   // Exhaustive replay is emulator-only. Never load or reset the live project's allowance.
+  const rehearsalLimits={reads:1000000,writes:1000000,egressBytes:1024**3};
   const create=(config=settings)=>{
     assert.equal(config.projectId,'demo-jokers-circus');assert.equal(config.emulator,'127.0.0.1:8787');
-    const quota=new FirestoreQuota({...config.quota,reads:1000000,writes:1000000,egressBytes:1024**3});
+    const quota=new FirestoreQuota({...config.quota,...rehearsalLimits});
     const store=new FirestoreWalletStore(config,{guildIds,quota,spinDelay:0});stores.push(store);return store;
   };
   t.after(async()=>{for(const s of stores)await s.close();assert.ok(directory.startsWith(root+sep));rmSync(directory,{recursive:true,force:true});});
@@ -86,7 +87,14 @@ test('actual snapshot migrates to v2, replays every original request, and rolls 
   };
   await replayAll(s);
   const settingsBackup=operationsSettings(env);
+  // Maintenance shares the rehearsal's usage file. Keep its global allowance
+  // consistent with the exhaustive replay above; do not reset counted usage.
+  assert.equal(settingsBackup.firestore.projectId,'demo-jokers-circus');
+  assert.equal(settingsBackup.firestore.emulator,'127.0.0.1:8787');
+  Object.assign(settingsBackup.firestore.quota,rehearsalLimits);
   const maintenance=new FirestoreWalletStore(settings,{guildIds,quota:new MaintenanceQuota(settingsBackup)});stores.push(maintenance);
+  assert.deepEqual(maintenance.quota.status().limits,s.quota.status().limits);
+  assert.deepEqual(maintenance.quota.status().used,s.quota.status().used);
   const backup=()=>performFirestoreMaintenance(settingsBackup,{store:maintenance,forceBackup:true});
   const first=await backup();assert.equal(first.backup?.created,true,JSON.stringify(first));
   assert.equal(firestoreImportPlan(join(settingsBackup.directory,first.backup.file),'test',{version:2}).fingerprint,plan.fingerprint);
