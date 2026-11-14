@@ -38,7 +38,7 @@ test('exhausted service budget explains the shared outage across player operatio
   for(const context of ['game','connect','load','checkin','ledger']){
     const copy=playerError(error,{context});
     assert.match(copy.message,/請等候恢復/);
-    assert.match(copy.message,/重新開啟遊戲無法解除/);
+    assert.match(copy.message,/重新開啟遊戲也無法立即恢復/);
     assert.doesNotMatch(copy.message,/private-provider|SPIN|再試一次/);
     assert.equal(copy.reconnect,undefined);
   }
