@@ -12,7 +12,7 @@ export const operatorApi='/__operator/';
 export const operatorSignIn=operatorApi+'sign-in';
 const rememberName='__Secure-circus-operator-remember';
 const rememberSeconds=30*24*3600,sessionSeconds=3600;
-const rememberEnabled=env=>liveSlotMaintenance(env)||env.APP_ENV==='test'&&arcadeEnabled(env);
+const rememberEnabled=env=>liveSlotMaintenance(env)||['production','test'].includes(env.APP_ENV)&&arcadeEnabled(env);
 const script=page.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n?/g,'\n');
 const scriptHash=createHash('sha256').update(script).digest('base64');
 const responseHeaders={...securityHeaders,'Cache-Control':'no-store'};

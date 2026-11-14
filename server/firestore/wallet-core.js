@@ -10,6 +10,7 @@ import {unpack,zeroSummary,ledgerCategory} from './documents.js';
 import {INITIAL_BALANCE,openingKind,openingReason,isOpeningKind} from '../wallet/wallet-opening.js';
 import {nextRecordCode,validRecordCode} from './record-codes.js';
 import {DUEL_LEDGER_KIND,duelFingerprint,duelIntent,duelKey,duelView,settleDuel} from '../wallet/duel-settlement.js';
+import {duelNoticeId,duelNoticeIndex} from './duel-announcements.js';
 
 const maxBalance=1_000_000_000_000,maxDocument=512*1024;
 const digest=value=>createHash('sha256').update(value).digest('hex');
@@ -120,12 +121,33 @@ export class FirestoreWalletCore {
     const state=await this.readState(guild,user);
     return compact?state:this.completeState(guild,user,state);
   }
-  async casinoAccount(guild,user){
+  async casinoAccount(guild,user,start){
     this.validate(guild,user);
     const read=async()=>{
-      const wallet=await this.read(this.walletRef(guild,user));
+      if(this.closed)throw this.safe({});
+      this.quota.reserve({});
+      const cached=this.cache.get(guild+':'+user),age=cached?this.clock()-cached.at:-1;
+      // Reuse the sole writer's committed wallet, with the same freshness bound
+      // as readState. Expiry, clock rollback and invalidation force a fresh read.
+      const wallet=cached&&age>=0&&age<this.stateCacheMs?cached.wallet:await this.read(this.walletRef(guild,user));
       if(!wallet||wallet.guild!==guild||wallet.user!==user)throw problem(404,'帳號尚未建立。');
-      return {balance:wallet.balance,...wallet.summary.game};
+      const result={balance:wallet.balance,...wallet.summary.game,revision:wallet.revision};
+      if(Number.isSafeInteger(start?.revision)){
+        const duel={entries:0,clears:0,bet:0,payout:0,net:0};
+        let before=wallet.revision+1;
+        while(wallet.duel&&before>start.revision+1){
+          const rows=this.schemaVersion===2?await this.queryLedger(guild,user,before,50,{category:'other',after:start.revision}):await this.history(guild,user,before);
+          if(!rows.length)break;
+          for(const entry of rows){
+            if(entry.id<=start.revision||entry.kind!==DUEL_LEDGER_KIND)continue;
+            if(entry.delta<0){duel.entries++;duel.bet-=entry.delta;}
+            if(entry.delta>0){duel.clears++;duel.payout+=entry.delta;}
+          }
+          before=rows.at(-1).id;
+        }
+        duel.net=duel.payout-duel.bet;result.duel=duel;
+      }
+      return result;
     };
     // A departure waits for already accepted settlements. No rounds or wallet
     // data are changed, and signup/checkin/grants never enter the game net.
@@ -257,6 +279,8 @@ export class FirestoreWalletCore {
         // HTTP response or restart cannot lose it; a replay never creates it twice.
         const announcement=round&&this.highlightsGuild===guild?highlightEvent(guild,profileName,round,now):null;
         if(announcement){meta.highlights=1;meta.highlightsRevision=meta.nextId;}
+        const cleared=kind===DUEL_LEDGER_KIND&&answer.entry?.delta>0&&this.duelAnnouncementsGuild===guild?wallet.duel.records[0]:null;
+        const duelNotice=cleared?{guild,user,matchId:cleared.id,characterId:cleared.characterId,wins:cleared.wins,reward:cleared.reward,occurred:now,status:'pending'}:null;
         // All transaction reads finish before the first write.
         if(entries.length){
           for(const entry of entries){
@@ -277,6 +301,7 @@ export class FirestoreWalletCore {
         if(opRef)this.write(tx,opRef,{fingerprint:operation.fingerprint,result:answer,...(round&&compactStorage?{roundStorage:'operation-v1'}:{})},
           {create:true,index:round&&compactStorage?{roundKey:guild+'_'+user+':'+sequenceKey(wallet.historyRevision)}:{}});
         if(announcement)this.write(tx,this.db.doc(this.root.path+'/'+highlightEventPath(announcement)),announcement,{create:true,index:highlightEventIndex(announcement,user)});
+        if(duelNotice)this.write(tx,this.root.collection('duelAnnouncements').doc(duelNoticeId(duelNotice)),duelNotice,{create:true,index:duelNoticeIndex(duelNotice)});
         return {...answer,state:this.snapshot(wallet,now),wallet};
       },{maxAttempts:3});
       const settledWallet=result.wallet;

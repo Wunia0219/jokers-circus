@@ -12,8 +12,10 @@ export const firestoreWalletHistory={
   },
   async queryLedger(guild,user,before,limit,filter={}){
     const {field,prefix}=ledgerRange(guild,user,filter);
+    const first=filter.after===undefined?0:filter.after+1;
+    if(!Number.isSafeInteger(first)||first<0)throw problem(400,'無效的紀錄游標。');
     this.quota.reserve({reads:6*limit});
-    const snapshot=await this.root.collection('ledger').where(field,'>=',prefix+sequenceKey(0))
+    const snapshot=await this.root.collection('ledger').where(field,'>=',prefix+sequenceKey(first))
       .where(field,'<',prefix+sequenceKey(before)).orderBy(field,'desc').limit(limit).get();
     const rows=snapshot.docs.map(doc=>({...unpack(doc),...(filter.displayCodes&&doc.get('recordCode')?{recordCode:doc.get('recordCode')}:{}) ,
       ...(filter.displayCodes&&doc.get('referenceCode')?{referenceCode:doc.get('referenceCode')}:{})}));

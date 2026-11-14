@@ -65,13 +65,16 @@ test('new cards upload only to the original private reply, with accessible text 
       const data=JSON.parse(options.body.get('payload_json'));
       assert.deepEqual(data.allowed_mentions,{parse:[]});
       assert.equal(data.previewCard,undefined);
-      assert.equal(data.embeds[0].image.url,`attachment://${choice}.webp`);
+      const receipt=choice.startsWith('exit-'),filename=receipt?'casino-arcade-receipt.png':`${choice}.webp`;
+      assert.equal(data.arcadeReceipt,undefined);
+      assert.equal(data.embeds[0].image.url,`attachment://${filename}`);
       assert.equal(data.components[0].components[0].label,'開啟遊戲');
       const alt=data.attachments[0].description;
       for(const fragment of fragments)assert.ok(alt.includes(fragment),alt);
       const file=options.body.get('files[0]'),bytes=Buffer.from(await file.arrayBuffer());
-      assert.equal(file.name,`${choice}.webp`);assert.equal(file.type,'image/webp');
-      assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,16),'WEBPVP8L');
+      assert.equal(file.name,filename);assert.equal(file.type,receipt?'image/png':'image/webp');
+      if(receipt)assert.equal(bytes.toString('hex',0,8),'89504e470d0a1a0a');
+      else{assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,16),'WEBPVP8L');}
       assert.ok(bytes.length<512*1024);
       uploads.add(bytes.toString('base64'));
       return Response.json({});

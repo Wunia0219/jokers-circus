@@ -1,7 +1,7 @@
 export const ANNOUNCEMENT_LAUNCH_ID = 'casino:open-game';
 
 export function withAnnouncementLaunch(message) {
-  if (!message.embeds?.length) return message;
+  if (!message.embeds?.length||message.grantReceipt) return message;
   return {
     ...message,
     components: [

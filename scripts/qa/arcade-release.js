@@ -248,9 +248,9 @@ try{
   assert.deepEqual(await towel.body(),readFileSync('art/yakyuken/youran/redesign/youran-stage-3-towel.png'));
   await game.getByRole('button',{name:'CG 收藏',exact:true}).tap();
   for(const [name,count] of [['命運荷官',3],['優然',4],['夏澄',6],['瑟洛',8],['萬世',10]]){
-    await game.getByRole('button',{name:new RegExp(`^${name}收藏，已解鎖 ${count} / ${count}`)}).waitFor();
+    await game.getByRole('button',{name:new RegExp(`^${name}收藏，已解鎖 0 / ${count}，測試期間可預覽全部造型`)}).waitFor();
   }
-  await game.getByRole('button',{name:/^優然收藏，已解鎖 4 \/ 4/}).tap();
+  await game.getByRole('button',{name:/^優然收藏，已解鎖 0 \/ 4，測試期間可預覽全部造型/}).tap();
   await game.getByRole('button',{name:'回顧優然終幕 CG',exact:true}).tap();
   await game.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).waitFor();
   await page.screenshot({path:resolve(output,'youran-finale-cg.png')});
@@ -263,7 +263,7 @@ try{
   assert.match(selo.headers()['content-disposition'],/^attachment;.*Selo-first-win\.png/);
   assert.deepEqual(await selo.body(),readFileSync('public/downloads/yakyuken/selo-stage-1.png'));
   await game.getByRole('button',{name:'返回 CG 收藏',exact:true}).tap();
-  await game.getByRole('button',{name:/^瑟洛收藏，已解鎖 8 \/ 8/}).tap();
+  await game.getByRole('button',{name:/^瑟洛收藏，已解鎖 0 \/ 8，測試期間可預覽全部造型/}).tap();
   await game.getByRole('button',{name:'回顧收起外套 CG',exact:true}).tap();
   await game.getByRole('button',{name:'下載高畫質去背 PNG',exact:true}).tap();
   await page.waitForFunction(()=>window.externalLinks.length===2);

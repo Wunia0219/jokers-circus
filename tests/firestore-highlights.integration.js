@@ -14,6 +14,7 @@ import {MaintenanceQuota,performFirestoreMaintenance} from '../server/firestore/
 import {firestoreImportPlan,importFirestore} from '../server/firestore/import.js';
 import {createActivityServer} from '../server/http/app.js';
 import {firestoreWalletConfig} from '../server/firestore/config.js';
+import {FirestoreDuelAnnouncements,duelNoticeId} from '../server/firestore/duel-announcements.js';
 
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:8787');
 const guild='100000000000000001',user='100000000000000002',other='100000000000000003',messageId='100000000000000004';
@@ -223,4 +224,66 @@ test('bot sending recovery quarantines orphaned POSTs even when an older message
     q.event(tx,event,'sending');h.s.write(tx,q.board,{guild,message_id:messageId,started:0,total:1,entries:'[]',next_attempt:0});
   });
   await q.flush();assert.equal(sent,0);assert.equal((await h.event(win)).status,'uncertain');
+});
+
+test('challenge award atomically queues one real card; visit totals exclude checkins and grants and survive request replay',async t=>{
+  const h=await fixture(t);h.s.duelAnnouncementsGuild=guild;
+  const start=await h.s.casinoAccount(guild,user);
+  await h.s.checkin(guild,user);await h.s.grant(guild,other,user,3000,'not game profit',randomUUID());
+  const slot=await h.settle('big');
+  const begin={requestId:randomUUID(),characterId:'dealer'};
+  const entered=await h.s.duelAction(guild,user,'begin',begin,{allowNew:()=>true,makePlan:()=>['win','win']});
+  for(let index=0;index<2;index++){
+    const hand={requestId:randomUUID(),matchId:entered.matchId,move:'rock',handIndex:index};
+    const result=await h.s.duelAction(guild,user,'hand',hand);
+    assert.equal((await h.s.duelAction(guild,user,'hand',hand)).duplicate,true);
+    if(index===1)assert.equal(result.entry.delta,2500);
+  }
+  const ref=h.s.root.collection('duelAnnouncements').doc(duelNoticeId({guild,user,matchId:entered.matchId}));
+  const event=await h.s.read(ref);assert.equal(event.status,'pending');assert.equal(event.reward,2500);assert.equal(event.characterId,'dealer');
+  const account=await h.s.casinoAccount(guild,user,start);
+  assert.deepEqual(account.duel,{entries:1,clears:1,bet:1000,payout:2500,net:1500});
+  assert.equal(account.net-start.net,slot.round.net);
+  const sameVisit=await h.s.casinoAccount(guild,user,account);assert.equal(sameVisit.duel.net,0);assert.equal(sameVisit.duel.entries,0);
+  let now=event.occurred,calls=0;
+  const bot={guild,send:async(message,id)=>{calls++;assert.equal(message.previewCard.key,'clear-dealer');assert.deepEqual(message.allowed_mentions,{parse:[],users:[user]});assert.ok(id.includes(entered.matchId));return calls===1?{kind:'retry',delay:900000}:{kind:'sent',messageId};}};
+  await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now}).flush();
+  await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now+1000}).flush();assert.equal(calls,1,'persisted 429 delay survives restart');
+  now+=900000;await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now}).flush();assert.equal(calls,2);assert.equal((await h.s.read(ref)).status,'sent');
+  await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now+1000}).flush();assert.equal(calls,2);
+});
+
+test('visit reads reuse committed wallet state but never expired or invalidated cache',async t=>{
+  const h=await fixture(t);await h.s.state(guild,user);
+  const reads=()=>h.s.quota.status().used.reads;
+  let before=reads();const warm=await h.s.casinoAccount(guild,user);
+  assert.equal(reads()-before,0,'warm visit eliminates its wallet document read');
+  const granted=await h.s.grant(guild,other,user,17,'cache freshness',randomUUID());
+  before=reads();assert.equal((await h.s.casinoAccount(guild,user)).balance,granted.state.balance);
+  assert.equal(reads()-before,0);assert.equal(granted.state.balance,warm.balance+17);
+  const cached=h.s.cache.get(guild+':'+user);
+  for(const at of [h.s.clock()-h.s.stateCacheMs,h.s.clock()+60000]){
+    cached.at=at;before=reads();await h.s.casinoAccount(guild,user);assert.equal(reads()-before,6);
+  }
+  h.s.invalidateCache();before=reads();await h.s.casinoAccount(guild,user);assert.equal(reads()-before,6);
+});
+
+test('challenge unknown sends and expired sending leases never repost after restart; disabled sender adds no outbox',async t=>{
+  const h=await fixture(t);let now=Date.now(),calls=0;
+  const bot={guild,send:async()=>{calls++;throw Error('lost after POST');}};
+  const write=async(event)=>h.s.db.runTransaction(async tx=>new FirestoreDuelAnnouncements(h.s,{bot}).save(tx,event));
+  const event={guild,user,matchId:randomUUID(),characterId:'dealer',wins:2,reward:2500,occurred:now,status:'pending'};
+  await write(event);await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now}).flush();
+  await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now+1000}).flush();assert.equal(calls,1);
+  assert.equal((await h.s.read(h.s.root.collection('duelAnnouncements').doc(duelNoticeId(event)))).status,'uncertain');
+  const interrupted={...event,matchId:randomUUID(),status:'sending',until:now+60000};await write(interrupted);
+  await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now+1000}).flush();assert.equal(calls,1);
+  await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now+60001}).flush();assert.equal(calls,1);
+  assert.equal((await h.s.read(h.s.root.collection('duelAnnouncements').doc(duelNoticeId(interrupted)))).status,'uncertain');
+  const expired={...event,matchId:randomUUID(),occurred:now-HIGHLIGHT_MAX_AGE_MS-1};await write(expired);
+  await new FirestoreDuelAnnouncements(h.s,{bot,clock:()=>now}).flush();assert.equal(calls,1);
+  assert.equal((await h.s.read(h.s.root.collection('duelAnnouncements').doc(duelNoticeId(expired)))).status,'expired');
+  const began=await h.s.duelAction(guild,user,'begin',{requestId:randomUUID(),characterId:'dealer'},{allowNew:()=>true,makePlan:()=>['win','win']});
+  for(let handIndex=0;handIndex<2;handIndex++)await h.s.duelAction(guild,user,'hand',{requestId:randomUUID(),matchId:began.matchId,move:'rock',handIndex});
+  assert.equal(await h.s.read(h.s.root.collection('duelAnnouncements').doc(duelNoticeId({guild,user,matchId:began.matchId}))),null);
 });

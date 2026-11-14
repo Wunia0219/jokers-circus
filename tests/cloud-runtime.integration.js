@@ -49,11 +49,17 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
      if(request.headers.get('content-type')?.startsWith('multipart/form-data')){
        const form=await request.formData(),file=form.get('files[0]');
        const payload=JSON.parse(form.get('payload_json'));
-       assert.match(file.name,/^(?:casino-receipt|(?:big|super|mega)-win)\.png$/);assert.equal(file.type,'image/png');
-       assert.equal(Buffer.from(await file.arrayBuffer()).subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+       assert.match(file.name,/^(?:(?:casino-(?:arcade-)?receipt|casino-grant|(?:big|super|mega)-win)\.png|clear-dealer\.webp)$/);
+       const webp=file.name.endsWith('.webp'),bytes=Buffer.from(await file.arrayBuffer());
+       assert.equal(file.type,webp?'image/webp':'image/png');
+       if(webp)assert.equal(bytes.toString('ascii',8,12),'WEBP');
+       else assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
        assert.equal(payload.embeds[0].image.url,'attachment://'+file.name);
-       assert.match(payload.attachments[0].description,file.name==='casino-receipt.png'
-         ? /^這次獲得 [+−]?[\d,]+ 戲籌 · 總遊玩 [\d,]+ 局$/ : /^(?:BIG|SUPER|MEGA) WIN · [\d,.]+×，單局獎金倍率$/);
+       const alt=payload.attachments[0].description;
+       if(file.name==='casino-arcade-receipt.png')assert.match(alt,/^本次戲籌變化 .*戲籌；/);
+       else if(file.name==='casino-grant.png')assert.equal(alt,'這次獲得 +500 戲籌');
+       else if(webp)assert.match(alt,/通關/);
+       else assert.match(alt,file.name==='casino-receipt.png'?/^這次獲得 [+−]?[\d,]+ 戲籌 · 總遊玩 [\d,]+ 局$/:/^(?:BIG|SUPER|MEGA) WIN · [\d,.]+×，單局獎金倍率$/);
        announcements.push(payload);
      }else announcements.push(await request.json());
      return MFResponse.json({id:'100000000000000007',channel_id:'100000000000000006'});
@@ -63,7 +69,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    if(u.pathname===`/api/v10/webhooks/${client}/${previewToken}/messages/@original`&&request.method==='PATCH'){
      const form=await request.formData(),file=form.get('files[0]');
      previewUpload.resolve({payload:JSON.parse(form.get('payload_json')),name:file.name,type:file.type,
-       signature:Buffer.from(await file.arrayBuffer()).toString('ascii',8,16)});
+       signature:Buffer.from(await file.arrayBuffer()).subarray(0,8).toString('hex')});
      return MFResponse.json({});
    }
    if(u.pathname.endsWith('/messages/@original')&&request.method==='PATCH'){replies.push(await request.json());return MFResponse.json({});}
@@ -199,9 +205,9 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   const stop=new AbortController();
   try{
    const {payload,name,type,signature}=await Promise.race([previewUpload.promise,delay(8000,null,{signal:stop.signal}).then(()=>{throw new Error('Private Discord attachment was not uploaded');})]);
-   assert.deepEqual([name,type,signature],['exit-mixed.webp','image/webp','WEBPVP8L']);
+   assert.deepEqual([name,type,signature],['casino-arcade-receipt.png','image/png','89504e470d0a1a0a']);
    assert.deepEqual(payload.allowed_mentions,{parse:[]});
-   assert.equal(payload.embeds[0].image.url,'attachment://exit-mixed.webp');
+   assert.equal(payload.embeds[0].image.url,'attachment://casino-arcade-receipt.png');
    assert.match(payload.attachments[0].description,/\+2,400.*老虎機.*−600.*野球拳.*\+3,000/);
   }finally{stop.abort();}
  }
@@ -215,9 +221,8 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   for(let i=0;i<150&&!replies.some(p=>p.embeds?.[0]?.title==='戲籌已發放');i++)await delay(100);
   const delivered=replies.find(p=>p.embeds?.[0]?.title==='戲籌已發放');assert.ok(delivered);assert.match(delivered.embeds[0].description,/已在遊玩文字頻道發送通知/);assert.deepEqual(delivered.allowed_mentions,{parse:[]});
   const notices=()=>announcements.filter(p=>p.embeds?.[0]?.title==='戲籌已發放');assert.equal(notices().length,1);assert.match(notices()[0].content,/500 戲籌/);assert.deepEqual(notices()[0].allowed_mentions,{parse:[],users:[user]});
-  const launchButton=notices()[0].components.at(-1).components[0];
-  assert.equal(launchButton.label,'開啟遊戲');
-  const launchRaw=JSON.stringify({...interaction,type:3,data:{component_type:2,custom_id:launchButton.custom_id}});
+  assert.equal(notices()[0].components,undefined,'grant receipt matches the approved preview without a game button');
+  const launchRaw=JSON.stringify({...interaction,type:3,data:{component_type:2,custom_id:'casino:open-game'}});
   const launchTimestamp=String(Math.floor(Date.now()/1000));
   const launchSignature=sign(null,Buffer.from(launchTimestamp+launchRaw),ed.privateKey).toString('hex');
   const launchReply=await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',
@@ -327,6 +332,10 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  assert.ok(hasWin(),'durable alarm recovers outbox without enqueue hint');
  if(casino){
    const big=announcements.find(p=>p.embeds?.[0]?.image?.url==='attachment://big-win.png');
+   for(let i=0;i<150&&!announcements.some(p=>p.embeds?.[0]?.image?.url==='attachment://clear-dealer.webp');i++)await delay(100);
+   const clears=announcements.filter(p=>p.embeds?.[0]?.image?.url==='attachment://clear-dealer.webp');
+   assert.equal(clears.length,1,'committed challenge clear sends once despite replay and restart');
+   assert.match(clears[0].embeds[0].description,/2,500/);
    assert.match(big.attachments[0].description,/^BIG WIN · [\d,.]+×，單局獎金倍率$/);
    assert.equal(big.components[0].components[0].style,1);
    const previousBackup=(await call('/__ops/status',{headers:monitorHeaders})).data.backup.at;
@@ -336,7 +345,10 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    await call('/api/casino-visit',{token,body:{action:'leave',instanceId:visitId}});
    for(let i=0;i<150&&!announcements.some(p=>p.content?.includes('離開賭場'));i++)await delay(100);
    assert.equal(announcements.filter(p=>p.content?.includes('**入場**')).length,1);
-   const exits=announcements.filter(p=>p.content?.includes('離開賭場'));assert.equal(exits.length,1);assert.equal(exits[0].embeds[0].title,'離場結算');
+   const exits=announcements.filter(p=>p.content?.includes('離開賭場'));assert.equal(exits.length,1);assert.equal(exits[0].embeds[0].title,'賭場・離場結算');
+   assert.equal(exits[0].embeds[0].image.url,'attachment://casino-arcade-receipt.png');
+   assert.match(exits[0].attachments[0].description,/野球拳/);
+   assert.match(exits[0].attachments[0].description,/入場 1 場/);
    assert.ok(announcements.every(p=>p.enforce_nonce===true&&!('flags' in p)));
    for(const announcement of announcements){assert.ok(announcement.content.includes(`<@${user}>`));assert.deepEqual(announcement.allowed_mentions,{parse:[],users:[user]});}
    const deadline=Date.now()+90000;let completed;

@@ -17,11 +17,11 @@ export const clearPreviews = roles.map(([portrait, id, name, ink, base, halo, se
   const description = `示範玩家累積 ${wins} 勝，獲得 **${number.format(reward)} 戲籌**。`;
   return {key: `clear-${portrait}`, label: `野球拳通關｜${name}`, title, description,
     alt: `${title} · 累積 ${wins} 勝 · 通關獎金 ${number.format(reward)} 戲籌`,
-    portrait, name, wins, ink, base, halo, serial, pos, top};
+    portrait, characterId:id, reward, name, wins, ink, base, halo, serial, pos, top};
 });
 
-const slot = (rounds, bet, payout) => ({name: '老虎機', icon: 'slot', count: `${rounds} 局`, net: payout - bet});
-const duel = (entries, clears, payout) => ({name: '野球拳', icon: 'duel', count: `入場 ${entries} 場 · 通關 ${clears} 場`, net: payout - entries * DUEL_ENTRY_FEE});
+const slot = (rounds, bet, payout) => ({name: '老虎機', icon: 'slot', rounds, count: `${rounds} 局`, net: payout - bet});
+const duel = (entries, clears, payout) => ({name: '野球拳', icon: 'duel', entries, clears, count: `入場 ${entries} 場 · 通關 ${clears} 場`, net: payout - entries * DUEL_ENTRY_FEE});
 const youranReward = DUEL_RULES['guest-1'].reward;
 export const exitPreviews = [
   ['exit-mixed', '老虎機 ＋ 野球拳', [slot(12, 1200, 600), duel(2, 1, youranReward)]],

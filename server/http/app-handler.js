@@ -179,6 +179,7 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
             const input=await readJson(req);
             result=duelAction==='checkin'?await wallet.store.checkin(guild,user,{compact:true,duel:true,day:input?.day??'',allowPlay:admissionOpen}):
               await wallet.store.duelAction(guild,user,duelAction,input,{allowNew:admissionOpen,allowPlay:admissionOpen});
+            if(result.entry?.delta>0&&duelAction==='hand')try{wallet.duelAnnouncementWake?.();}catch{console.warn('Challenge announcement wake deferred');}
           }
           const previewAllCG=wallet.store.environment==='test'&&wallet.previewAllCG===true;
           return json(res,200,{...result,admissionOpen:admissionOpen(),...(previewAllCG?{previewAllCG:true}:{})});
