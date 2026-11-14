@@ -37,6 +37,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  const settings={projectId:'demo-jokers-circus',environment:'test',namespace,schemaVersion:2,emulator:process.env.FIRESTORE_EMULATOR_HOST,quota:{filename:join(dir,'sdk-quota.sqlite'),projectId:'demo-jokers-circus'}};
  const sdk=new FirestoreWalletStore(settings,{guildIds:[guild]});t.after(()=>sdk.close());const plan=firestoreImportPlan(source,'test',{version:2});await importFirestore(sdk,plan);
  const rsa=generateKeyPairSync('rsa',{modulusLength:2048}),ed=generateKeyPairSync('ed25519'),key=randomBytes(32).toString('hex'),admin=randomBytes(32).toString('hex'),replies=[],announcements=[];let metadataReads=0;
+ const previewUpload=Promise.withResolvers(),previewToken='private-preview-fixture-token';
  const operatorToken=randomBytes(32).toString('hex'),operatorHeaders={Authorization:'Bearer '+operatorToken};
  const config={modules:true,scriptPath:process.env.TEST_CLOUD_BUNDLE||'test-results/cloud-bundle/worker.js',compatibilityDate:'2026-07-30',compatibilityFlags:['nodejs_compat'],durableObjects:{CIRCUS_PROJECT:{className:'CircusProject',useSQLite:true}},resourcePersistencePath:join(dir,'durable'),bindings:{CLOUD_PLAN:'free',APP_ENV:'test',FIRESTORE_PROJECT_ID:settings.projectId,FIRESTORE_NAMESPACE:namespace,DISCORD_CLIENT_ID:client,DISCORD_CLIENT_SECRET:'isolated-fixture-secret',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'https://discord.com/api/webhooks/100000000000000005/isolated-fake-webhook',DISCORD_PUBLIC_KEY:ed.publicKey.export({format:'der',type:'spki'}).subarray(-32).toString('hex'),ALLOWED_GUILD_IDS:guild,CLOUD_ADMIN_TOKEN:admin,CLOUD_ENCRYPTION_KEY:key,GOOGLE_SERVICE_ACCOUNT_JSON:JSON.stringify({type:'service_account',project_id:settings.projectId,client_email:'fixture@example.invalid',private_key:rsa.privateKey.export({format:'pem',type:'pkcs8'})})},outboundService:async request=>{
    const u=new URL(request.url);if(u.hostname==='oauth2.googleapis.com')return MFResponse.json({access_token:'emulator-only',expires_in:3600});
@@ -59,6 +60,12 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    }
    if(u.pathname===`/api/v10/users/@me/guilds/${guild}/member`)return MFResponse.json({user:{id:user,bot:false},pending:false});
    if(u.pathname==='/api/webhooks/100000000000000005/isolated-fake-webhook'){if(request.method==='GET')return MFResponse.json({type:1,guild_id:guild,channel_id:'100000000000000006'});announcements.push(await request.json());return MFResponse.json({id:'100000000000000007'});}
+   if(u.pathname===`/api/v10/webhooks/${client}/${previewToken}/messages/@original`&&request.method==='PATCH'){
+     const form=await request.formData(),file=form.get('files[0]');
+     previewUpload.resolve({payload:JSON.parse(form.get('payload_json')),name:file.name,type:file.type,
+       signature:Buffer.from(await file.arrayBuffer()).toString('ascii',8,16)});
+     return MFResponse.json({});
+   }
    if(u.pathname.endsWith('/messages/@original')&&request.method==='PATCH'){replies.push(await request.json());return MFResponse.json({});}
    throw new Error('Unapproved external request in test');
  }};
@@ -70,7 +77,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
     writeFileSync(join(directory,path),'/'+path);
   config.assets={directory,binding:'ASSETS',run_worker_first:true,routerConfig:{has_user_worker:true},
     assetConfig:{html_handling:'none',not_found_handling:'none'}};
- }else Object.assign(config.bindings,{ARCADE_CONSOLE_TOKEN:operatorToken,DISCORD_COMMAND_PROFILE:'test-simple'});
+ }else Object.assign(config.bindings,{ARCADE_CONSOLE_TOKEN:operatorToken,DISCORD_COMMAND_PROFILE:'test-simple',DISCORD_COMMAND_CHANNEL_IDS:'100000000000000006'});
  const adminRole='100000000000000009';
  config.bindings[casino?'CHIP_ADMIN_ROLE_IDS':'ADMIN_ROLE_IDS']=` ${adminRole} `;
  config.bindings.FIRESTORE_ENDPOINT='https://firestore.asia-east1.rep.googleapis.com';
@@ -187,6 +194,16 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   assert.equal(fresh.type,9);assert.equal(fresh.data.components.length,3,'test grant form has no public notification option');
   for(let i=0;i<100&&!replies.length;i++)await delay(30);
   assert.match(replies[0].embeds[0].description,new RegExp(forced.state.balance.toLocaleString('en-US')+' 戲籌'),'Discord reads the same balance as the game');
+  const preview={...interaction,token:previewToken,data:{name:'推播預覽',options:[{name:'樣式',value:'exit-mixed'}]}};
+  assert.deepEqual(await signed(preview),{type:5,data:{flags:64}});
+  const stop=new AbortController();
+  try{
+   const {payload,name,type,signature}=await Promise.race([previewUpload.promise,delay(8000,null,{signal:stop.signal}).then(()=>{throw new Error('Private Discord attachment was not uploaded');})]);
+   assert.deepEqual([name,type,signature],['exit-mixed.webp','image/webp','WEBPVP8L']);
+   assert.deepEqual(payload.allowed_mentions,{parse:[]});
+   assert.equal(payload.embeds[0].image.url,'attachment://exit-mixed.webp');
+   assert.match(payload.attachments[0].description,/\+2,400.*老虎機.*−600.*野球拳.*\+3,000/);
+  }finally{stop.abort();}
  }
  if(casino){
   const formId=String((BigInt(Date.now())-1420070400000n)<<22n),grant={...interaction,type:5,id:formId,member:{...interaction.member,roles:[adminRole]},data:{custom_id:`jc|gs|${guild}|${user}|${formId}`,components:[

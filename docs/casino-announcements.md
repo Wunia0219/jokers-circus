@@ -57,9 +57,10 @@
 
 ### Discord 測試服
 
-- 在 [#工程師的專屬地](https://discord.com/channels/760012177326997544/1564243344857632818) 執行 `/推播預覽` 並選擇樣式。這是測試 App 專用的私人回覆，使用示例數據，可看入場、未下注離場、三種結算、三種大獎及獲得戲籌。卡片上的按鈕會開啟測試版遊戲。註冊入口為 `node scripts/discord/register-casino-preview.js`。
+- 在 [#工程師的專屬地](https://discord.com/channels/760012177326997544/1564243344857632818) 執行 `/推播預覽` 並選擇樣式。這是測試 App 專用的私人回覆，使用示例數據，可看入場、未下注離場、三種大獎、獲得戲籌、五位角色的通關留影，以及混玩、只玩老虎機、只玩野球拳三種離場收據。新版收據取代原本「這次賺了／賠了／打平」的預覽選項。卡片上的按鈕會開啟測試版遊戲。註冊入口為 `node scripts/discord/register-casino-preview.js`。
+- 通關留影採角色登場圖，保留通關勝場與角色配色；收據以合計為主，只列實際遊玩的遊戲。示例以派彩減老虎機下注及野球拳入場費，不含簽到與管理員發放。兩組卡片的 Noto Sans TC、Noto Serif TC、Georgia 字型和配色皆預繪成無損 WebP，以附件更新原本的私人回覆，正文與替代文字也提供完整數據。重建素材使用 `node scripts/assets/build-casino-preview-art.js`（Windows 設計字型、Playwright Chromium 與 Python Pillow）。
 - 「獲得戲籌」預覽沿用大獎卡的附件做法，採黑金收據外框並顯示範例金額、發放原因與紀錄編號。卡片不附遊戲按鈕。私密回覆顯示執行者的 @ 樣式，不會觸發提及通知或發放戲籌。
-- 測試服固定只提供私人推播預覽，不安裝公告 Bot、不建立或配置 Bot Token，也不啟用真實入場、離場、大獎或發放戲籌的公開通知，避免額外的公告傳送與背景處理用量。維持 `DISCORD_COMMAND_PROFILE=test-simple`，發放表單不提供公開通知選項。
+- 測試服固定只提供私人推播預覽，不安裝公告 Bot、不建立或配置 Bot Token，也不啟用真實入場、離場、大獎、野球拳通關或發放戲籌的公開通知。新版收據目前只使用示例，沒有接入實際離場帳本。維持 `DISCORD_COMMAND_PROFILE=test-simple`，發放表單不提供公開通知選項。
 - 測試 Worker 不加入 `DISCORD_BOT_TOKEN`、`DISCORD_CASINO_*` 或 `DISCORD_HIGHLIGHTS_*` 公告設定；現有 `arcade:preflight -- test` 的公告隔離檢查應保留。通知傳送、限流、去重及恢復邏輯由隔離自動測試驗證，不連線到真實 Discord 頻道。正式頻道 `1565731918107115690` 不供演練。
 
 出入場整合在 Cloudflare runtime，本機 Node／SQLite QA 不對真實頻道發送。以隔離資料驗證得獎、去重與恢復；正式環境唯讀檢查健康、指令與圖片。真人確認登入、入離場與手機提醒，不以正式下注製造測試大獎。部署現況見[客戶交付](customer-handoff.md)，測試見[驗收文件](testing.md)。
