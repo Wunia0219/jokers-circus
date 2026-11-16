@@ -41,6 +41,9 @@ export class SlotScene {
   presentationPaused = false;
   assetUrls = new Set();
   disposed = false;
+  constructor({showDealer=true}={}) {
+    this.showDealer=showDealer;
+  }
   async init(host, onProgress = () => {}) {
     if(this.disposed)throw new Error('Scene disposed');
     this.initTask ||= this.prepareScene(host,onProgress);
@@ -58,14 +61,16 @@ export class SlotScene {
     const background = new Image(); background.src = backgroundUrl;
     let completed = 0;
     const loaded = value => { onProgress(28 + (++completed * 14), '正在準備馬戲團道具'); return value; };
-    this.dealer=new Dealer({
-      resilient:import.meta.env.VITE_DISCORD_TEST_ACTIVITY==='true',
-      motionManifest:dealerManifest,
-      resolvePage:page=>dealerPages['../../../images/dealer/v4/'+page.file],
-      uploadTextures:textures=>this.app.renderer.prepare.upload(textures),
-      canRelease:()=>!this.active,
-    });
-    const dealerReady=this.dealer.init().catch(error=>{if(!this.disposed)console.warn('Dealer artwork unavailable:',error.message);});
+    if(this.showDealer){
+      this.dealer=new Dealer({
+        resilient:import.meta.env.VITE_DISCORD_TEST_ACTIVITY==='true',
+        motionManifest:dealerManifest,
+        resolvePage:page=>dealerPages['../../../images/dealer/v4/'+page.file],
+        uploadTextures:textures=>this.app.renderer.prepare.upload(textures),
+        canRelease:()=>!this.active,
+      });
+    }
+    const dealerReady=this.dealer?.init().catch(error=>{if(!this.disposed)console.warn('Dealer artwork unavailable:',error.message);});
     const loadAsset=async url=>{const texture=await Assets.load(url);this.assetUrls.add(url);return texture;};
     // Collect late successes too, so startup failure can release the entire batch.
     const resources=await Promise.allSettled([loadAsset(mainUrl).then(loaded),loadAsset(symbolsUrl).then(loaded),loadAsset(winFrameUrl),background.decode().then(loaded),dealerReady]);
@@ -96,7 +101,7 @@ export class SlotScene {
     }
     this.app.stage.addChild(ornament);
     // Keep the companion in front of the decorative curtains, below the reels.
-    if(this.dealer.sprite)this.app.stage.addChild(this.dealer.sprite);
+    if(this.dealer?.sprite)this.app.stage.addChild(this.dealer.sprite);
     this.reels.forEach(r => this.app.stage.addChild(r.mask, r.strip));
     this.setStops(this.currentStops);
     const shade = new Graphics();
@@ -127,7 +132,7 @@ export class SlotScene {
       const x = Number(style.getPropertyValue('--scene-x')) || 0;
       this.app.renderer.resize(width, height);
       this.app.stage.position.set(-x, 0);
-      this.dealer.layout(width);
+      this.dealer?.layout(width);
       Object.assign(this.app.canvas.style, { width: '100%', height: 'auto' });
     };
     this.resizeObserver = new ResizeObserver(fitViewport);
@@ -270,7 +275,8 @@ export class SlotScene {
   preloadDealer(){this.dealer?.preload('win');}
   prepareDealer(round){this.dealer?.preload(dealerClipForRound(round));}
   reactToRound(round){this.dealer?.play(dealerClipForRound(round),{reduced:this.reduced});}
-  dealerFeedbackDuration(round){return dealerClipForRound(round)==='win'?this.dealer?.motionManifest?.clips.win?.durationMs??0:0;}
+  // Auto-spin keeps the same feedback interval on mobile without the sprite.
+  dealerFeedbackDuration(round){return dealerClipForRound(round)==='win'?dealerManifest.clips.win.durationMs:0;}
   reactToMilestone(){this.dealer?.play('idle',{reduced:this.reduced});}
   setDealerVisible(visible){this.dealer?.setVisible(visible);}
   celebrate(big = false, showLine = true) {

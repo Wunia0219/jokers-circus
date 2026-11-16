@@ -1,9 +1,10 @@
 @import '../../ui/lobby/lobby-music.css';
+@import '../../ui/shared/activity-viewport.css';
 /* Bootstrap and the shared HTML weekly check-in dialog. */
-:root{color-scheme:dark;background:#0b1020;font-family:'Noto Sans TC',sans-serif;--safe-top:var(--discord-safe-area-inset-top,env(safe-area-inset-top,0px));--safe-bottom:var(--discord-safe-area-inset-bottom,env(safe-area-inset-bottom,0px));--safe-left:var(--discord-safe-area-inset-left,env(safe-area-inset-left,0px));--safe-right:var(--discord-safe-area-inset-right,env(safe-area-inset-right,0px))}
+:root{color-scheme:dark;background:var(--activity-edge-color);font-family:'Noto Sans TC',sans-serif}
 html,body{width:100%;height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
 /* Match the slot's usable viewport; ResizeObserver fits Pixi to this area. */
-#yakyuken-app{position:fixed;inset:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);overflow:hidden;background:#0b1020;color:#fff0d5}
+#yakyuken-app{position:fixed;inset:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);overflow:hidden;background:var(--activity-edge-color);color:#fff0d5;container:activity / size}
 #yakyuken-app>canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
 /* Pixi's overlay shares the fixed, already-inset canvas parent. Its inline
    viewport translation would apply the Discord safe area a second time. */

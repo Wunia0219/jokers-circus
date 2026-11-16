@@ -8,10 +8,11 @@ export const SLOT_UI = Object.freeze({
   englishButtonSize:22,chineseButtonSize:12,
 });
 export const BALANCE_ROW_HEIGHT=40;
+export const shortWideHeader=(width,height)=>width>=460&&width<=700&&height<=460;
 
 export function slotChrome(width,height,touch=false) {
   const narrow=width<=700;
-  const headerHeight=narrow?(width<=360?140:SLOT_UI.mobileHeaderHeight):height<=500?72:SLOT_UI.headerHeight;
+  const headerHeight=shortWideHeader(width,height)?60:narrow?(width<=360?140:SLOT_UI.mobileHeaderHeight):height<=500?72:SLOT_UI.headerHeight;
   const mobile=narrow && height>width;
   return {width,height,narrow,headerHeight,mobile,gameTop:headerHeight,gameBottom:height-12};
 }

@@ -31,6 +31,13 @@ try{
   const name=mobile?'mobile':'desktop';
   // Capture the untouched stage before rendering individual sprites offscreen.
   await page.screenshot({path:`${out}/${baseline?'baseline':'after'}-${name}.png`});
+  if(mobile){
+   assert.equal(await page.evaluate(()=>Boolean(__qaScene.dealer)),false,'mobile does not initialize a dealer');
+   assert.equal(await page.evaluate(()=>__qaResources.uploads),0,'mobile does not upload any dealer textures');
+   report.checks.push('mobile slot starts without a dealer or dealer texture uploads');
+   await context.close();
+   continue;
+  }
   const view=await page.evaluate(async()=>{
    const scene=__qaScene,d=scene.dealer;scene.app.stop();await d.prepare('win');
    const pixels={},layout={position:[d.sprite.x,d.sprite.y],scale:[d.sprite.scale.x,d.sprite.scale.y],anchor:[d.sprite.anchor.x,d.sprite.anchor.y]};
@@ -63,7 +70,7 @@ try{
    return {pixels,layout,peakRgbaBytes,retainedRgbaBytes:bytes(),cycles,changes};
   });
   report.views.push({name,...view});
-  if(!baseline&&!mobile){
+  if(!baseline){
    const cacheChecks=await page.evaluate(async()=>{
     const scene=__qaScene,d=scene.dealer,checks=[];
     const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('resource lifecycle did not settle');};
@@ -166,7 +173,7 @@ try{
    assert.equal(view.changes.winLoads,0);assert.equal(view.changes.uploads,0);assert.equal(view.changes.winUnloads,0);
   }
   report.checks.push('three consecutive wins reuse existing uploads; complete authored frame counts/durations are preserved');
-  if(before)report.checks.push('all 204 rendered frames/timings match before/after in desktop and mobile without increasing the atlas peak');
+  if(before)report.checks.push('all 204 desktop frames/timings match before/after without increasing the atlas peak');
  }
  assert.deepEqual(report.errors,[]);
  await writeFile(`${out}/${baseline?'baseline':'after'}.json`,JSON.stringify(report,null,2)+'\n');

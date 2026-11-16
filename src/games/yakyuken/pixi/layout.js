@@ -8,14 +8,14 @@ function wideTableLayout(width,height,ui){
   const w=1600,scale=width/w,h=height/scale,room=height-ui.headerHeight;
   const fit=Math.min(width/1600,room/820),left=(width-1600*fit)/2,top=ui.headerHeight+(room-820*fit)/2;
   const x=value=>(left+value*fit)/scale,y=value=>(top+value*fit)/scale;
-  const unit=fit/scale,nearWidth=182,nearHalf=nearWidth*(113/156*.92+.035),nearY=820-nearHalf-32;
+  const unit=fit/scale,nearWidth=Math.max(182,44/fit),nearHalf=nearWidth*(113/156*.92+.035),nearY=820-nearHalf-32;
   const farEdge=nearY-nearHalf-18,actorTop=8,actorHeight=(farEdge-actorTop)/.44;
   const sideWidth=260,sideHeight=sideWidth*214/156,sideY=actorTop+(farEdge-actorTop)/2;
-  const feltTop=top+farEdge*fit,sideBySide=height-feltTop<190;
+  const feltTop=top+farEdge*fit,sideBySide=height-feltTop<190,short=height<=350;
   const cardRight=left+(650+nearWidth*1.27+nearWidth*(84+113*.92*.06)/156)*fit;
-  const laneLeft=cardRight+12,laneRight=sideBySide?Math.min(width-16,laneLeft+360):width-16,laneWidth=laneRight-laneLeft;
-  const actionWidth=sideBySide?Math.max(112,Math.min(150,laneWidth*.47)):Math.max(150,Math.min(360,280*fit)),actionHeight=Math.max(52,Math.min(88,64*fit));
-  const statusWidth=sideBySide?laneWidth-actionWidth-12:Math.max(actionWidth,Math.min(360,300*fit));
+  const laneGap=short?8:12,laneLeft=cardRight+laneGap,laneRight=sideBySide?Math.min(width-16,laneLeft+360):width-16,laneWidth=laneRight-laneLeft;
+  const actionWidth=sideBySide?Math.max(short?104:112,Math.min(150,laneWidth*.47)):Math.max(150,Math.min(360,280*fit)),actionHeight=Math.max(52,Math.min(88,64*fit));
+  const statusWidth=sideBySide?laneWidth-actionWidth-laneGap:Math.max(actionWidth,Math.min(360,300*fit));
   const actionX=sideBySide?laneRight-actionWidth/2:Math.max(left+(1170+70*(1-smooth(.4,.8,fit)))*fit,cardRight+12+statusWidth/2);
   const actionY=Math.min(height-actionHeight/2-12,feltTop+(height-feltTop)*.64);
   return {w,h,portrait:false,mode:'wide',scale,top:y(actorTop),ui,stackedControls:false,compactFeedback:false,
@@ -27,7 +27,7 @@ function wideTableLayout(width,height,ui){
     selectedLift:38*unit,confirmedLift:38*unit,hoverLift:8*unit,dealerLift:0,
     playZone:{x:x(650),y:y(nearY)},
     action:{x:actionX,y:actionY,width:actionWidth,height:actionHeight,fontSize:Math.max(18,22*fit)},
-    status:{x:sideBySide?laneLeft+statusWidth/2:actionX,y:actionY-actionHeight/2-52,width:statusWidth,fontSize:Math.max(18,24*fit),detailSize:sideBySide?11:Math.max(12,15*fit),lineHeight:sideBySide?22:undefined,detailLineHeight:sideBySide?15:undefined,detailGap:26,autoStack:true,sideBySide,feltTop,gap:Math.max(6,10*fit)},
+    status:{x:sideBySide?laneLeft+statusWidth/2:actionX,y:actionY-actionHeight/2-52,width:statusWidth,fontSize:short?15:Math.max(18,24*fit),detailSize:sideBySide?11:Math.max(12,15*fit),lineHeight:sideBySide?(short?20:22):undefined,detailLineHeight:sideBySide?15:undefined,detailGap:26,autoStack:true,sideBySide,feltTop,gap:Math.max(6,10*fit)},
     cardWidth:156,cardHeight:214};
 }
 

@@ -25,4 +25,10 @@
   .daily-checkin { width: 124px; }
   .daily-checkin > svg { display: none; }
 }
+@container activity (460px <= width <= 700px) and (max-height:460px) {
+  .daily-checkin { --player-control-height:48px;width:128px;padding:5px 8px;gap:6px; }
+  .daily-checkin > svg { display:block;width:16px;height:16px; }
+  .daily-checkin strong { font-size:12px; }
+  .daily-checkin small { font-size:11px; }
+}
 @media (prefers-reduced-motion: reduce) { .daily-checkin.is-loading > svg { animation: none; } }

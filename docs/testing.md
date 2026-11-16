@@ -61,7 +61,7 @@ Discord 雙遊戲測試的 `timings.json` 記錄建置、開場各主題、桌�
 
 Discord 跨遊戲背景音樂以實際 `timeupdate` 的前進事件驗證，並拒絕額外播放器、暫停、程式 seek、重新載入或換曲。曲目循環會讓 `currentTime` 歸零，不能將前後時間必須遞增當作不中斷的判準。`music-continuity.test.js` 包含自然循環與停播／重設反向案例；診斷保存前後事件計數及曲目長度，正式音樂與玩法計時不變。
 
-Discord 雙遊戲的荷官圖片恢復檢查，以 `verifySlotAtlasRecovery` 將故障注入、回應觀察與「選擇老虎機」動作放在同一階段；原 60 秒門檻保留，不把前面的野球拳／CG 流程計入。桌機與手機都必須實際收到 503→200、恰好兩次圖片請求，並等待老虎機就緒；報告保存各回應的階段耗時，失敗報告也保存已觀察結果。`tests/slot-atlas-recovery.test.js` 覆蓋超過 60 秒的前段延遲、即時回應、不發請求、不重試、恢復失敗、額外重試及未就緒等情境；真實缺圖仍須失敗。這些都只作用於隔離 QA，不調整正式遊戲的載入、停輪或重試參數。
+Discord 雙遊戲的桌機荷官圖片恢復檢查，以 `verifySlotAtlasRecovery` 將故障注入、回應觀察與「選擇老虎機」動作放在同一階段；原 60 秒門檻保留，不把前面的野球拳／CG 流程計入。桌機必須實際收到 503→200、恰好兩次圖片請求，並等待老虎機就緒；手機驗證進入老虎機和完成旋轉都沒有請求荷官圖片。報告保存各回應的階段耗時，失敗報告也保存已觀察結果。`tests/slot-atlas-recovery.test.js` 覆蓋超過 60 秒的前段延遲、即時回應、不發請求、不重試、恢復失敗、額外重試及未就緒等情境；真實缺圖仍須失敗。故障注入只作用於隔離 QA。
 
 數字測試以 `willReadFrequently: true` 固定 Canvas 軟體繪製，避免 GPU／CPU 切換造成像素雜湊差異；此設定僅限隔離測試頁，正式遊戲不受影響。固定基準位於 `tests/fixtures/number-rendering.json`，仍逐一核對像素、尺寸及無障礙文字。僅在有意更改字型／外觀，或已證實需要統一測試繪圖路徑時，用 `npm run test:numbers -- --baseline` 更新並審查差異；失敗時也會保存 `test-results/number-rendering/after.json`。
 

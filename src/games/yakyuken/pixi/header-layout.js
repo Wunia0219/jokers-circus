@@ -1,5 +1,13 @@
+import {shortWideHeader} from '../../../ui/pixi/slot-theme.js';
+
 // CSS-pixel geometry matching ui/player/player-ui.css, including the 1440px cap.
 export function slotHeaderLayout(width,height){
+  if(shortWideHeader(width,height)){
+    const left=8,barWidth=width-16,toolsWidth=251,toolsX=left+barWidth-toolsWidth;
+    return {narrow:true,small:false,compact:true,left,barWidth,avatarSize:32,identityY:30,
+      toolsX,toolsY:6,toolsWidth,toolsHeight:48,centers:[27,75,128,176,224].map(x=>toolsX+x),
+      headerHeight:60,logoWidth:0,checkin:{x:toolsX-8-128,y:6,width:128,height:48}};
+  }
   const narrow=width<=700,small=width<=360;
   const padding=narrow?(small?8:12):Math.min(28,Math.max(12,width*.02));
   const barWidth=Math.min(1440,width-padding*2),left=(width-barWidth)/2;

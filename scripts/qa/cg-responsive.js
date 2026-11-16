@@ -39,22 +39,31 @@ try{
   const roleTab=name=>page.getByRole('button',{name:new RegExp(`^${name}收藏，`)});
   const chrome=async(label)=>{
     const rules=await slot.evaluate(()=>{
-      const rect=selector=>{const {x,y,width,height}=document.querySelector(selector).getBoundingClientRect();return {x,y,width,height};};
+      const bounds=node=>{const {x,y,width,height}=node.getBoundingClientRect();return {x,y,width,height};};
+      const rect=selector=>bounds(document.querySelector(selector));
       const dialog=document.querySelector('.rules-dialog');
-      return {frame:rect('.rules-dialog'),header:rect('.rules-dialog .dialog-head'),close:rect('#close-dialog'),title:rect('#dialog-title'),logo:rect('.rules-logo'),tab:rect('.rules-tabs button'),radius:parseFloat(getComputedStyle(dialog).borderTopLeftRadius)};
+      return {frame:rect('.rules-dialog'),header:rect('.rules-dialog .dialog-head'),close:rect('#close-dialog'),title:rect('#dialog-title'),logo:rect('.rules-logo'),tabs:Array.from(dialog.querySelectorAll('.rules-tabs button'),bounds),radius:parseFloat(getComputedStyle(dialog).borderTopLeftRadius)};
     });
     const collection=await page.evaluate(()=>{
       const s=window.__responsiveScene,body=s.modalRoot.getChildByLabel('archive-dialog',true),offset=s.host.getBoundingClientRect(),hit=body.hitArea,p=body.getGlobalPosition();
       const rect=(n)=>{const {x,y,width,height}=n.getBounds();return {x:x+offset.x,y:y+offset.y,width,height};};
       return {frame:{x:hit.x+p.x+offset.x,y:hit.y+p.y+offset.y,width:hit.width,height:hit.height},header:rect(body.getChildByLabel('programme-header')),
-        close:rect(body.children.find(n=>n.accessibleTitle==='關閉視窗')),title:rect(body.getChildByLabel('programme-title')),logo:rect(body.getChildByLabel('collection-brand-logo')),tab:rect(body.getChildByLabel('gallery-tab:dealer'))};
+        close:rect(body.children.find(n=>n.accessibleTitle==='關閉視窗')),title:rect(body.getChildByLabel('programme-title')),logo:rect(body.getChildByLabel('collection-brand-logo')),tabs:body.children.filter(n=>n.label?.startsWith('gallery-tab:')).map(rect)};
     });
     const near=(part,props,tolerance=1)=>{
       for(const key of props)assert.ok(Math.abs(collection[part][key]-rules[part][key])<=tolerance,`${label}: ${part}.${key} (${collection[part][key]}) matches rules (${rules[part][key]})`);
     };
-    near('frame',['x','y','width','height']);near('header',['x','y','width','height']);near('close',['x','y','width','height']);near('title',['x'],1.5);near('tab',['x','width','height']);
+    near('frame',['x','y','width','height']);near('header',['x','y','width','height']);near('close',['x','y','width','height']);near('title',['x'],1.5);
+    assert.equal(rules.tabs.length,3);
+    assert.equal(collection.tabs.length,5);
+    const strip=tabs=>({x:tabs[0].x,right:tabs.at(-1).x+tabs.at(-1).width,height:tabs[0].height,y:tabs[0].y});
+    const ruleStrip=strip(rules.tabs),collectionStrip=strip(collection.tabs);
+    for(const key of ['x','right','height'])assert.ok(Math.abs(collectionStrip[key]-ruleStrip[key])<=1,`${label}: tab rows share ${key}`);
+    for(const tabs of [rules.tabs,collection.tabs]){
+      assert.ok(tabs.every(tab=>Math.abs(tab.width-tabs[0].width)<=1&&tab.height>=44),`${label}: tabs share width within their own row and keep a 44px height`);
+    }
     assert.ok(collection.logo.y>=collection.header.y+collection.header.height,`${label}: logo follows the title band`);
-    if(rules.frame.height>=430||rules.frame.width>=601){near('logo',['x','y','width','height'],1.5);near('tab',['y'],1.5);}
+    if(rules.frame.height>=430||rules.frame.width>=601){near('logo',['x','y','width','height'],1.5);assert.ok(Math.abs(collectionStrip.y-ruleStrip.y)<=1.5,`${label}: tab rows share y`);}
     return {rules,collection};
   };
   const tileGeometry=()=>page.evaluate(()=>{

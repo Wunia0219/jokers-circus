@@ -13,7 +13,7 @@ function buildProgress(scene,hud){
   const {progress,dealerCard,scale}=scene.layout,{x,y,width:w,height:h}=progress,rule=characterRule(scene.selectedCharacter);
   const score=at(new Container({label:'challenge-progress',eventMode:'none'}),x,y,hud);scene.score=score;
   const frame=new Sprite(scene.cardTextures.progress);frame.anchor.set(.5);frame.width=w;frame.height=h;score.addChild(frame);
-  const titleSize=Math.max(12,w*.08),titleY=y-h/2-15;
+  const titleSize=Math.max(12,w*.08),titleY=Math.max(scene.layout.contentTop+titleSize/2,y-h/2-15);
   at(label('本場進度',titleSize,PALETTE.gold,{letterSpacing:1}),x,titleY,hud);
   at(label(`${rule.id==='dealer'?'荷官':rule.name}出牌`,titleSize,PALETTE.gold,{letterSpacing:1}),dealerCard.x*scale,titleY,hud);
   for(const [index,[name,target,color]] of [['勝',rule.winsRequired,PALETTE.win],['敗',rule.lossLimit,PALETTE.loss]].entries()){
@@ -33,18 +33,22 @@ function updateDialogue(scene){
   if(!bubble.visible || bubble.dialogue===scene.dialogue)return;
   bubble.dialogue=scene.dialogue;
   bubble.removeChildren().forEach(child=>child.destroy({children:true}));
-  const l=scene.layout,{width}=l.ui;
-  const w=Math.min(440,width-2*l.progress.x-l.progress.width-24),size=width<700?12:15;
-  const text=label(`「${scene.dialogue}」`,size,PALETTE.cream,{fontWeight:'500',wordWrap:true,wordWrapWidth:w-20,lineHeight:size*1.5});
-  const h=text.height+22;
+  const l=scene.layout,{width,height}=l.ui;
+  const hand=l.playerCards,handLeft=(hand.x-hand.gap-88*hand.scale)*l.scale;
+  const besideHand=l.mode==='wide'&&height<=350&&handLeft>=128;
+  const w=besideHand?Math.min(220,handLeft-20):Math.min(440,width-2*l.progress.x-l.progress.width-24);
+  const size=besideHand?11:width<700?12:15;
+  const text=label(`「${scene.dialogue}」`,size,PALETTE.cream,{fontWeight:'500',wordWrap:true,breakWords:true,wordWrapWidth:w-20,lineHeight:size*1.5});
+  const h=text.height+(besideHand?14:22);
   const frame=new Graphics().roundRect(-w/2,-h/2,w,h,9).fill({color:0x101422,alpha:.91}).stroke({color:PALETTE.gold,alpha:.42,width:1});
-  bubble.addChild(frame,text);bubble.position.set(width/2,(l.table.y-l.table.ry)*l.scale-h/2-8);
+  bubble.addChild(frame,text);
+  bubble.position.set(besideHand?w/2+10:width/2,besideHand?Math.min(height-h/2-8,hand.y*l.scale):(l.table.y-l.table.ry)*l.scale-h/2-8);
 }
 
 export function buildSlotHud(scene){
   if(scene.screen==='games')return;
   const {ui,scale}=scene.layout,{width,height,headerHeight}=ui;
-  const h=yakyukenHeaderLayout(width,height),{narrow,small,left,avatarSize,identityY}=h;
+  const h=yakyukenHeaderLayout(width,height),{narrow,small,compact,left,avatarSize,identityY}=h;
   const hud=new Container({label:'slot-style-chrome'});hud.scale.set(1/scale);scene.world.addChild(hud);scene.hud=hud;
   const shade=new FillGradient({start:{x:0,y:0},end:{x:0,y:1},colorStops:[{offset:0,color:'#19101ee8'},{offset:1,color:'#21142655'}]});
   hud.addChild(new Graphics().rect(0,0,width,headerHeight).fill(shade));
@@ -57,16 +61,21 @@ export function buildSlotHud(scene){
   const identity=playerIdentity(scene),name=leftLabel(identity.name,narrow?14:height<=500?13:15,PALETTE.cream,textX,identityY-10,hud,{fontWeight:'500'});
   scene.playerNameCaption=name;
   while(name.width>Math.min(320,textWidth)&&name.text.length>1)name.text=name.text.replace(/…$/,'').slice(0,-1)+'…';
-  scene.playerIdCaption=leftLabel(identity.detail,small?11:12,0xd7bfbf,textX,identityY+3,hud,{wordWrap:true,breakWords:true,wordWrapWidth:textWidth,align:'left',lineHeight:small?17.6:19.2});scene.playerIdCaption.anchor.y=0;
+  scene.playerIdCaption=leftLabel(identity.detail,small||compact?11:12,0xd7bfbf,textX,identityY+3,hud,{wordWrap:!compact,breakWords:!compact,wordWrapWidth:textWidth,align:'left',lineHeight:small?17.6:19.2});scene.playerIdCaption.anchor.y=0;
+  if(compact){
+    const detail=scene.playerIdCaption;
+    while(detail.width>textWidth&&detail.text.length>1)detail.text=detail.text.replace(/…$/,'').slice(0,-1)+'…';
+  }
   buildBalance(scene,hud,width,headerHeight);
   const {x,y,width:checkinWidth}=h.checkin;
   Object.assign(scene.checkinButton.element.style,{left:`${x}px`,top:`${y}px`,width:`${checkinWidth}px`});
   const {toolsX,toolsY,toolsWidth,toolsHeight,centers}=h,cy=toolsY+toolsHeight/2;
+  const toolSize=compact?44:48;
   hud.addChild(new Graphics({label:'player-tools-frame'}).roundRect(toolsX,toolsY,toolsWidth,toolsHeight,narrow?11:12).fill({color:0x2b1d2d,alpha:.85}).stroke({color:0xc99b5b,alpha:.21,width:1}));
-  const sound=at(new PixiButton({name:scene.audio.effectsMuted?'開啟音效':'關閉音效',variant:'utility',width:48,height:48,icon:icon(scene.audio.effectsMuted?'muted':'sound'),onPress:async()=>{
+  const sound=at(new PixiButton({name:scene.audio.effectsMuted?'開啟音效':'關閉音效',variant:'utility',width:toolSize,height:toolSize,icon:icon(scene.audio.effectsMuted?'muted':'sound'),onPress:async()=>{
     await scene.audio.toggleEffects();scene.refreshAudioIcons?.();
   }}),centers[0],cy,hud);
-  const music=at(new PixiButton({name:scene.audio.musicMuted?'開啟音樂':'關閉音樂',variant:'utility',width:48,height:48,icon:icon(scene.audio.musicMuted?'musicMuted':'music'),onPress:async()=>{
+  const music=at(new PixiButton({name:scene.audio.musicMuted?'開啟音樂':'關閉音樂',variant:'utility',width:toolSize,height:toolSize,icon:icon(scene.audio.musicMuted?'musicMuted':'music'),onPress:async()=>{
     await scene.audio.toggleMusic();scene.refreshAudioIcons?.();
   }}),centers[1],cy,hud);
   scene.refreshAudioIcons=()=>{
@@ -74,10 +83,11 @@ export function buildSlotHud(scene){
     sound.setActive(!scene.audio.effectsMuted);sound.setIcon(icon(scene.audio.effectsMuted?'muted':'sound'));sound.setName(scene.audio.effectsMuted?'開啟音效':'關閉音效');
     music.setActive(!scene.audio.musicMuted);music.setIcon(icon(scene.audio.musicMuted?'musicMuted':'music'));music.setName(scene.audio.musicMuted?'開啟音樂':'關閉音樂');
   };scene.refreshAudioIcons();
-  hud.addChild(new Graphics().moveTo(centers[1]+33,toolsY+9).lineTo(centers[1]+33,toolsY+toolsHeight-9).stroke({color:0xc99b5b,width:1,alpha:.19}));
-  scene.collectionButton=at(new PixiButton({name:'CG 收藏',variant:'utility',width:48,height:48,icon:icon('gallery'),onPress:()=>scene.openModal('collection')}),centers[2],cy,hud);
-  scene.historyButton=at(new PixiButton({name:'遊玩紀錄',variant:'utility',width:48,height:48,icon:icon('clock'),onPress:()=>{scene.historyScroll=0;scene.openModal('history');}}),centers[3],cy,hud);
-  scene.lobbyButton=at(new PixiButton({name:'返回遊戲大廳',variant:'utility',width:48,height:48,icon:icon('lobby'),onPress:()=>scene.visitScreen('games')}),centers[4],cy,hud);
+  const dividerX=centers[1]+(compact?26:33);
+  hud.addChild(new Graphics().moveTo(dividerX,toolsY+9).lineTo(dividerX,toolsY+toolsHeight-9).stroke({color:0xc99b5b,width:1,alpha:.19}));
+  scene.collectionButton=at(new PixiButton({name:'CG 收藏',variant:'utility',width:toolSize,height:toolSize,icon:icon('gallery'),onPress:()=>scene.openModal('collection')}),centers[2],cy,hud);
+  scene.historyButton=at(new PixiButton({name:'遊玩紀錄',variant:'utility',width:toolSize,height:toolSize,icon:icon('clock'),onPress:()=>{scene.historyScroll=0;scene.openModal('history');}}),centers[3],cy,hud);
+  scene.lobbyButton=at(new PixiButton({name:'返回遊戲大廳',variant:'utility',width:toolSize,height:toolSize,icon:icon('lobby'),onPress:()=>scene.visitScreen('games')}),centers[4],cy,hud);
   if(scene.screen!=='table')return;
   const {action,status}=scene.layout;
   scene.confirmButton=at(new PixiButton({text:'確認出牌',name:'確認出牌',variant:'duel',width:action.width,height:action.height,fontSize:action.fontSize??17,onPress:()=>scene.confirm()}),action.x,action.y,hud);

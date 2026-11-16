@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-export async function setGameSafeArea(shell,frame,insets){
+export async function applyGameSafeArea(shell,insets){
   await shell.evaluate(insets=>{
     for(const [edge,value] of Object.entries(insets)){
       const key='--discord-safe-area-inset-'+edge;
@@ -8,6 +8,10 @@ export async function setGameSafeArea(shell,frame,insets){
       else document.documentElement.style.setProperty(key,value+'px');
     }
   },insets);
+}
+
+export async function setGameSafeArea(shell,frame,insets){
+  await applyGameSafeArea(shell,insets);
   await frame.waitForFunction(insets=>{
     const s=window.__playerScene,r=document.querySelector('#yakyuken-app')?.getBoundingClientRect();
     if(!s?.layout||!r)return false;
@@ -23,6 +27,14 @@ export async function yakyukenHeaderBounds(frame){
     const bounds=node=>{const b=node.getBounds();return {x:r.x+b.x,y:r.y+b.y,width:b.width,height:b.height};};
     return {checkin:s.checkinButton.element.getBoundingClientRect().toJSON(),tools:bounds(s.hud.getChildByLabel('player-tools-frame'))};
   });
+}
+
+export async function assertActivityTopStrip(frame, height){
+  const strip=await frame.evaluate(()=>{
+    const style=getComputedStyle(document.documentElement,'::after');
+    return {top:style.top,height:style.height,color:style.backgroundColor,pointerEvents:style.pointerEvents};
+  });
+  assert.deepEqual(strip,{top:'0px',height:height+'px',color:'rgb(11, 16, 32)',pointerEvents:'none'});
 }
 
 export function assertSameGameHeader(yakyuken,slot){

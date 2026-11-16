@@ -72,7 +72,7 @@ const entryEnabled=import.meta.env.PROD&&!arcade&&!discordTestBuild&&!loopbackWa
 let entryClosing=false, maintenanceShown=false, entryCheck=null, activityIdentity, casinoPresence, entryWatch;
 let liveMaintenance=false;
 const activityMusic=arcade?.music??(discordTestBuild?discordTestMusic():null);
-const scene=new SlotScene(), sound=new Sound({effectsEnabled:true,musicUrl:activityMusic?null:MUSIC_SOURCE,onStateChange:renderAudio});
+const scene=new SlotScene({showDealer:document.documentElement.dataset.gameLayout==='desktop'}), sound=new Sound({effectsEnabled:true,musicUrl:activityMusic?null:MUSIC_SOURCE,onStateChange:renderAudio});
 const bigWin=new BigWinPresentation($('#app'));
 let activityMode='browser', activityUser=null, walletClient=null, claiming=false, historySync=null, checkinPanel=null, checkinRetry=false;
 const canUseSpin=()=>ready&&(!entryClosing||busy||walletClient?.hasPending());

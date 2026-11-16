@@ -14,7 +14,7 @@ import {createQaScreenshots} from './helpers/qa-screenshots.js';
 import {verifyLaunchScreen} from './helpers/launch-screen.js';
 import {verifySlotAtlasRecovery} from './helpers/slot-atlas-recovery.js';
 import {assertMusicContinuity} from './helpers/music-continuity.js';
-import {setGameSafeArea,yakyukenHeaderBounds,assertSameGameHeader} from './helpers/game-safe-area.js';
+import {applyGameSafeArea,setGameSafeArea,yakyukenHeaderBounds,assertActivityTopStrip,assertSameGameHeader} from './helpers/game-safe-area.js';
 
 const output='test-results/discord-test-activity',clientId='100000000000000003',port=4203,origin='http://127.0.0.1:'+port;
 mkdirSync(output,{recursive:true});const dist=resolve(output,'dist');
@@ -122,6 +122,11 @@ try{
     await page.goto(origin+'/__host?who='+who+'&platform='+(mobile?'mobile':'desktop'));
     const element=await page.waitForSelector('iframe'),shell=await element.contentFrame();const game=await shell.waitForSelector('#game:not([hidden])'),frame=await game.contentFrame(),phase=value=>frame.waitForFunction(value=>document.querySelector('canvas')?.dataset.phase===value&&document.querySelector('canvas').dataset.changing!=='true',value);
     await phase('games');await shell.waitForSelector('#game:not([inert])');
+    if(mobile){
+      await setGameSafeArea(shell,frame,{top:48,right:0,bottom:16,left:0});
+      await assertActivityTopStrip(shell,48);
+      await assertActivityTopStrip(frame,48);
+    }
     timing.mark(who+'/lobby-ready');
     assert.ok((await page.evaluate(()=>__commands)).includes('AUTHENTICATE'));
     const lobbyMusic=frame.getByRole('button',{name:'背景音樂',exact:true});
@@ -159,6 +164,8 @@ try{
     await shell.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
     await shell.waitForFunction(time=>!__musicPlayers[0].media.paused&&__musicPlayers[0].media.currentTime>time,beforeBackground.time);
     assert.equal(await frame.evaluate(()=>window.__playerScene.layout.ui.width),mobile?390:1440,'mobile fixture uses a real phone viewport');
+    const shortViewport={width:568,height:320},shortInsets={top:20,right:24,bottom:12,left:24};
+    let shortHeader;
     if(mobile){
       for(const [width,height,insets] of [
         [390,844,{top:48,right:0,bottom:16,left:0}],
@@ -170,8 +177,23 @@ try{
         const bounds=await yakyukenHeaderBounds(frame);
         for(const box of Object.values(bounds))assert.ok(box.x>=(insets.left??0)-1&&box.y>=(insets.top??0)-1&&box.x+box.width<=width-(insets.right??0)+1&&box.y+box.height<=height-(insets.bottom??0)+1,'header stays clear of every safe-area edge');
       }
+      await page.setViewportSize(shortViewport);
+      await setGameSafeArea(shell,frame,shortInsets);
+      shortHeader=await yakyukenHeaderBounds(frame);
+      const shortSelection=await frame.evaluate(()=>{
+        const scene=window.__playerScene,layout=scene.lobbyLayout.character;
+        const captions=scene.world.getChildByLabel('lobby:characters').children
+          .filter(node=>typeof node.text==='string').map(node=>node.getBounds().rectangle);
+        return {enterBottom:layout.enterY+layout.buttonHeight/2,slots:layout.slots,
+          captions:captions.map(box=>({top:box.top,bottom:box.bottom}))};
+      });
+      assert.ok(shortSelection.enterBottom<=shortViewport.height-shortInsets.top-shortInsets.bottom,'short landscape entry stays inside the safe area');
+      assert.ok(shortSelection.slots.every(slot=>slot.height>=44&&slot.width>=44),'short landscape character choices remain touch-sized');
+      assert.ok(shortSelection.captions.slice(0,3).every((caption,i)=>caption.bottom<=shortSelection.captions[i+1].top+1),'short landscape selection captions stay separate');
+      await page.setViewportSize({width:390,height:844});
       // Late inset changes have no viewport resize event to trigger propagation.
       await setGameSafeArea(shell,frame,{top:48,right:0,bottom:16,left:0});
+      await assertActivityTopStrip(frame,48);
     }
     const yakyukenHeader=await yakyukenHeaderBounds(frame);
     const playerView=(target=frame)=>target.evaluate(()=>{const s=window.__playerScene,b=s.balanceGroup.getBounds();return {name:s.playerNameCaption.text,uid:s.playerIdCaption.text,balance:s.balanceNumber.text,portrait:!!s.hud.getChildByLabel('discord-avatar-image',true),balanceTop:b.y,balanceBottom:b.y+b.height,header:s.layout.ui.headerHeight,contentTop:s.layout.contentTop};});
@@ -223,6 +245,7 @@ try{
     await phase('selecting');assert.equal(docs.get(who).balance,9000);
     timing.mark(who+'/identity-checkin-entry');
     await frame.getByRole('progressbar',{name:'野球拳載入進度',exact:true}).waitFor({state:'detached'});
+    if(mobile)await assertActivityTopStrip(frame,48);
     assert.equal((await playerView()).balance,'9,000');await screenshot(page,{path:output+'/'+who+'-identity-table.png'});
     await frame.evaluate(()=>{
       const context=window.__playerScene.audio.background.context;
@@ -251,7 +274,12 @@ try{
     await frame.getByRole('button',{name:'返回遊戲大廳',exact:true}).click();await phase('games');
     timing.mark(who+'/cg-download');
     const beforeSlotMusic=await musicProgress();
-    atlasRecovery.push({device:mobile?'mobile':'desktop',...await verifySlotAtlasRecovery(page,async()=>{
+    const dealerRequests=[];
+    const observeDealerRequest=request=>{
+      if(/\/assets\/(?:idle-\d+|win-\d+|dealer-standin)-[^/]+\.webp$/.test(new URL(request.url()).pathname))dealerRequests.push(request.url());
+    };
+    if(mobile)page.on('request',observeDealerRequest);
+    const enterSlot=async()=>{
       let releaseWallet;
       const walletHeld=new Promise(resolve=>{releaseWallet=resolve;});
       const holdWallet=async route=>{await walletHeld;await route.continue();};
@@ -265,7 +293,9 @@ try{
         await screenshot(page,{path:output+'/'+who+'-slot-entry-wait.png'});
       }finally{releaseWallet();await page.unroute('**/api/wallet',holdWallet);}
       await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false);
-    })});
+    };
+    if(mobile)await enterSlot();
+    else atlasRecovery.push({device:'desktop',...await verifySlotAtlasRecovery(page,enterSlot)});
     await shell.waitForFunction(advances=>__musicPlayers[0].advances>advances,beforeSlotMusic.advances);
     const inSlotMusic=await musicProgress();
     timing.mark(who+'/slot-entry-recovery');
@@ -280,13 +310,41 @@ try{
       return {checkin:bounds('.daily-checkin'),tools:bounds('.player-tools')};
     });
     assertSameGameHeader(yakyukenHeader,slotHeader);
+    await assertActivityTopStrip(frame,mobile?48:0);
+    const slotBackdrop=await frame.evaluate(()=>{
+      const style=getComputedStyle(document.body,'::before');
+      return {top:style.top,bottom:style.bottom,size:style.backgroundSize};
+    });
+    assert.deepEqual(slotBackdrop,mobile?{top:'48px',bottom:'16px',size:'auto, 100% 100%'}:
+      {top:'0px',bottom:'0px',size:'auto, cover'});
+    if(mobile){
+      await page.setViewportSize(shortViewport);
+      await applyGameSafeArea(shell,shortInsets);
+      await frame.waitForFunction(()=>getComputedStyle(document.documentElement).getPropertyValue('--safe-left').trim()==='24px');
+      const shortSlot=await frame.evaluate(()=>{
+        const box=selector=>document.querySelector(selector).getBoundingClientRect().toJSON();
+        return {checkin:box('.daily-checkin'),tools:box('.player-tools'),stage:box('#canvas-host'),deck:box('.control-deck'),
+          buttons:['#spin','#auto-spin','#max-bet','.bets button'].map(box)};
+      });
+      assertSameGameHeader(shortHeader,shortSlot);
+      assert.ok(shortSlot.stage.width>=180&&shortSlot.stage.right<shortSlot.deck.left,'short landscape slot keeps the machine clear of the controls');
+      assert.ok(shortSlot.deck.bottom<=shortViewport.height-shortInsets.bottom,'short landscape slot controls stay inside the safe area');
+      assert.ok(shortSlot.buttons.every(button=>button.height>=44&&button.width>=44),'short landscape slot controls remain touch-sized');
+      await page.setViewportSize({width:390,height:844});
+      await applyGameSafeArea(shell,{top:48,right:0,bottom:16,left:0});
+      await frame.waitForFunction(()=>getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim()==='48px');
+    }
     assert.equal(await checkinButton.innerText(),checkinCopy);
     await checkinButton.click();await frame.getByRole('button',{name:/領取.*戲籌/}).click();await frame.waitForFunction(()=>document.querySelector('#balance')?.textContent.replaceAll(',','')==='12000');
     await frame.getByText('簽到完成！500 戲籌已加入餘額。',{exact:true}).waitFor();
     await frame.locator('#close-dialog').click();
     const claimedCopy=await checkinButton.innerText();
     const settlement=page.waitForResponse(r=>r.url().includes('/api/spin'));await frame.locator('#spin').click();const spin=await (await settlement).json();
-    await frame.waitForFunction(()=>document.querySelector('#spin')?.disabled===false&&document.querySelector('#spin').getAttribute('aria-label')!=='快速停止');
+    await frame.getByRole('button',{name:'旋轉一次',exact:true}).and(frame.locator('#spin:enabled')).waitFor();
+    if(mobile){
+      page.off('request',observeDealerRequest);
+      assert.deepEqual(dealerRequests,[],'mobile slot entry and spin never request dealer images');
+    }
     timing.mark(who+'/slot-checkin-spin');
     assert.equal(docs.get(who).balance,spin.state.balance);await screenshot(page,{path:output+'/'+who+'-slot.png'});
     if(mobile)await frame.locator('#music').tap();else await frame.locator('#music').click();
