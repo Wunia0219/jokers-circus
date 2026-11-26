@@ -1,12 +1,14 @@
 import { highlightTier, highlightCard, highlightAnnouncement, HIGHLIGHT_WINDOW_MS, HIGHLIGHT_INTERVAL_MS, HIGHLIGHT_MAX_AGE_MS, HIGHLIGHT_VISIBLE } from './highlight-card.js';
 import {casinoBotSettings,CasinoBot} from './casino-bot.js';
+import {TEST_PARITY_PROFILE} from './discord-channel-scope.js';
 
 const snowflake = value => /^\d{17,20}$/.test(value || '');
 
 export function highlightSettings(env, store) {
   const bot=casinoBotSettings(env,store);
-  if(bot){if(env.DISCORD_HIGHLIGHTS_WEBHOOK_URL?.trim())throw new Error('Choose one casino announcement sender');return {guild:bot.guild,botSettings:bot};}
   const raw = env.DISCORD_HIGHLIGHTS_WEBHOOK_URL?.trim();
+  if(raw&&(bot||env.APP_ENV==='test'&&env.DISCORD_COMMAND_PROFILE===TEST_PARITY_PROFILE))throw new Error('Choose one casino announcement sender');
+  if(bot)return {guild:bot.guild,botSettings:bot};
   if (!raw) return null;
   const guild = env.DISCORD_HIGHLIGHTS_GUILD_ID?.trim() || (store.guildIds.size === 1 ? [...store.guildIds][0] : '');
   store.assertGuild(guild);

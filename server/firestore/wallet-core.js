@@ -65,6 +65,11 @@ export class FirestoreWalletCore {
     }else this.quota.reserve(cost,document);
     if(create)tx.create(ref,body);else tx.set(ref,body);
   }
+  publishLedger(entries){
+    if(!this.onLedgerCommit||!entries?.length)return;
+    try{this.onLedgerCommit(entries);}
+    catch{console.warn('Leaderboard ledger sync deferred');}
+  }
   async initialize(){
     try{
       await this.db.runTransaction(async tx=>{
@@ -302,8 +307,9 @@ export class FirestoreWalletCore {
           {create:true,index:round&&compactStorage?{roundKey:guild+'_'+user+':'+sequenceKey(wallet.historyRevision)}:{}});
         if(announcement)this.write(tx,this.db.doc(this.root.path+'/'+highlightEventPath(announcement)),announcement,{create:true,index:highlightEventIndex(announcement,user)});
         if(duelNotice)this.write(tx,this.root.collection('duelAnnouncements').doc(duelNoticeId(duelNotice)),duelNotice,{create:true,index:duelNoticeIndex(duelNotice)});
-        return {...answer,state:this.snapshot(wallet,now),wallet};
+        return {...answer,state:this.snapshot(wallet,now),wallet,committedEntries:entries};
       },{maxAttempts:3});
+      this.publishLedger(result.committedEntries);delete result.committedEntries;
       const settledWallet=result.wallet;
       if(settledWallet)this.cacheWallet(settledWallet);delete result.wallet;
       if(operation.kind===DUEL_LEDGER_KIND||duel){

@@ -3,6 +3,7 @@ import {playerMentions} from './player-display.js';
 import {discordMessageBody} from './discord-message-body.js';
 import {withAnnouncementLaunch} from './announcement-launch.js';
 import {previewArt} from './casino-preview-art.js';
+import {commandChannels,TEST_PARITY_PROFILE} from './discord-channel-scope.js';
 const snowflake=value=>/^\d{17,20}$/.test(value||'');
 
 export function casinoBotSettings(env,store){
@@ -10,29 +11,42 @@ export function casinoBotSettings(env,store){
   if(env.DISCORD_CASINO_ENABLED!=='true')throw new Error('Invalid casino notification switch');
   const guild=env.DISCORD_CASINO_GUILD_ID?.trim()||(store.guildIds.size===1?[...store.guildIds][0]:''),channel=env.DISCORD_CASINO_CHANNEL_ID?.trim(),applicationId=env.DISCORD_CLIENT_ID;
   store.assertGuild(guild);
+  const test=env.APP_ENV==='test';
+  if(test){
+    const channels=commandChannels(env);
+    if(env.DISCORD_COMMAND_PROFILE!==TEST_PARITY_PROFILE||store.guildIds.size!==1||channels.length!==1||channels[0]!==channel)
+      throw new Error('Test casino bot must use the sole test guild and command channel');
+  }
   const token=env.DISCORD_BOT_TOKEN?.trim();
   if(!snowflake(channel)||!snowflake(applicationId)||!/^[-\w.]{30,200}$/.test(token||''))throw new Error('Casino bot configuration is incomplete');
-  return {guild,channel,applicationId,token};
+  const role=env.DISCORD_LEADERBOARD_ROLE_ID?.trim();
+  const leaderboardRoleId=(test||env.APP_ENV==='production')&&snowflake(role)?role:null;
+  return {guild,channel,applicationId,token,leaderboardRoleId,textOnly:test};
 }
 
 // REST delivery does not require a Gateway connection or an online presence.
 // Never log upstream response bodies, headers or credentials.
 export class CasinoBot {
-  constructor({guild,channel,applicationId,token,fetchImpl=fetch,clock=Date.now}){Object.assign(this,{guild,channel,applicationId,token,fetchImpl,clock});this.verified=false;this.blockedUntil=0;}
+  constructor({guild,channel,applicationId,token,leaderboardRoleId=null,textOnly=false,fetchImpl=fetch,clock=Date.now}){Object.assign(this,{guild,channel,applicationId,token,leaderboardRoleId,textOnly,fetchImpl,clock});this.verified=false;this.blockedUntil=0;}
   request(path,options={}){return this.fetchImpl('https://discord.com/api/v10'+path,{...options,headers:{...options.headers,Authorization:'Bot '+this.token},signal:AbortSignal.timeout(8000),redirect:'error'});}
   async verify(){
     const identity=await this.request('/users/@me');const bot=identity.ok?await identity.json():null;
     if(bot?.id!==this.applicationId||bot.bot!==true)throw new Error('Bot identity mismatch');
     const response=await this.request('/channels/'+this.channel),channel=response.ok?await response.json():null;
-    if(channel?.id!==this.channel||channel.guild_id!==this.guild||![0,5].includes(channel.type))throw new Error('Bot destination mismatch');
+    if(channel?.id!==this.channel||channel.guild_id!==this.guild||!(channel.type===0||!this.textOnly&&channel.type===5))throw new Error('Bot destination mismatch');
     this.verified=true;
   }
-  async send(payload,eventId){
+  async sendLeaderboard(payload,eventId){
+    if(!snowflake(this.leaderboardRoleId))return {kind:'uncertain'};
+    return this.send({...payload,content:`<@&${this.leaderboardRoleId}>`},eventId,{leaderboard:true});
+  }
+  async send(payload,eventId,{leaderboard=false}={}){
     if(this.blockedUntil>this.clock())return {kind:'retry',delay:this.blockedUntil-this.clock()};
     if(!this.verified){try{await this.verify();}catch{return {kind:'retry',delay:300000};}}
     const nonce=createHash('sha256').update(eventId).digest('hex').slice(0,24);
     let response;
-    const message=withAnnouncementLaunch({...payload,allowed_mentions:playerMentions(payload.allowed_mentions?.users),nonce,enforce_nonce:true});
+    const allowed_mentions=leaderboard&&snowflake(this.leaderboardRoleId)?{parse:[],roles:[this.leaderboardRoleId]}:playerMentions(payload.allowed_mentions?.users);
+    const message=withAnnouncementLaunch({...payload,allowed_mentions,nonce,enforce_nonce:true});
     try{response=await this.request('/channels/'+this.channel+'/messages',{method:'POST',...discordMessageBody(message,previewArt)});}
     catch{return {kind:'uncertain'};}
     const reset=Number(response.headers.get('X-RateLimit-Reset-After'));

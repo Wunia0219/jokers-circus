@@ -38,6 +38,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  const sdk=new FirestoreWalletStore(settings,{guildIds:[guild]});t.after(()=>sdk.close());const plan=firestoreImportPlan(source,'test',{version:2});await importFirestore(sdk,plan);
  const rsa=generateKeyPairSync('rsa',{modulusLength:2048}),ed=generateKeyPairSync('ed25519'),key=randomBytes(32).toString('hex'),admin=randomBytes(32).toString('hex'),replies=[],announcements=[];let metadataReads=0;
  const previewUpload=Promise.withResolvers(),previewToken='private-preview-fixture-token';
+ const rankAnnouncement=Promise.withResolvers(),testLeaderboardRole='100000000000000011';
  const operatorToken=randomBytes(32).toString('hex'),operatorHeaders={Authorization:'Bearer '+operatorToken};
  const config={modules:true,scriptPath:process.env.TEST_CLOUD_BUNDLE||'test-results/cloud-bundle/worker.js',compatibilityDate:'2026-07-30',compatibilityFlags:['nodejs_compat'],durableObjects:{CIRCUS_PROJECT:{className:'CircusProject',useSQLite:true}},resourcePersistencePath:join(dir,'durable'),bindings:{CLOUD_PLAN:'free',APP_ENV:'test',FIRESTORE_PROJECT_ID:settings.projectId,FIRESTORE_NAMESPACE:namespace,DISCORD_CLIENT_ID:client,DISCORD_CLIENT_SECRET:'isolated-fixture-secret',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'https://discord.com/api/webhooks/100000000000000005/isolated-fake-webhook',DISCORD_PUBLIC_KEY:ed.publicKey.export({format:'der',type:'spki'}).subarray(-32).toString('hex'),ALLOWED_GUILD_IDS:guild,CLOUD_ADMIN_TOKEN:admin,CLOUD_ENCRYPTION_KEY:key,GOOGLE_SERVICE_ACCOUNT_JSON:JSON.stringify({type:'service_account',project_id:settings.projectId,client_email:'fixture@example.invalid',private_key:rsa.privateKey.export({format:'pem',type:'pkcs8'})})},outboundService:async request=>{
    const u=new URL(request.url);if(u.hostname==='oauth2.googleapis.com')return MFResponse.json({access_token:'emulator-only',expires_in:3600});
@@ -61,7 +62,10 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
        else if(webp)assert.match(alt,/通關/);
        else assert.match(alt,file.name==='casino-receipt.png'?/^這次獲得 [+−]?[\d,]+ 戲籌 · 總遊玩 [\d,]+ 局$/:/^(?:BIG|SUPER|MEGA) WIN · [\d,.]+×，單局獎金倍率$/);
        announcements.push(payload);
-     }else announcements.push(await request.json());
+     }else {
+       const payload=await request.json();announcements.push(payload);
+       if(payload.content===`<@&${testLeaderboardRole}>`)rankAnnouncement.resolve(payload);
+     }
      return MFResponse.json({id:'100000000000000007',channel_id:'100000000000000006'});
    }
    if(u.pathname===`/api/v10/users/@me/guilds/${guild}/member`)return MFResponse.json({user:{id:user,bot:false},pending:false});
@@ -76,7 +80,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    throw new Error('Unapproved external request in test');
  }};
  if(casino){
-  Object.assign(config.bindings,{CLOUD_PLAN:'paid',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'',DISCORD_CASINO_ENABLED:'true',DISCORD_CASINO_CHANNEL_ID:'100000000000000006',DISCORD_COMMAND_CHANNEL_IDS:'100000000000000006',DISCORD_BOT_TOKEN:'isolated-bot-token-not-real-0000000000',ARCADE_RELEASE_ENABLED:'true',ARCADE_CG_PREVIEW_ALL:'true',ARCADE_OPERATOR_IDS:user,ARCADE_CONSOLE_TOKEN:operatorToken});
+  Object.assign(config.bindings,{CLOUD_PLAN:'paid',DISCORD_HIGHLIGHTS_WEBHOOK_URL:'',DISCORD_COMMAND_PROFILE:'test-parity',DISCORD_CASINO_ENABLED:'true',DISCORD_CASINO_CHANNEL_ID:'100000000000000006',DISCORD_COMMAND_CHANNEL_IDS:'100000000000000006',DISCORD_BOT_TOKEN:'isolated-bot-token-not-real-0000000000',DISCORD_LEADERBOARD_ROLE_ID:testLeaderboardRole,ARCADE_RELEASE_ENABLED:'true',ARCADE_CG_PREVIEW_ALL:'true',ARCADE_OPERATOR_IDS:user,ARCADE_CONSOLE_TOKEN:operatorToken});
   const directory=join(dir,'assets');
   mkdirSync(join(directory,'arcade','feature','assets'),{recursive:true});
   for(const path of ['index.html','arcade/lobby.html','arcade/feature/play.html','arcade/feature/cover.webp','arcade/feature/assets/character.webp'])
@@ -212,7 +216,7 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   }finally{stop.abort();}
  }
  if(casino){
-  const formId=String((BigInt(Date.now())-1420070400000n)<<22n),grant={...interaction,type:5,id:formId,member:{...interaction.member,roles:[adminRole]},data:{custom_id:`jc|gs|${guild}|${user}|${formId}`,components:[
+  const formId=String((BigInt(Date.now())-1420070400000n)<<22n),grant={...interaction,type:5,id:formId,member:{...interaction.member,roles:[adminRole]},data:{custom_id:`jct|gs|${guild}|${user}|${formId}`,components:[
    {type:18,component:{type:5,custom_id:'member',values:[user],resolved:{members:{[user]:{}},users:{[user]:{id:user,bot:false}}}}},
    {type:18,component:{type:4,custom_id:'amount',value:'500'}},{type:18,component:{type:4,custom_id:'reason',value:'活動獎勵'}},{type:18,component:{type:3,custom_id:'notify',values:['yes']}},
   ]}};
@@ -238,7 +242,9 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   };
   const component=custom_id=>({...interaction,type:3,id:String((BigInt(Date.now())-1420070400000n)<<22n),
     message:{flags:64},member:{...interaction.member,roles:[adminRole]},data:{custom_id}});
-  const panelPrefix=`jc|`,panelSuffix=`|${guild}|${user}`;
+  const panelPrefix=`jct|`,panelSuffix=`|${guild}|${user}`;
+  const wrongChannel=await signed({...interaction,type:3,channel_id:client,data:{component_type:2,custom_id:'casino:open-game'}});
+  assert.equal(wrongChannel.type,4);assert.match(wrongChannel.data.embeds[0].description,/指定頻道|<#100000000000000006>/);
   const click=(action,args='')=>signed(component(panelPrefix+action+panelSuffix+args));
   const change=async(game,mode,revision)=>{
     const confirm=await click('ap',`|${game}|${mode}|${revision}`);
@@ -265,6 +271,12 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   assert.deepEqual(replay.data.nextHand,{matchId:beginDuel.requestId,index:0});
   assert.equal(replay.data.plan,undefined);
   assert.equal((await call('/api/wallet',{token})).data.state.balance,replay.data.wallet.balance);
+  const stopRankWait=new AbortController();
+  try{
+   const rank=await Promise.race([rankAnnouncement.promise,delay(15000,null,{signal:stopRankWait.signal}).then(()=>{throw new Error('Test leaderboard announcement was not sent');})]);
+   assert.match(rank.embeds.map(embed=>embed.title).join(' '),/野球拳/);
+   assert.deepEqual(rank.allowed_mentions,{parse:[],roles:[testLeaderboardRole]});
+  }finally{stopRankWait.abort();}
   const watching=call('/api/arcade?after=1');
   await change('m','m',1);
   const notified=await watching;
@@ -350,7 +362,9 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    assert.match(exits[0].attachments[0].description,/野球拳/);
    assert.match(exits[0].attachments[0].description,/入場 1 場/);
    assert.ok(announcements.every(p=>p.enforce_nonce===true&&!('flags' in p)));
-   for(const announcement of announcements){assert.ok(announcement.content.includes(`<@${user}>`));assert.deepEqual(announcement.allowed_mentions,{parse:[],users:[user]});}
+   for(const announcement of announcements.filter(p=>p.content!==`<@&${testLeaderboardRole}>`)){
+     assert.ok(announcement.content.includes(`<@${user}>`));assert.deepEqual(announcement.allowed_mentions,{parse:[],users:[user]});
+   }
    const deadline=Date.now()+90000;let completed;
    do{completed=(await call('/__ops/status',{headers:monitorHeaders})).data.backup;if(completed.at>previousBackup)break;await delay(250);}while(Date.now()<deadline);
    assert.ok(completed.at>previousBackup,'short casino alarms must continue an active backup without waiting ten minutes');

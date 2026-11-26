@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Joker’s Circus · 排行榜本機預覽</title>
+    <style>
+      #preview-tools { position:fixed; z-index:2; inset:auto 12px 12px; width:min(720px,100% - 24px); margin:auto; padding:8px 12px; box-sizing:border-box; border:1px solid #9c6949; border-radius:8px; background:#261a2bf5; color:#ffe3ba; }
+      #preview-tools summary { cursor:pointer; padding:4px; }
+      #preview-tools button { min-height:36px; margin:4px 4px 0 0; color:inherit; background:#563044; border:1px solid #b78151; border-radius:4px; cursor:pointer; }
+      #preview-notices { white-space:pre-wrap; overflow:auto; max-height:28dvh; margin:6px 0 0; }
+    </style>
+  </head>
+  <body>
+    <main id="lobby" aria-label="Joker’s Circus 遊戲大廳">
+      <div id="lobby-stage"></div>
+      <button class="lobby-music" type="button" aria-label="背景音樂" aria-pressed="false"></button>
+      <button id="lobby-leaderboard" class="lobby-music lobby-leaderboard" type="button" aria-label="總投入排行榜" title="總投入排行榜" aria-haspopup="dialog"></button>
+    </main>
+    <details id="preview-tools">
+      <summary>本機測試工具</summary>
+      <button type="button" data-action="newcomer">新進前十</button>
+      <button type="button" data-action="promote">前十晉升</button>
+      <button type="button" data-action="reset">月重設</button>
+      <button type="button" data-action="restore">重載 13 人範例</button>
+      <pre id="preview-notices" aria-live="polite"></pre>
+    </details>
+    <script type="module" src="/scripts/preview/leaderboard-page.js"></script>
+  </body>
+</html>

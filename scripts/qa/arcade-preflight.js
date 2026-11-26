@@ -7,6 +7,7 @@ import {buildArcadeRelease} from '../build/arcade-release.js';
 import {arcadeAssetDirs,assertArcadeArtifact,assertEntryApp,readReleaseFiles} from '../build/arcade-artifact.js';
 import {assertProductionArtifact,TEST_DISCORD_APP} from '../build/production-boundary.js';
 import {checkToolchain} from './check-toolchain.js';
+import {TEST_PARITY_PROFILE} from '../../server/discord/discord-channel-scope.js';
 
 const productionApp='1561284960986599626';
 const targets={
@@ -48,11 +49,15 @@ if(target==='test'){
   assert.equal(config.assets.html_handling,'none');
   assert.equal(config.assets.not_found_handling,'none');
   assert.equal(vars.ARCADE_RELEASE_ENABLED,'true');
-  assert.equal(vars.DISCORD_COMMAND_PROFILE,'test-simple');
+  assert.equal(vars.DISCORD_COMMAND_PROFILE,TEST_PARITY_PROFILE);
   assert.deepEqual(config.migrations,[{tag:'v1',new_sqlite_classes:['CircusProject']}]);
   assert.ok(!config.route&&!config.routes&&!config.env&&!config.triggers,'Test Worker must use its dedicated workers.dev URL');
-  assert.ok(Object.keys(vars).every(key=>!/^DISCORD_(?:BOT|CASINO|HIGHLIGHTS)/.test(key)),
-    'Test Worker must have no Discord announcement configuration');
+  assert.ok(['true','false'].includes(vars.DISCORD_CASINO_ENABLED));
+  assert.equal(vars.DISCORD_CASINO_GUILD_ID,expected.guild);
+  assert.equal(vars.DISCORD_CASINO_CHANNEL_ID,expected.channel);
+  assert.ok(Object.keys(vars).every(key=>!/^DISCORD_(?:BOT|HIGHLIGHTS)/.test(key)),
+    'Test Bot token must be a Worker Secret and test announcements must use the scoped Bot');
+  if(vars.DISCORD_LEADERBOARD_ROLE_ID!==undefined)assert.match(vars.DISCORD_LEADERBOARD_ROLE_ID,/^\d{17,20}$/);
 }else{
   if(target==='production-arcade'){
     assert.equal(vars.ARCADE_RELEASE_ENABLED,'true');

@@ -193,6 +193,18 @@ try{
   const host=createArcadeHost(activity,
     ()=>authenticateActivity(activity.sdk,import.meta.env.VITE_DISCORD_CLIENT_ID,fetch,true),frame,music.controls,
     {entryLoading:()=>gameLoading,onMaintenance:()=>void refresh()});
+  const leaderboard=byId('lobby-leaderboard');
+  leaderboard.addEventListener('click',async()=>{
+    try{
+      const {openLeaderboard}=await import('./leaderboard-dialog.js');
+      if(!signal.aborted)openLeaderboard(leaderboard,{
+        getDuelTitle:()=>state?.feature?.title,
+        fetchBoard:(params,requestSignal)=>host.fetch('/api/arcade/leaderboard?'+params,{
+          signal:requestSignal,cache:'no-store',headers:activity.session.walletEpoch?{'X-Wallet-Epoch':activity.session.walletEpoch}:{},
+        }),
+      });
+    }catch{status.textContent='排行榜暫時無法開啟，請再試一次。';}
+  },{signal});
   Object.defineProperty(window,'__circusArcade',{value:host});
   if(!await refresh())throw new Error('無法取得遊戲入口狀態。');
   // Establish the ledger starting point before either child can accept a wager.

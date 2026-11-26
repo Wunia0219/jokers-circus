@@ -105,6 +105,7 @@ export const firestoreAdminWallets={
         this.write(tx,this.meta,meta);this.write(tx,opRef,{fingerprint,result:compactResetResult(answer)},{create:true,index:resetIndex(guild,answer)});
         return {...answer,wallets};
       },{maxAttempts:3});
+      if(!result.duplicate)this.publishLedger(result.entries.map(({id,user,delta})=>({id,guild,user,delta,kind:'reset',reference:requestId,time:result.reset.time})));
       for(const wallet of result.wallets)this.cacheWallet(wallet);delete result.wallets;return result;
     }catch(error){throw this.safe(error);}
   },

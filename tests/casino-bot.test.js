@@ -5,6 +5,7 @@ import {highlightAnnouncement} from '../server/discord/highlight-card.js';
 import {visitMessage} from '../server/discord/casino-visits.js';
 import {handleCommand} from '../server/discord/commands.js';
 import {completeDeferredCommand} from '../server/discord/deferred-command.js';
+import {highlightSettings} from '../server/discord/highlights.js';
 const guild='100000000000000001',channel='100000000000000002',applicationId='100000000000000003',token='isolated-bot-token-'.repeat(3);
 function fixture({identity=applicationId,destination=guild,send}={}){
   const calls=[];let now=1000;
@@ -133,6 +134,38 @@ test('feature requires explicit bot configuration and defaults off',()=>{
   const store={guildIds:new Set([guild]),assertGuild:g=>assert.equal(g,guild)};
   assert.equal(casinoBotSettings({},store),null);assert.throws(()=>casinoBotSettings({DISCORD_CASINO_ENABLED:'true'},store));
   const settings=casinoBotSettings({DISCORD_CASINO_ENABLED:'true',DISCORD_CLIENT_ID:applicationId,DISCORD_CASINO_CHANNEL_ID:channel,DISCORD_BOT_TOKEN:token},store);assert.equal(settings.guild,guild);
+});
+test('test parity enables only the configured text channel and the test role mention',async()=>{
+  const role='100000000000000009',other='100000000000000008';
+  const store={guildIds:new Set([guild]),assertGuild:g=>assert.equal(g,guild)};
+  const env={APP_ENV:'test',DISCORD_COMMAND_PROFILE:'test-parity',DISCORD_CASINO_ENABLED:'true',
+    DISCORD_CASINO_GUILD_ID:guild,DISCORD_CLIENT_ID:applicationId,DISCORD_CASINO_CHANNEL_ID:channel,
+    DISCORD_COMMAND_CHANNEL_IDS:channel,DISCORD_BOT_TOKEN:token,DISCORD_LEADERBOARD_ROLE_ID:role};
+  const off={...env,DISCORD_CASINO_ENABLED:'false'};
+  assert.equal(casinoBotSettings(off,store),null);
+  assert.throws(()=>highlightSettings({...off,DISCORD_HIGHLIGHTS_WEBHOOK_URL:'https://discord.com/api/webhooks/'+other+'/fixture'},store));
+  for(const changes of [{DISCORD_COMMAND_PROFILE:'test-simple'},{DISCORD_COMMAND_CHANNEL_IDS:''},
+    {DISCORD_COMMAND_CHANNEL_IDS:other},{DISCORD_COMMAND_CHANNEL_IDS:channel+','+other}]){
+    assert.throws(()=>casinoBotSettings({...env,...changes},store),/sole test guild and command channel/);
+  }
+  assert.throws(()=>casinoBotSettings(env,{...store,guildIds:new Set([guild,other])}),/sole test guild and command channel/);
+  const settings=casinoBotSettings(env,store),posts=[];
+  assert.equal(settings.leaderboardRoleId,role);
+  let type=5;
+  const bot=new CasinoBot({...settings,fetchImpl:async(url,options)=>{
+    const path=new URL(url).pathname;
+    if(path.endsWith('/users/@me'))return Response.json({id:applicationId,bot:true});
+    if(path.endsWith('/channels/'+channel))return Response.json({id:channel,guild_id:guild,type});
+    assert.equal(path,'/api/v10/channels/'+channel+'/messages');
+    posts.push(JSON.parse(options.body));
+    return Response.json({id:other,channel_id:channel});
+  }});
+  assert.equal((await bot.sendLeaderboard({},'test:one')).kind,'retry');
+  assert.equal(posts.length,0);
+  type=0;
+  assert.equal((await bot.sendLeaderboard({},'test:one')).kind,'sent');
+  assert.equal(posts[0].content,`<@&${role}>`);
+  assert.deepEqual(posts[0].allowed_mentions,{parse:[],roles:[role]});
 });
 test('the grant preview attaches the sample receipt to the private reply without a ping',async()=>{
   const user='100000000000000009';

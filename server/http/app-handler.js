@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import {completeDeferredCommand,validInteractionToken} from '../discord/deferred-command.js';
 import {deferWalletInteraction} from '../discord/discord-panel.js';
 import {securityHeaders,contentSecurityPolicy} from './security-headers.js';
+import {LEADERBOARD_PATH} from '../wallet/leaderboard.js';
 
 export const duelPaths=new Map([
   ['/api/feature/state','state'],['/api/feature/begin','begin'],['/api/feature/hand','hand'],
@@ -155,7 +156,8 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
       }
       const duelAction=duelPaths.get(path);
       if(duelAction&&(!wallet?.arcade||wallet.arcade.read().feature==='hidden'))return json(res,404,{error:'找不到此功能。'});
-      if(duelAction||['/api/wallet','/api/spin','/api/checkin','/api/ledger','/api/rounds','/api/casino-visit'].includes(path)){
+      if(path===LEADERBOARD_PATH&&!wallet?.leaderboard)return json(res,404,{error:'找不到此功能。'});
+      if(duelAction||[LEADERBOARD_PATH,'/api/wallet','/api/spin','/api/checkin','/api/ledger','/api/rounds','/api/casino-visit'].includes(path)){
         if(!wallet)return json(res,503,{error:'帳號戲籌尚未開啟。'});
         if(!wallet.localTest&&req.headers.origin&&!allowedOrigins.has(req.headers.origin))return json(res,403,{error:'不允許的來源。'});
         const write=path==='/api/spin'||path==='/api/checkin'||path==='/api/casino-visit'||!!(duelAction&&duelAction!=='state');
@@ -163,6 +165,15 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
         const session=await wallet.service.authorize(req.headers.authorization);
         if(wallet.store.walletEpoch&&req.headers['x-wallet-epoch']!==wallet.store.walletEpoch)return json(res,401,{error:'測試帳本已更新，請重新開啟遊戲。'});
         const {guild,user}=session;
+        if(path===LEADERBOARD_PATH){
+          const params=new URL(req.url,'http://localhost').searchParams;
+          if(params.get('game')==='duel'&&wallet.arcade?.read().feature==='hidden')return json(res,404,{error:'找不到此功能。'});
+          return json(res,200,await wallet.leaderboard.page(session,params));
+        }
+        const rememberLeaderboardName=()=>{
+          if(wallet.leaderboard)defer(Promise.resolve().then(()=>wallet.leaderboard.remember(session))
+            .catch(()=>console.warn('Leaderboard profile sync deferred')));
+        };
         if(path==='/api/casino-visit'){
           const input=await readJson(req);
           return json(res,200,wallet.visits?await wallet.visits.request(session,input):{enabled:false});
@@ -180,6 +191,7 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
             result=duelAction==='checkin'?await wallet.store.checkin(guild,user,{compact:true,duel:true,day:input?.day??'',allowPlay:admissionOpen}):
               await wallet.store.duelAction(guild,user,duelAction,input,{allowNew:admissionOpen,allowPlay:admissionOpen});
             if(result.entry?.delta>0&&duelAction==='hand')try{wallet.duelAnnouncementWake?.();}catch{console.warn('Challenge announcement wake deferred');}
+            if(duelAction==='begin')rememberLeaderboardName();
           }
           const previewAllCG=wallet.store.environment==='test'&&wallet.previewAllCG===true;
           return json(res,200,{...result,admissionOpen:admissionOpen(),...(previewAllCG?{previewAllCG:true}:{})});
@@ -198,7 +210,9 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
           allowSpin:wallet.slotOpen??(wallet.arcade?()=>wallet.arcade.read().slot==='open':undefined)});
         try { wallet.highlights?.enqueue(session,result.round.id,result.round); }
         catch { console.warn('Discord highlights: could not queue result'); }
-        return json(res,200,result);
+        json(res,200,result);
+        rememberLeaderboardName();
+        return;
       }
       if (path.startsWith('/api/')) return json(res, 404, { error:'找不到此功能。' });
       if (!['GET', 'HEAD'].includes(req.method)) return json(res, 405, { error:'不支援此操作。' });

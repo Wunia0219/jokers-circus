@@ -1,0 +1,155 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {leaderboardQuery,LEADERBOARD_PATH} from '../server/wallet/leaderboard.js';
+import {LeaderboardNotices} from '../server/discord/leaderboard-announcement.js';
+import {CasinoBot} from '../server/discord/casino-bot.js';
+import {CloudLeaderboard} from '../cloud/leaderboard.js';
+import {handleFetch} from '../cloud/http-bridge.js';
+import {createActivityHandler} from '../server/http/app-handler.js';
+import {problem} from '../server/wallet/wallet-common.js';
+import {memorySql,previewFixture,previewGuild as guild,previewRole as role,previewUser as user} from '../scripts/preview/leaderboard-fixtures.js';
+
+const time='2026-11-01T12:00:00.000Z',otherGuild='100000000000000002';
+const slot=(id,amount,overrides={})=>({id,guild,user:user(0),time,kind:'spin',reason:`下注 ${amount}／派彩 2000`,delta:2000-amount,...overrides});
+const cycle=(board,game='total',page=1)=>board.page(guild,{period:'cycle',game,page});
+const all=(board,game='total',page=1)=>board.page(guild,{period:'all',game,page});
+const outbox=sql=>sql.exec('SELECT payload,status FROM leaderboard_outbox ORDER BY id').toArray()
+  .map(({payload,status})=>({...JSON.parse(payload),status}));
+
+test('six boards use committed stake, stable ties and ten rows per page',t=>{
+  const fixture=previewFixture();t.after(fixture.close);
+  const {board}=fixture;
+  assert.equal(all(board).count,13);
+  assert.deepEqual(all(board).rows.map(r=>r.rank),[1,2,3,4,5,6,7,8,9,10]);
+  assert.deepEqual(all(board,'total',2).rows.map(r=>r.rank),[11,12,13]);
+  for(const game of ['total','slot','duel']){
+    assert.deepEqual(all(board,game).rows,cycle(board,game).rows);
+    assert.equal(all(board,game).rows[0].amount,{total:36500,slot:25500,duel:11000}[game]);
+  }
+  const start=board.state().cursor;
+  const tied=slot(start+1,25500,{user:user(13)});
+  board.apply([tied,slot(start+2,4000,{kind:'grant'}),slot(start+3,200,{kind:'duel',delta:2000}),
+    slot(start+4,200,{guild:otherGuild})]);
+  board.apply([tied]);
+  assert.deepEqual(all(board,'slot').rows.slice(0,2).map(r=>[r.user,r.amount]),[[user(0),25500],[user(13),25500]]);
+  assert.equal(all(board,'duel').rows[0].amount,11000);
+  assert.equal(board.page(otherGuild,{period:'all',game:'total',page:1}).rows[0].amount,200);
+  assert.throws(()=>leaderboardQuery(new URLSearchParams({game:'constructor'})),{status:400});
+  assert.throws(()=>leaderboardQuery(new URLSearchParams({page:'0'})),{status:400});
+});
+
+test('reset clears current scores once per guild reset and preserves lifetime totals',t=>{
+  const fixture=previewFixture();t.after(fixture.close);
+  const {board,sql}=fixture,before=all(board).rows,start=board.state().cursor;
+  const reset={id:start+1,guild,user:user(0),kind:'reset',delta:0,time,reference:'monthly-a'};
+  board.apply([reset,{...reset,id:start+2,user:user(1)}]);
+  assert.deepEqual(all(board).rows,before);
+  assert.deepEqual(cycle(board).rows,[]);
+  assert.deepEqual(outbox(sql),[]);
+  board.apply([slot(start+3,500)]);
+  board.apply([reset]);
+  assert.equal(cycle(board).rows[0].amount,500);
+  assert.equal(cycle(board).lastReset,time);
+  assert.equal(all(board).rows[0].amount,37000);
+  assert.deepEqual(outbox(sql).map(e=>e.changes.map(c=>[c.period,c.game])),[[['cycle','total'],['cycle','slot']]]);
+  assert.throws(()=>board.apply([slot(start+4,100),slot(start+6,100)]),/ledger gap/);
+  assert.equal(cycle(board).rows[0].amount,500);
+});
+
+test('new entry and promotion each send one grouped message and only ping the configured role',async t=>{
+  const fixture=previewFixture();t.after(fixture.close);
+  const {board,sql}=fixture;
+  fixture.newcomer();fixture.promote();
+  board.apply([slot(board.state().cursor+1,100,{user:user(0)})]); // #1 keeps the same rank
+  const events=outbox(sql);
+  assert.equal(events.length,2);
+  assert.ok(events.every(e=>e.sharedPeriod&&e.changes.every(c=>c.rows.length===10)));
+  assert.ok(events[0].changes.every(c=>c.previous===null));
+  assert.ok(events[1].changes.every(c=>c.previous>c.current));
+  const posts=[];
+  const bot=new CasinoBot({guild,channel:otherGuild,applicationId:user(0),leaderboardRoleId:role,fetchImpl:async(_,options)=>{
+    posts.push(JSON.parse(options.body));
+    return Response.json({id:user(1),channel_id:otherGuild});
+  }});
+  bot.verified=true;
+  const notices=new LeaderboardNotices({sql,source:'case',send:bot.sendLeaderboard.bind(bot)});
+  await notices.flush();await notices.flush();
+  assert.equal(posts.length,2);
+  assert.notEqual(posts[0].nonce,posts[1].nonce);
+  for(const post of posts){
+    assert.equal(post.content,`<@&${role}>`);
+    assert.deepEqual(post.allowed_mentions,{parse:[],roles:[role]});
+    assert.equal(post.components[0].components[0].label,'開啟遊戲');
+  }
+});
+
+test('rank notices preserve retry deadlines and quarantine interrupted sends',async t=>{
+  const fixture=previewFixture();t.after(fixture.close);
+  const {sql}=fixture;
+  fixture.newcomer();fixture.promote();
+  let now=1000,attempts=0;
+  const options={sql,source:'case',clock:()=>now,send:async()=>{
+    attempts++;
+    return attempts===1?{kind:'retry',delay:9000}:{kind:'sent'};
+  }};
+  await new LeaderboardNotices(options).flush();
+  const restarted=new LeaderboardNotices(options);
+  assert.equal(restarted.nextDelay(),9000);
+  await restarted.flush();
+  assert.equal(attempts,1);
+  sql.exec("UPDATE leaderboard_outbox SET status='sending' WHERE id=(SELECT MAX(id) FROM leaderboard_outbox)");
+  const afterInterruptedSend=new LeaderboardNotices(options);
+  now=10000;
+  await afterInterruptedSend.flush();
+  assert.equal(attempts,2);
+  assert.deepEqual(outbox(sql).map(event=>event.status),['uncertain']);
+  assert.equal(afterInterruptedSend.nextDelay(),null);
+});
+
+test('archive bootstraps quietly and the live projection recovers missing committed rows after restart',async t=>{
+  const {sql,transaction,close}=memorySql();t.after(close);
+  const storage={sql,transactionSync:transaction};
+  const ledger=[slot(1,500),slot(2,1000),slot(3,2000)],fetches=[];
+  const readDoc=id=>({exists:true,get:()=>JSON.stringify(ledger[id-1]),data:()=>ledger[id-1]});
+  const store={settings:{namespace:'test'},root:{collection:()=>({doc:Number})},
+    db:{batchGet:async ids=>{fetches.push(ids);return ids.map(readDoc);}}};
+  const quota={reserve(){},observe(){}};
+  const vault={manifest:()=>({format:2,revision:1}),rows:()=>ledger.slice(0,1)};
+  const options={storage,state:{get:()=>null},vault,store,quota,wake(){}};
+  const cloud=new CloudLeaderboard({...options,meta:{nextId:2}});
+  await cloud.work();
+  assert.equal(cloud.board.state().cursor,2);
+  assert.deepEqual(fetches,[[2]]);
+  assert.deepEqual(outbox(sql),[]);
+  const restarted=new CloudLeaderboard({...options,meta:{nextId:3}});
+  await restarted.work();
+  assert.deepEqual(fetches,[[2],[3]]);
+  const page=await restarted.page({guild,user:user(0),profile:{name:'樣本'}},new URLSearchParams());
+  assert.deepEqual(page.rows,[{rank:1,amount:3500,name:'樣本'}]);
+  const fresh=new CloudLeaderboard({...options,meta:{nextId:0,walletEpoch:'new'},vault:{manifest:()=>({format:2,revision:0}),rows:()=>[]}});
+  await fresh.work();
+  assert.equal(all(fresh.board).count,0);
+});
+
+test('leaderboard HTTP reads use only the signed-in guild and respect the feature reveal gate',async()=>{
+  let feature='hidden';
+  const handler=createActivityHandler({wallet:{
+    store:{walletEpoch:'test-epoch'},arcade:{read:()=>({feature})},
+    service:{authorize:async authorization=>{
+      if(authorization!=='Bearer verified')throw problem(401,'登入已過期');
+      return {guild};
+    }},
+    leaderboard:{page:async(session,params)=>({guild:session.guild,...leaderboardQuery(params)})},
+  }});
+  const request=(query='',headers={},method='GET')=>handleFetch(handler,new Request(
+    'https://activity.example'+LEADERBOARD_PATH+'?'+query,{headers,method}));
+  const headers={Authorization:'Bearer verified','X-Wallet-Epoch':'test-epoch'};
+  assert.equal((await request()).status,401);
+  assert.equal((await request('',{Authorization:'Bearer verified'})).status,401);
+  assert.equal((await request('',headers,'POST')).status,405);
+  assert.equal((await request('game=duel',headers)).status,404);
+  feature='open';
+  const response=await request('period=cycle&game=duel&page=2&guild='+otherGuild,headers);
+  assert.equal(response.headers.get('Cache-Control'),'no-store');
+  assert.deepEqual(await response.json(),{guild,period:'cycle',game:'duel',page:2});
+});

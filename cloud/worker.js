@@ -22,6 +22,7 @@ import {arcadeEnabled,liveSlotMaintenance,operatorEnabled,readArcade} from './ar
 import {ARCADE_STATUS,arcadeStatus,arcadeAsset,arcadeLobby} from './arcade-routes.js';
 import {duelPaths} from '../server/http/app-handler.js';
 import {duelDigest} from '../server/wallet/duel-settlement.js';
+import {LEADERBOARD_PATH} from '../server/wallet/leaderboard.js';
 import {authorizeOperator,handleOperator,operatorApi,operatorPage,operatorSignIn,serveOperator,serveOperatorSignIn} from './operator-console.js';
 
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
@@ -95,7 +96,9 @@ export class CircusProject extends DurableObject {
     }
     if(url.pathname==='/healthz')return json({ok:true,version:APP_VERSION,model:MODEL_VERSION});
     if(url.pathname===ARCADE_STATUS&&request.method==='GET'&&arcadeEnabled(this.env))return this.watchArcade(request,url,()=>arcadeStatus(this.state));
-    if(!apiPaths.has(url.pathname)&&!(arcadeEnabled(this.env)&&duelPaths.has(url.pathname)&&arcadeStatus(this.state).feature))return json({error:'找不到此功能。'},404);
+    const arcade=arcadeEnabled(this.env);
+    if(!apiPaths.has(url.pathname)&&!(arcade&&(url.pathname===LEADERBOARD_PATH||
+      duelPaths.has(url.pathname)&&arcadeStatus(this.state).feature)))return json({error:'找不到此功能。'},404);
     if(!this.ready())return json({error:'帳號戲籌正在維護，請稍後再試。'},503);
     const origin=request.headers.get('origin');if(origin&&origin!==`https://${this.env.DISCORD_CLIENT_ID}.discordsays.com`)return json({error:'不允許的來源。'},403);
     const run=async()=>{try{const rt=await this.runtime();if(!this.ready())return json({error:'服務正在維護。'},503);return await handleFetch(rt.handler,request);}catch(error){return json({error:'暫時無法完成請求，請沿用原請求重試。',...(error?.code==='FIRESTORE_BUDGET'?{code:error.code}:{})},503);}};
@@ -184,6 +187,14 @@ export class CircusProject extends DurableObject {
   }
   async alarm(){if(this.state.get('mode')!=='active')return;await this.track(this.runAlarm());}
   async runAlarm(){
+    await Promise.all([this.runLeaderboardAlarm(),this.runCasinoAlarm()]);
+  }
+  async runLeaderboardAlarm(){
+    if(!arcadeEnabled(this.env))return;
+    try{const r=await this.runtime();await r.leaderboard?.work();}
+    catch{console.warn('Leaderboard sync deferred');await this.schedule(30000);}
+  }
+  async runCasinoAlarm(){
     if(this.env.DISCORD_CASINO_ENABLED!=='true')return this.runMaintenanceAlarm();
     const now=Date.now(),due=this.state.get('casino-maintenance-at')||0;
     // Short presence deadlines must not turn ten-minute Firestore housekeeping
@@ -210,6 +221,10 @@ export class CircusProject extends DurableObject {
       // per-second Firestore poll. Keep normal maintenance on its own clock.
       if(housekeepingDue||highlightDue){
         const meta=await r.store.read(r.store.meta);r.store.checkMeta(meta);
+        if(r.leaderboard){
+          r.leaderboard.observeMeta(meta);
+          if(r.leaderboard.board.state().cursor<meta.nextId)await this.schedule(1000);
+        }
         const revision=meta.highlightsRevision??(meta.highlights?meta.nextId:0);
         if(r.highlights&&(this.state.get('highlights-dirty')||revision!==(this.state.get('highlights-revision')||0))){
           r.highlights.dirty=true;await r.highlights.flush();this.state.set('highlights-dirty',r.highlights.dirty);if(!r.highlights.dirty)this.state.set('highlights-revision',revision);
