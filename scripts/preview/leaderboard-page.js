@@ -4,6 +4,7 @@ import {openLeaderboard} from '../../src/platform/leaderboard-dialog.js';
 import {icon} from '../../src/ui/shared/icons.js';
 
 const rankButton=document.getElementById('lobby-leaderboard');
+rankButton.innerHTML=icon('trophy');
 rankButton.addEventListener('click',()=>openLeaderboard(rankButton,{
   getDuelTitle:()=>'野球拳',
   fetchBoard:(params,signal)=>fetch('/api/arcade/leaderboard?'+params,{signal,cache:'no-store'}),

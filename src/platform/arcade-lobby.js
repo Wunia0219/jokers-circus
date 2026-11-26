@@ -14,6 +14,7 @@ const byId=id=>document.getElementById(id);
 const lobby=byId('lobby'),frame=byId('arcade-game');
 const status=byId('lobby-status'),retry=byId('lobby-retry'),featureStatus=byId('feature-status');
 const musicButton=lobby.querySelector('.lobby-music');
+const leaderboard=byId('lobby-leaderboard');
 const launch=createLaunchScreen(byId('launch-screen')),music=createActivityMusic();
 const lifetime=new AbortController(),{signal}=lifetime;
 let activity,view,refreshing,lastCard,displayed,refreshTimer,state,game,gameLoading,casinoPresence;
@@ -30,6 +31,7 @@ lobby.addEventListener('pointerdown',music.controls.resumeFromGesture,{signal});
 lobby.addEventListener('keydown',music.controls.resumeFromGesture,{signal});
 music.controls.subscribe(updateMusic);
 updateMusic();
+leaderboard.innerHTML=icon('trophy');
 
 function startGameLoading(){
   gameLoading?.dismiss();
@@ -193,7 +195,6 @@ try{
   const host=createArcadeHost(activity,
     ()=>authenticateActivity(activity.sdk,import.meta.env.VITE_DISCORD_CLIENT_ID,fetch,true),frame,music.controls,
     {entryLoading:()=>gameLoading,onMaintenance:()=>void refresh()});
-  const leaderboard=byId('lobby-leaderboard');
   leaderboard.addEventListener('click',async()=>{
     try{
       const {openLeaderboard}=await import('./leaderboard-dialog.js');

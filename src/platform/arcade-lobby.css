@@ -20,13 +20,6 @@ html,body { width: 100%; height: 100%; margin: 0; overflow: hidden; overscroll-b
 #lobby-stage canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
 #lobby-stage > .lobby-accessibility { transform: none !important; }
 .lobby-leaderboard { right:calc(clamp(8px,2vw,22px) + 48px); }
-.lobby-leaderboard::after {
-  content:"";
-  position:relative;
-  width:30px;
-  height:30px;
-  background:url('../../images/lobby/leaderboard-emblem.webp') center / contain no-repeat;
-}
 #lobby-feedback { position: absolute; inset: auto 0 0; text-align: center; }
 #lobby-status { margin: 0; }
 #lobby-status:empty { display: none; }

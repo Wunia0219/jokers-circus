@@ -13,17 +13,16 @@
 .player-identity-text strong { display: block; max-width: 320px; color: #fff0d5; font-size: 15px; line-height: 1.5; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .player-identity-text > span { display: block; color: #d7bfbf; font: 12px/1.6 'Noto Sans TC', sans-serif; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .player-tools [hidden] { display: none; }
-.player-tools { grid-column: 3; display: flex; align-items: center; height: var(--player-control-height); gap: 8px; padding: 3px 5px; border: 1px solid #c99b5b36; border-radius: 12px; background: #2b1d2dd9; box-shadow: inset 0 1px 0 #ffe4b50a; }
-.player-tools .utility, .player-tools .icon-button { flex: none; padding: 0; width: 48px; height: 48px; min-height: 48px; border-radius: 9px; }
-.player-tools .utility svg, .player-tools .icon-button svg { width: 20px; height: 20px; }
+.player-tools { grid-column: 3; display: flex; align-items: center; height: var(--player-control-height); gap: 8px; padding: 4px 6px; border-radius: 12px; background: #2b1d2d70; }
+.player-tools :is(.utility,.icon-button,.audio-toggle) { flex: none; padding: 0; width: 48px; height: 48px; min-height: 48px; border: 0; border-radius: 9px; background: transparent; }
+.player-tools :is(.utility,.icon-button,.audio-toggle) svg { width: 20px; height: 20px; }
+.player-tools :is(.utility,.icon-button,.audio-toggle):hover:not(:disabled) { background: #e7be710e; }
+.player-tools :is(.utility,.icon-button,.audio-toggle):active:not(:disabled) { background: #e7be711f; }
 .player-tools .utility span { display: none; }
-.audio-controls { display: flex; flex: none; align-items: center; gap: 8px; padding-right: 8px; border-right: 1px solid #c99b5b30; }
-.audio-toggle { display: flex; align-items: center; justify-content: center; flex: none; width: 48px; height: 48px; padding: 0; border: 1px solid transparent; border-radius: 9px; color: #ead8cb; }
-.audio-toggle > svg { width: 20px; height: 20px; }
-.audio-toggle:hover:not(:disabled) { background: #e7be7114; border-color: #e7be714d; }
-.audio-toggle:active:not(:disabled) { background: #e7be7126; }
-.audio-toggle[aria-pressed=true] { color: #ffe0a2; border-color: #f4d28b70; background: #9a703d38; }
-.audio-toggle:disabled { opacity: 1; cursor: default; color: #c1b1bf; background: #ffffff04; }
+.audio-controls { display: flex; flex: none; align-items: center; gap: 8px; padding-right: 8px; border-right: 1px solid #c99b5b24; }
+.audio-toggle { display: flex; align-items: center; justify-content: center; color: #ead8cb; }
+.audio-toggle[aria-pressed=true] { color: #ffe0a2; }
+.audio-toggle:disabled { opacity: 1; cursor: default; color: #c1b1bf; }
 .audio-toggle[aria-busy=true] { cursor: progress; }
 
 /* Records use readable summaries, with details available one tap away. */
@@ -79,8 +78,7 @@ dialog.records-dialog { width: min(800px, calc(100% - 32px)); max-width: 800px; 
   .player-avatar svg { width: 19px; height: 19px; }
   .player-identity-text strong { max-width: none; font-size: 14px; }
   .player-identity-text > span { font-size: 12px; }
-  .player-tools { grid-column: 1/-1; grid-row: 2; justify-content: flex-end; gap: 8px; height: auto; min-height: 52px; padding: 1px 4px; width: 100%; border-radius: 11px; }
-  .player-tools .utility, .player-tools .icon-button { width: 48px; height: 48px; min-height: 48px; }
+  .player-tools { grid-column: 1/-1; grid-row: 2; justify-content: flex-end; gap: 8px; height: auto; min-height: 52px; padding: 2px 5px; width: 100%; border-radius: 11px; }
   .audio-controls { margin-right: auto; }
   dialog.records-dialog { width: calc(100% - 16px); height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px); max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px); }
   .records-dialog .dialog-head { padding: 10px 16px; }
@@ -114,7 +112,7 @@ dialog.records-dialog { width: min(800px, calc(100% - 32px)); max-width: 800px; 
   #app .player-avatar { width:32px;height:32px; }
   #app .player-identity-text strong { font-size:13px; }
   #app .player-identity-text > span { font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis; }
-  #app .player-tools { grid-area:1 / 3;gap:4px;height:48px;min-height:48px;padding:1px 4px; }
+  #app .player-tools { grid-area:1 / 3;gap:4px;height:48px;min-height:48px;padding:2px 5px; }
   #app .player-tools :is(.utility,.icon-button,.audio-toggle) { width:44px;height:44px;min-height:44px; }
   #app .audio-controls { gap:4px;padding-right:4px; }
 }

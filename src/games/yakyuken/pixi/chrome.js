@@ -71,11 +71,11 @@ export function buildSlotHud(scene){
   Object.assign(scene.checkinButton.element.style,{left:`${x}px`,top:`${y}px`,width:`${checkinWidth}px`});
   const {toolsX,toolsY,toolsWidth,toolsHeight,centers}=h,cy=toolsY+toolsHeight/2;
   const toolSize=compact?44:48;
-  hud.addChild(new Graphics({label:'player-tools-frame'}).roundRect(toolsX,toolsY,toolsWidth,toolsHeight,narrow?11:12).fill({color:0x2b1d2d,alpha:.85}).stroke({color:0xc99b5b,alpha:.21,width:1}));
-  const sound=at(new PixiButton({name:scene.audio.effectsMuted?'開啟音效':'關閉音效',variant:'utility',width:toolSize,height:toolSize,icon:icon(scene.audio.effectsMuted?'muted':'sound'),onPress:async()=>{
+  hud.addChild(new Graphics({label:'player-tools-frame'}).roundRect(toolsX,toolsY,toolsWidth,toolsHeight,narrow?11:12).fill({color:0x2b1d2d,alpha:.44}));
+  const sound=at(new PixiButton({name:scene.audio.effectsMuted?'開啟音效':'關閉音效',variant:'quiet',width:toolSize,height:toolSize,icon:icon(scene.audio.effectsMuted?'muted':'sound'),onPress:async()=>{
     await scene.audio.toggleEffects();scene.refreshAudioIcons?.();
   }}),centers[0],cy,hud);
-  const music=at(new PixiButton({name:scene.audio.musicMuted?'開啟音樂':'關閉音樂',variant:'utility',width:toolSize,height:toolSize,icon:icon(scene.audio.musicMuted?'musicMuted':'music'),onPress:async()=>{
+  const music=at(new PixiButton({name:scene.audio.musicMuted?'開啟音樂':'關閉音樂',variant:'quiet',width:toolSize,height:toolSize,icon:icon(scene.audio.musicMuted?'musicMuted':'music'),onPress:async()=>{
     await scene.audio.toggleMusic();scene.refreshAudioIcons?.();
   }}),centers[1],cy,hud);
   scene.refreshAudioIcons=()=>{
@@ -84,10 +84,10 @@ export function buildSlotHud(scene){
     music.setActive(!scene.audio.musicMuted);music.setIcon(icon(scene.audio.musicMuted?'musicMuted':'music'));music.setName(scene.audio.musicMuted?'開啟音樂':'關閉音樂');
   };scene.refreshAudioIcons();
   const dividerX=centers[1]+(compact?26:33);
-  hud.addChild(new Graphics().moveTo(dividerX,toolsY+9).lineTo(dividerX,toolsY+toolsHeight-9).stroke({color:0xc99b5b,width:1,alpha:.19}));
-  scene.collectionButton=at(new PixiButton({name:'CG 收藏',variant:'utility',width:toolSize,height:toolSize,icon:icon('gallery'),onPress:()=>scene.openModal('collection')}),centers[2],cy,hud);
-  scene.historyButton=at(new PixiButton({name:'遊玩紀錄',variant:'utility',width:toolSize,height:toolSize,icon:icon('clock'),onPress:()=>{scene.historyScroll=0;scene.openModal('history');}}),centers[3],cy,hud);
-  scene.lobbyButton=at(new PixiButton({name:'返回遊戲大廳',variant:'utility',width:toolSize,height:toolSize,icon:icon('lobby'),onPress:()=>scene.visitScreen('games')}),centers[4],cy,hud);
+  hud.addChild(new Graphics().moveTo(dividerX,toolsY+9).lineTo(dividerX,toolsY+toolsHeight-9).stroke({color:0xc99b5b,width:1,alpha:.14}));
+  scene.collectionButton=at(new PixiButton({name:'CG 收藏',variant:'quiet',width:toolSize,height:toolSize,icon:icon('gallery'),onPress:()=>scene.openModal('collection')}),centers[2],cy,hud);
+  scene.historyButton=at(new PixiButton({name:'遊玩紀錄',variant:'quiet',width:toolSize,height:toolSize,icon:icon('clock'),onPress:()=>{scene.historyScroll=0;scene.openModal('history');}}),centers[3],cy,hud);
+  scene.lobbyButton=at(new PixiButton({name:'返回遊戲大廳',variant:'quiet',width:toolSize,height:toolSize,icon:icon('lobby'),onPress:()=>scene.visitScreen('games')}),centers[4],cy,hud);
   if(scene.screen!=='table')return;
   const {action,status}=scene.layout;
   scene.confirmButton=at(new PixiButton({text:'確認出牌',name:'確認出牌',variant:'duel',width:action.width,height:action.height,fontSize:action.fontSize??17,onPress:()=>scene.confirm()}),action.x,action.y,hud);
