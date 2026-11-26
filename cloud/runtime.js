@@ -5,7 +5,7 @@ import {WalletService} from '../server/wallet/wallet-service.js';
 import {highlightSettings} from '../server/discord/highlights.js';
 import {createActivityHandler} from '../server/http/app-handler.js';
 import {CloudBackup} from './backup.js';
-import {commandChannels} from '../server/discord/discord-channel-scope.js';
+import {commandChannels,simpleTestCommandsEnabled} from '../server/discord/discord-channel-scope.js';
 import {CasinoBot} from '../server/discord/casino-bot.js';
 import {FirestoreRest} from './firestore-rest.js';
 import {CloudSessions,CloudLoginLimit,Sealer} from './storage.js';
@@ -40,7 +40,7 @@ export async function createCloudRuntime(project){
   const notices=new GrantNotifications({bot,commandChannelIds,state:project.state});
   const arcade=arcadeEnabled(project.env)&&store.schemaVersion===2?arcadeControls(project,store):null;
   const slotOpen=arcade||operatorEnabled(project.env)?()=>readArcade(project.state).slot==='open':undefined;
-  const simpleTestCommands=settings.environment==='test'&&project.env.DISCORD_COMMAND_PROFILE==='test-simple';
+  const simpleTestCommands=simpleTestCommandsEnabled(project.env);
   const previewAllCG=settings.environment==='test'&&arcade!==null&&project.env.ARCADE_CG_PREVIEW_ALL==='true';
   if(simpleTestCommands)store.grantNotificationsEnabled=false;
   const commandEffects=simpleTestCommands?{arcade:null,panelPrefix:'jct',casinoPreview:true}:null;

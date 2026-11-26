@@ -20,22 +20,64 @@ export function validSignature(publicKey, headers, raw, now=Date.now()) {
     return verify(null,Buffer.concat([Buffer.from(timestamp),raw]),key,Buffer.from(signature,'hex'));
   }catch{return false;}
 }
+
+export async function readDiscordInteraction(stream,headers,publicKey,clientId){
+  const chunks=[];
+  let size=0;
+  for await(const chunk of stream){
+    size+=chunk.length;
+    if(size>65536)throw problem(413,'請求過大。');
+    chunks.push(chunk);
+  }
+  const raw=Buffer.concat(chunks);
+  if(!validSignature(publicKey,headers,raw))throw problem(401,'無效的 Discord 簽章。');
+  let interaction;
+  try{interaction=JSON.parse(raw.toString('utf8'));}catch{throw problem(400,'無效的請求。');}
+  if(!interaction||typeof interaction!=='object'||Array.isArray(interaction))throw problem(400,'無效的請求。');
+  if(interaction.type!==1&&(!clientId||interaction.application_id!==clientId))throw problem(403,'應用程式不符。');
+  return {interaction,raw};
+}
+
+export function isActivityLaunch(interaction){
+  if(interaction.type===2)return interaction.data?.type===4;
+  if(interaction.type!==3)return false;
+  const id=interaction.data?.custom_id;
+  return id===ANNOUNCEMENT_LAUNCH_ID || (typeof id==='string'&&id.split('|')[1]==='go');
+}
+
+function validateScope(interaction,store,commandChannelIds){
+  if(![2,3,5].includes(interaction.type)||interaction.member?.user?.bot||!interaction.guild_id||!interaction.member?.user?.id)throw problem(403,'請在已啟用的伺服器內使用指令。','COMMAND_SCOPE');
+  store.validate(interaction.guild_id,interaction.member.user.id);
+  const channel=interaction.channel_id||interaction.channel?.id;
+  if(commandChannelIds.length&&!commandChannelIds.includes(channel))throw Object.assign(problem(403,'請到指定頻道使用指令。','COMMAND_CHANNEL'),{channel:commandChannelIds[0]});
+  return channel;
+}
+
+// Launching only opens Discord's Activity. Authorization and all wallet operations
+// inside the Activity still go through the game backend.
+export function launchActivity(interaction,scope,commandChannelIds,panelPrefix='jc'){
+  interaction={...interaction,panelPrefix};
+  try{
+    const channel=validateScope(interaction,scope,commandChannelIds);
+    if(interaction.type===2&&interaction.data?.type===4)return {type:12};
+    if(interaction.type===3){
+      if(interaction.data?.custom_id===ANNOUNCEMENT_LAUNCH_ID){
+        if(interaction.data.component_type===2&&commandChannelIds.includes(channel))return {type:12};
+      }else if((interaction.data?.component_type===undefined||interaction.data.component_type===2)&&parsePanel(interaction).action==='go')return {type:12};
+    }
+    throw problem(400,'請重新開啟面板。','PANEL_INVALID');
+  }catch(error){return commandFailure(interaction,scope,error);}
+}
+
 export async function handleCommand(interaction, store, adminRoles=[],commandChannelIds=[],effects={}) {
+  if(isActivityLaunch(interaction))return launchActivity(interaction,store,commandChannelIds,effects.panelPrefix);
   interaction={...interaction,panelPrefix:effects.panelPrefix??'jc'};
   const reply=(...args)=>privateReply(store.environment,...args);
   try {
     if(interaction.type===1)return {type:1};
-    if(![2,3,5].includes(interaction.type)||interaction.member?.user?.bot||!interaction.guild_id||!interaction.member?.user?.id)throw problem(403,'請在已啟用的伺服器內使用指令。','COMMAND_SCOPE');
+    validateScope(interaction,store,commandChannelIds);
     const guild=interaction.guild_id,user=interaction.member.user.id;
-    store.validate(guild,user);
-    const channel=interaction.channel_id||interaction.channel?.id;
-    if(commandChannelIds.length&&!commandChannelIds.includes(channel))throw Object.assign(problem(403,'請到指定頻道使用指令。','COMMAND_CHANNEL'),{channel:commandChannelIds[0]});
-    if(interaction.type===3&&interaction.data?.component_type===2&&interaction.data.custom_id===ANNOUNCEMENT_LAUNCH_ID&&
-        commandChannelIds.includes(channel))return {type:12};
     const panel=[3,5].includes(interaction.type)?parsePanel(interaction):null;
-    if(panel?.action==='go')return {type:12};
-    // APP_HANDLER opens the Activity without Discord's automatic channel invite.
-    if(interaction.data?.type===4)return {type:12};
     if(interaction.type===2&&interaction.data.name===casinoPreviewCommand.name&&effects.casinoPreview===true&&
         store.environment==='test'&&store.backend==='firestore'&&commandChannelIds.length){
       const choice=interaction.data.options?.find(option=>option.name==='樣式')?.value;
@@ -123,14 +165,19 @@ export async function handleCommand(interaction, store, adminRoles=[],commandCha
       return reply(description,labels[category],'info',rows.map(recordField));
     }
     throw problem(400,'不支援此操作。','COMMAND_UNKNOWN');
-  }catch(error){
-    const copy=commandError(error,{store,subcommand:interaction.data?.custom_id?.split('|')[1]==='vs'?'更正':interaction.data?.options?.[0]?.name}),result=reply(copy.message,copy.title,'error');
-    // PATCH leaves omitted components unchanged. Replace the old confirmation
-    // controls explicitly when a component/form fails, including an empty report.
-    if([3,5].includes(interaction.type))result.data.components=/^\d{17,20}$/.test(interaction.guild_id||'')&&/^\d{17,20}$/.test(interaction.member?.user?.id||'')
-      ?[{type:1,components:[{type:2,style:2,label:'返回管理面板',custom_id:panelId(interaction,'home')}]}]:[];
-    return result;
-  }
+  }catch(error){return commandFailure(interaction,store,error);}
+}
+
+function commandFailure(interaction,store,error){
+  const customId=interaction.data?.custom_id;
+  const subcommand=typeof customId==='string'&&customId.split('|')[1]==='vs'?'更正':interaction.data?.options?.[0]?.name;
+  const copy=commandError(error,{store,subcommand});
+  const result=privateReply(store.environment,copy.message,copy.title,'error');
+  // PATCH leaves omitted components unchanged. Replace the old confirmation
+  // controls explicitly when a component/form fails, including an empty report.
+  if([3,5].includes(interaction.type))result.data.components=/^\d{17,20}$/.test(interaction.guild_id||'')&&/^\d{17,20}$/.test(interaction.member?.user?.id||'')
+    ?[{type:1,components:[{type:2,style:2,label:'返回管理面板',custom_id:panelId(interaction,'home')}]}]:[];
+  return result;
 }
 
 const number=value=>value.toLocaleString('en-US');

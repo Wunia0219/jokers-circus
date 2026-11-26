@@ -1,6 +1,6 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { resolve, relative, extname, sep, isAbsolute } from 'node:path';
-import { validSignature, handleCommand } from '../discord/commands.js';
+import { readDiscordInteraction, handleCommand } from '../discord/commands.js';
 import { privateReply } from '../discord/bot-replies.js';
 import { MODEL_VERSION } from '../../src/game/slot-math.js';
 import { isLocalTestRequest } from '../testing/local-test-request.js';
@@ -97,13 +97,8 @@ export function createActivityHandler({ clientId, clientSecret, publicKey, walle
       }
       if(path==='/api/interactions'){
         if(req.method!=='POST')return json(res,405,{error:'請使用 POST。'});
-        let size=0;const chunks=[];
-        for await(const chunk of req){size+=chunk.length;if(size>65536)return json(res,413,{error:'請求過大。'});chunks.push(chunk);}
-        const raw=Buffer.concat(chunks);
-        if(!validSignature(publicKey,req.headers,raw))return json(res,401,{error:'無效的 Discord 簽章。'});
-        let interaction;try{interaction=JSON.parse(raw.toString('utf8'));}catch{return json(res,400,{error:'無效的請求。'});}
+        const {interaction}=await readDiscordInteraction(req,req.headers,publicKey,clientId);
         if(interaction.type===1)return json(res,200,{type:1});
-        if(interaction.application_id!==clientId)return json(res,403,{error:'應用程式不符。'});
         if(!wallet)return json(res,200,privateReply(null,'過一會兒再試試。如果一直連不上，請找管理員幫忙看看。','戲籌暫時連不上','warning'));
         if(wallet.store.backend==='firestore'&&deferWalletInteraction(interaction)){
           if(!validInteractionToken(interaction.token))return json(res,400,{error:'無效的互動憑證。'});

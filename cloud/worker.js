@@ -1,5 +1,6 @@
 import {createCloudRuntime} from './runtime.js';
 import {cloudIdentity} from './config.js';
+import {routeDiscordInteraction} from './discord-interactions.js';
 import {cloudFetch} from './fetch.js';
 import {activationPlanVerified} from './plan.js';
 import {TestDataReset} from './test-data-reset.js';
@@ -236,7 +237,10 @@ async function routeRequest(request,env){
   const url=new URL(request.url),path=url.pathname;
   const project=()=>{const settings=cloudIdentity(env);return env.CIRCUS_PROJECT.get(env.CIRCUS_PROJECT.idFromName(settings.projectId));};
   if(path.startsWith('/api/')||path.startsWith('/__ops/')||path.startsWith(operatorApi)||apiPaths.has(path)||slotEntry(url,env)){
-    try{return await project().fetch(request);}catch{return json({error:'服務尚未就緒。'},503);}
+    try{
+      if(path==='/api/interactions')return await routeDiscordInteraction(request,env,req=>project().fetch(req));
+      return await project().fetch(request);
+    }catch{return json({error:'服務尚未就緒。'},503);}
   }
   if(!['GET','HEAD'].includes(request.method))return json({error:'不支援此操作。'},405);
   try{const asset=await arcadeAsset(request,env,project);if(asset)return asset;}
