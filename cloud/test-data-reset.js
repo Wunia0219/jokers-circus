@@ -3,7 +3,7 @@ import {unpack} from '../server/firestore/documents.js';
 import {TABLES,digest} from './snapshot.js';
 
 const rootCollections=['wallets','ledger','operations','adminDays','reversals','highlightEvents','highlightBoards'];
-const allowedPath=/^(?:wallets\/\d{17,20}_\d{17,20}(?:\/(?:rounds|days)\/[A-Za-z0-9-]+)?|ledger\/\d+|operations\/[a-f0-9]{64}|adminDays\/\d{17,20}_\d{17,20}_\d{4}-\d{2}-\d{2}|reversals\/\d+|highlightEvents\/[A-Za-z0-9_-]+|highlightBoards\/\d{17,20})$/;
+const allowedPath=/^(?:wallets\/(?:closed_\d{17,20}_\d{17,20}|\d{17,20}_\d{17,20}(?:\/(?:rounds|days(?:-[1-9]\d{0,15})?)\/[A-Za-z0-9-]+)?)|ledger\/\d+|operations\/[a-f0-9]{64}|adminDays\/\d{17,20}_\d{17,20}_\d{4}-\d{2}-\d{2}|reversals\/\d+|highlightEvents\/[A-Za-z0-9_-]+|highlightBoards\/\d{17,20})$/;
 const requireValue=(value,message)=>{if(!value)throw new Error(message);};
 const fields=value=>({json:JSON.stringify(value)});
 
@@ -33,7 +33,7 @@ export class TestDataReset {
   if(job){requireValue(job.id===input.id&&job.planHash===planHash,'Another reset exists');return this.status(job);}
   const meta=await this.readMeta();requireValue(meta?.status==='ready'&&meta.nextId===input.revision&&meta.environment==='test'&&meta.version===2,'Latest backup must match source');
   const wallets=paths.filter(p=>/^wallets\/[^/]+$/.test(p));
-  job={id:input.id,projectId:this.settings.projectId,namespace:this.settings.namespace,phase:'freeze',planHash,paths,counts,revision:input.revision,generation:latest,backupSha256:manifest.sha256,cursor:0,verifyCursor:0,resetAt:Date.now(),fingerprint:meta.importFingerprint??null,collections:[...rootCollections,...wallets.flatMap(w=>[w+'/rounds',w+'/days'])]};
+  job={id:input.id,projectId:this.settings.projectId,namespace:this.settings.namespace,phase:'freeze',planHash,paths,counts,revision:input.revision,generation:latest,backupSha256:manifest.sha256,cursor:0,verifyCursor:0,resetAt:Date.now(),fingerprint:meta.importFingerprint??null,collections:[...rootCollections,...new Set([...wallets.flatMap(w=>{const active=w.replace('wallets/closed_','wallets/');return [active+'/rounds',active+'/days'];}),...paths.filter(p=>p.split('/').length===4).map(p=>p.slice(0,p.lastIndexOf('/')))])]};
   this.storage.transactionSync(()=>{this.state.set('test-reset',job);this.clearSessions();});
   return this.status(job);
  }

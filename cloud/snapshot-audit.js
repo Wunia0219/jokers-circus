@@ -3,6 +3,7 @@ import {validRound} from '../server/sqlite/database-audit.js';
 import {assertHighlightEvent,assertHighlightBoard,highlightEvent} from '../server/firestore/highlight-data.js';
 import {previousDay,validCheckinTransition} from '../server/wallet/weekly-checkin.js';
 import {validResetOperation,resetEntryIds} from '../server/wallet/wallet-admin.js';
+import {MEMBER_LEFT,validDeparture} from '../server/wallet/membership.js';
 import {isOpeningKind,validWelcomeEntry} from '../server/wallet/wallet-opening.js';
 import {DUEL_LEDGER_KIND,duelDigest,duelKey,replayDuel,validateDuelReceipt} from '../server/wallet/duel-settlement.js';
 
@@ -17,13 +18,21 @@ export function auditRows(header,rows,environment,map){
   const wallets=map('wallets'),entries=map('entries'),ops=map('ops'),rounds=map('rounds'),balances=map('balances'),usedOps=map('usedOps'),usedRounds=map('usedRounds'),spinLinks=map('spinLinks'),reversals=map('reversals'),highlightRounds=map('highlightRounds');
   const counts={settings:1,wallets:0,ledger:0,operations:0,rounds:0,highlight_events:0,highlight_boards:0};
   for(const w of rows('wallets')){unique(wallets,w.guild+'_'+w.user,w);counts.wallets++;}
+  const closed=new Map(),since=new Map();
   let revision=0,spinCount=0;
   for(const e of rows('ledger')){
     const owner=e.guild+'_'+e.user;check(e.id===++revision&&wallets.has(owner)&&amount(e.before)&&amount(e.after)&&Number.isSafeInteger(e.delta)&&e.after===e.before+e.delta&&e.before===(balances.get(owner)||0),'Ledger continuity');
-    if(e.kind==='welcome')check(!balances.has(owner)&&validWelcomeEntry(e),'Welcome credit mismatch');
+    if(closed.has(owner))check(isOpeningKind(e.kind),'Closed wallet ledger');
+    if(e.kind==='welcome')check((closed.has(owner)||!balances.has(owner))&&validWelcomeEntry(e),'Welcome credit mismatch');
+    if(e.kind===MEMBER_LEFT){check(validDeparture(e),'Invalid membership closure');closed.set(owner,e.id);since.set(owner,e.id);}else closed.delete(owner);
     const time=Date.parse(e.time);check(Number.isFinite(time)&&e.day===new Date(time+28800000).toISOString().slice(0,10),'Ledger date');balances.set(owner,e.after);unique(entries,e.id,e);counts.ledger++;
   }
-  for(const w of rows('wallets'))check(/^\d{17,20}$/.test(w.guild)&&/^\d{17,20}$/.test(w.user)&&amount(w.balance)&&w.balance===(balances.get(w.guild+'_'+w.user)||0)&&[0,1].includes(w.milestone)&&Number.isSafeInteger(w.last_spin),'Wallet balance');
+  for(const w of rows('wallets'))check(typeof w.guild==='string'&&typeof w.user==='string'&&/^\d{17,20}$/.test(w.guild)&&/^\d{17,20}$/.test(w.user)&&amount(w.balance)&&w.balance===(balances.get(w.guild+'_'+w.user)||0)&&[0,1].includes(w.milestone)&&Number.isSafeInteger(w.last_spin),'Wallet balance');
+  for(const w of rows('wallets')){
+    const owner=w.guild+'_'+w.user;
+    if(w.closedAt)check(w.balance===0&&w.milestone===0&&w.last_spin===0,'Invalid closed wallet');
+    check(w.closedAt===closed.get(owner)&&w.sinceDeparture===(w.closedAt?undefined:since.get(owner)),'Wallet membership mismatch');
+  }
   for(const r of rows('rounds')){unique(rounds,r.guild+'_'+r.user+'_'+r.id,r);const key=r.guild+'_'+r.id;highlightRounds.set(key,highlightRounds.has(key)?null:r);counts.rounds++;}
   for(const o of rows('operations')){
     check(typeof o.fingerprint==='string'&&typeof o.result==='string','Operation format');unique(ops,o.guild+'\0'+o.key,o);counts.operations++;
@@ -43,11 +52,13 @@ export function auditRows(header,rows,environment,map){
       unique(usedOps,e.id,true);
     }
   }
-  const duelStates=map('duelStates');
+  const duelStates=map('duelStates');since.clear();
   for(const e of rows('ledger')){
+    const owner=e.guild+'_'+e.user;
+    if(e.kind===MEMBER_LEFT){since.set(owner,e.id);duelStates.set(owner,undefined);continue;}
     if(e.kind==='checkin'){
       const day=previousDay(e.day),op=ops.get(e.guild+'\0'+`daily:${e.user}:${e.day}`),prior=ops.get(e.guild+'\0'+`daily:${e.user}:${day}`);
-      check(op&&validCheckinTransition(JSON.parse(op.result),prior?{...JSON.parse(prior.result),day}:null,e.day),'Checkin mismatch');
+      check(op&&validCheckinTransition(JSON.parse(op.result),prior&&JSON.parse(prior.result).entry.id>(since.get(owner)||0)?{...JSON.parse(prior.result),day}:null,e.day),'Checkin mismatch');
     }
     if(e.kind==='spin'){unique(spinLinks,e.guild+'_'+e.user+'_'+e.reference,true);const r=JSON.parse(ops.get(e.guild+'\0'+`spin:${e.user}:${e.reference}`)?.result||'null')?.round;check(r&&e.actor===e.user&&r.before===e.before&&r.after===e.after&&r.net===e.delta&&Math.abs(Date.parse(r.time)-Date.parse(e.time))<=1000,'Spin link mismatch');spinCount++;}
     else if(!isOpeningKind(e.kind))check(usedOps.has(e.id),'Missing retry result');

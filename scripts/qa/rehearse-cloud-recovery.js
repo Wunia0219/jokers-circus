@@ -24,11 +24,12 @@ const filename=join(out,'restored.sqlite');restoreCloudSnapshot(snapshot,filenam
 const expectedTables={...snapshot.tables,wallets:snapshot.tables.wallets.map(({duelDigest,...wallet})=>wallet)};
 const compare=()=>assert.deepEqual(snapshotForCloud(filename,environment).tables,expectedTables);
 const challengeReceiptsVerified=snapshot.tables.ledger.filter(entry=>entry.kind===DUEL_LEDGER_KIND).length;
-if(challengeReceiptsVerified){
+if(challengeReceiptsVerified||snapshot.tables.wallets.some(w=>w.closedAt||w.sinceDeparture)){
  const plan=firestoreImportPlan(filename,environment,{version:2});
  const wallets=new Map(plan.resources.filter(row=>/^wallets\/[^/]+$/.test(row.path)).map(row=>[row.path,row.data]));
  for(const expected of snapshot.tables.wallets){
-  const wallet=wallets.get(`wallets/${expected.guild}_${expected.user}`);
+  const wallet=wallets.get(`wallets/${expected.closedAt?'closed_':''}${expected.guild}_${expected.user}`);
+  assert.equal(wallet?.closedAt,expected.closedAt);assert.equal(wallet?.sinceDeparture,expected.sinceDeparture);
   assert.ok(wallet,'Missing restored Firestore wallet');
   if(snapshot.readTime||expected.duelDigest!==undefined)
     assert.equal(duelDigest(wallet.duel),expected.duelDigest,'Restored challenge progress differs from the encrypted snapshot');
@@ -39,12 +40,33 @@ const store=new WalletStore({filename,environment,guildIds:[...new Set(snapshot.
 const service={authorize:async header=>{assert.equal(header,'Bearer '+token);return session;}};
 const server=createActivityServer({clientId:'100000000000000001',clientSecret:'isolated-recovery-no-discord',publicKey:'0'.repeat(64),wallet:{store,service,adminRoles:[]},fetchImpl:async()=>{throw new Error('Recovery drill forbids external services');}});
 await new Promise((res,rej)=>{server.once('error',rej);server.listen(0,'127.0.0.1',res);});
-let replayed=0,wallets=0;const origin='http://127.0.0.1:'+server.address().port;
-const request=async(path,body)=>{const r=await fetch(origin+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});assert.equal(r.status,200);return r.json();};
+const cutoffs=new Map(snapshot.tables.wallets.filter(w=>w.closedAt||w.sinceDeparture).map(w=>[w.guild+'_'+w.user,w]));
+const archivedSpins=new Set();
+for(const row of snapshot.tables.ledger){
+  const wallet=cutoffs.get(row.guild+'_'+row.user);
+  if(row.kind==='spin'&&wallet&&row.id<=(wallet.closedAt||wallet.sinceDeparture))archivedSpins.add(row.guild+'_'+row.user+'_'+row.reference);
+}
+let replayed=0,archivedRequestsRejected=0,wallets=0;const origin='http://127.0.0.1:'+server.address().port;
+const request=async(path,body,status=200)=>{const r=await fetch(origin+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});assert.equal(r.status,status);return r.json();};
 try{
- for(const w of snapshot.tables.wallets){session={guild:w.guild,user:w.user};assert.equal((await request('/api/wallet')).state.balance,w.balance);wallets++;}
+ for(const w of snapshot.tables.wallets){session={guild:w.guild,user:w.user};if(w.closedAt)assert.equal((await request('/api/wallet',null,403)).code,'MEMBER_LEFT');
+   else assert.equal((await request('/api/wallet')).state.balance,w.balance);wallets++;}
  for(const op of snapshot.tables.operations){
   const expected=JSON.parse(op.result);let result;
+  if(op.key.startsWith('spin:')||op.key.startsWith('daily:')){
+    const [,user]=op.key.split(':');
+    const wallet=cutoffs.get(op.guild+'_'+user);
+    const cutoff=wallet?.closedAt||wallet?.sinceDeparture;
+    if(cutoff){
+      const entryId=expected.entry?.id;
+      if(expected.round?archivedSpins.has(op.guild+'_'+user+'_'+op.key.split(':')[2]):entryId<=cutoff){
+        session={guild:op.guild,user};const spin=!!expected.round;
+        if(!spin)store.clock=()=>Date.parse(snapshot.tables.ledger.find(e=>e.id===entryId).time);
+        const rejected=await request(spin?'/api/spin':'/api/checkin',spin?{requestId:op.key.split(':')[2],bet:Number(op.fingerprint)}:{},wallet.closedAt?403:409);
+        assert.equal(rejected.code,wallet.closedAt?'MEMBER_LEFT':'OLD_WALLET_REQUEST');archivedRequestsRejected++;continue;
+      }
+    }
+  }
   if(op.key.startsWith('spin:')){const [,user,id]=op.key.split(':');session={guild:op.guild,user};result=await request('/api/spin',{bet:Number(op.fingerprint),requestId:id});assert.deepEqual(result.round,expected.round);}
   else if(op.key.startsWith('daily:')){const [,user]=op.key.split(':');session={guild:op.guild,user};store.clock=()=>Date.parse(snapshot.tables.ledger.find(e=>e.id===expected.entry.id).time);result=await request('/api/checkin',{});assert.deepEqual(result.entry,expected.entry);}
   else if(op.key.startsWith('reset:')){result=store.resetWallets(op.guild,expected.reset.actor,expected.reset.requestId);const original=expandResetResult(expected,id=>snapshot.tables.ledger.find(e=>e.id===id));assert.deepEqual(result.entries,original.entries);assert.deepEqual(result.reset,original.reset);}
@@ -53,5 +75,5 @@ try{
  }
 }finally{await new Promise(res=>{server.close(res);server.closeIdleConnections();});await server.drainCommands();store.close();}
 compare();assert.equal(digest(readFileSync(need('--archive'))),sourceHash);
-const report={ok:true,at:new Date().toISOString(),environment,sourceArchiveSha256:sourceHash,revision:snapshot.revision,counts:Object.fromEntries(Object.entries(snapshot.tables).map(([k,v])=>[k,v.length])),restoreMs:Math.round(restoreMs),totalDrillMs:Math.round(performance.now()-started),walletsVerified:wallets,originalRequestsReplayed:replayed,challengeReceiptsVerified,allSevenTablesUnchanged:true,sourceUnchanged:true,externalServicesAccessed:false,scope:'Local SQLite API recovery and Firestore v2 challenge reconstruction'};
+const report={ok:true,at:new Date().toISOString(),environment,sourceArchiveSha256:sourceHash,revision:snapshot.revision,counts:Object.fromEntries(Object.entries(snapshot.tables).map(([k,v])=>[k,v.length])),restoreMs:Math.round(restoreMs),totalDrillMs:Math.round(performance.now()-started),walletsVerified:wallets,originalRequestsReplayed:replayed,archivedRequestsRejected,challengeReceiptsVerified,allSevenTablesUnchanged:true,sourceUnchanged:true,externalServicesAccessed:false,scope:'Local SQLite API recovery and Firestore v2 challenge reconstruction'};
 writeFileSync(join(out,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));

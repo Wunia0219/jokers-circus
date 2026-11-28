@@ -4,8 +4,9 @@ import { problem } from './wallet-common.js';
 const hash = token=>createHash('sha256').update(token).digest('hex');
 const displayName=(member,user=member.user)=>member.nick||user?.global_name||user?.username;
 export class WalletService {
-  constructor(store,{fetchImpl=globalThis.fetch.bind(globalThis),clock=Date.now,sessions=new Map(),onProfile}={}) {Object.assign(this,{store,fetchImpl,clock,sessions,onProfile});}
+  constructor(store,{fetchImpl=globalThis.fetch.bind(globalThis),clock=Date.now,sessions=new Map(),onProfile,revokedAt}={}) {Object.assign(this,{store,fetchImpl,clock,sessions,onProfile,revokedAt});}
   rememberProfile({guild,user,profile}){
+    this.store.confirmReturnedMember?.(guild,user);
     try{this.onProfile?.({guild,user,profile});}catch{console.warn('Leaderboard profile sync deferred');}
   }
   async discord(path,token){
@@ -32,15 +33,16 @@ export class WalletService {
     const sessionToken=randomBytes(32).toString('base64url');
     const expires=this.clock()+Math.min(3600,Math.max(0,Number(token.expires_in)||0))*1000;
     if(expires<=this.clock())throw problem(401,'Discord 授權已過期，請重新開啟活動。');
-    const session={guild,user:user.id,walletEpoch:this.store.walletEpoch,profile:{name:displayName(member,user)||'玩家'},expires,accessToken:token.access_token,checked:this.clock(),count:0,window:this.clock()};
+    const session={createdAt:this.clock(),guild,user:user.id,walletEpoch:this.store.walletEpoch,profile:{name:displayName(member,user)||'玩家'},expires,accessToken:token.access_token,checked:this.clock(),count:0,window:this.clock()};
     this.sessions.set(hash(sessionToken),session);
     this.rememberProfile(session);
     return {token:sessionToken,expiresAt:new Date(expires).toISOString(),userId:user.id,guildId:guild,environment:this.store.environment,...(this.store.walletEpoch?{walletEpoch:this.store.walletEpoch}:{})};
   }
+  revoked(session){const cutoff=this.revokedAt?.(session.guild,session.user);return cutoff!=null&&cutoff>=(session.createdAt??0);}
   async authorize(header){
     const token=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(header||'')?.[1];
     const session=token&&this.sessions.get(hash(token));
-    if(!session||session.walletEpoch!==this.store.walletEpoch||session.expires<=this.clock()){if(token)this.sessions.delete(hash(token));throw problem(401,'登入已過期，請重新開啟活動。');}
+    if(!session||this.revoked(session)||session.walletEpoch!==this.store.walletEpoch||session.expires<=this.clock()){if(token)this.sessions.delete(hash(token));throw problem(401,'登入已過期，請重新開啟活動。');}
     this.store.assertGuild(session.guild);
     if(this.clock()-session.window>=60000){session.window=this.clock();session.count=0;}
     session.count++;this.sessions.set(hash(token),session);
@@ -52,7 +54,7 @@ export class WalletService {
     }
     // Another in-flight membership check may have revoked this session.
     // A late successful response must not recreate it in persistent storage.
-    if(!this.sessions.get(hash(token))||session.expires<=this.clock())throw problem(401,'登入已過期，請重新開啟活動。');
+    if(!this.sessions.get(hash(token))||this.revoked(session)||session.expires<=this.clock())throw problem(401,'登入已過期，請重新開啟活動。');
     this.sessions.set(hash(token),session);
     if(refreshProfile)this.rememberProfile(session);
     return session;

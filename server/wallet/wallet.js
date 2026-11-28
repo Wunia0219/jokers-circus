@@ -1,3 +1,4 @@
+import {membershipViews} from '../sqlite/membership.js';
 import { DATABASE_VERSION, openWalletDatabase } from '../sqlite/database.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import { BETS, roundFromStops, REEL_STRIPS } from '../../src/game/index.js';
@@ -17,6 +18,7 @@ export class WalletStore {
     for(const value of [grantMax,grantDaily]) if(!Number.isSafeInteger(value)||value<=0||value>MAX_BALANCE) throw new Error('Invalid wallet limits');
     Object.assign(this,{environment,guildIds:new Set(guildIds),weeklyRewards:checkinRewards(weeklyRewards),grantMax,grantDaily,clock,spinDelay});
     this.db=openWalletDatabase(filename,environment);
+    this.current=membershipViews(this.db);
   }
   close(){if(this.db.isOpen)this.db.close();}
   isReady(){
@@ -30,8 +32,16 @@ export class WalletStore {
   reason=walletValidation.reason;
   requestId=walletValidation.requestId;
   tx(fn){this.db.exec('BEGIN IMMEDIATE');try{const result=fn();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
+  membershipClosed(guild,user){
+    return this.current.restored&&this.db.prepare("SELECT kind FROM ledger WHERE guild=? AND user=? ORDER BY id DESC LIMIT 1").get(guild,user)?.kind==='member_left';
+  }
+  confirmReturnedMember(guild,user){
+    if(!this.current.restored)return;
+    this.tx(()=>{if(this.membershipClosed(guild,user))this.credit(guild,user,INITIAL_BALANCE,openingKind(this.environment),null,openingReason(this.environment));});
+  }
   ensure(guild,user){
     this.validate(guild,user);
+    if(this.membershipClosed(guild,user))throw problem(403,'此錢包已因退群關閉。','MEMBER_LEFT');
     const created=this.db.prepare('INSERT OR IGNORE INTO wallets(guild,user,balance) VALUES(?,?,0)').run(guild,user).changes;
     if(created)this.credit(guild,user,INITIAL_BALANCE,openingKind(this.environment),null,openingReason(this.environment));
   }
@@ -45,7 +55,12 @@ export class WalletStore {
   }
   once(guild,key,fingerprint,fn){
     const existing=this.db.prepare('SELECT fingerprint,result FROM operations WHERE guild=? AND key=?').get(guild,key);
-    if(existing){if(existing.fingerprint!==fingerprint)throw problem(409,'此請求編號已用於其他操作。','REQUEST_CONFLICT');return {...JSON.parse(existing.result),duplicate:true};}
+    if(existing){if(existing.fingerprint!==fingerprint)throw problem(409,'此請求編號已用於其他操作。','REQUEST_CONFLICT');const result=JSON.parse(existing.result);
+      if(this.current.restored&&(result.round
+        ?this.db.prepare('SELECT 1 FROM archived_rounds WHERE guild=? AND user=? AND id=?').get(guild,key.split(':')[1],result.round.id)
+        :result.entry&&!this.db.prepare('SELECT 1 FROM current_ledger WHERE id=?').get(result.entry.id)))
+        throw problem(409,'此請求屬於退群前的錢包。','OLD_WALLET_REQUEST');
+      return {...result,duplicate:true};}
     const result=fn();
     this.db.prepare('INSERT INTO operations VALUES(?,?,?,?)').run(guild,key,fingerprint,JSON.stringify(result));return result;
   }
@@ -53,16 +68,19 @@ export class WalletStore {
     // ISO dates sort lexically. This range uses the existing (guild,key) PK;
     // it never scans the player's spins or rewrites historical claims.
     const prefix=`daily:${user}:`,row=this.db.prepare('SELECT key,result FROM operations WHERE guild=? AND key>=? AND key<? ORDER BY key DESC LIMIT 1').get(guild,prefix,prefix+'\uffff');
-    return row?{day:row.key.slice(prefix.length),...JSON.parse(row.result)}:null;
+    if(!row)return null;
+    const result=JSON.parse(row.result);
+    if(this.current.restored&&!this.db.prepare('SELECT 1 FROM current_ledger WHERE id=?').get(result.entry.id))return null;
+    return {day:row.key.slice(prefix.length),...result};
   }
   snapshot(guild,user,now=this.clock()){
     const wallet=this.db.prepare('SELECT * FROM wallets WHERE guild=? AND user=?').get(guild,user);
-    const history=this.db.prepare('SELECT data FROM rounds WHERE guild=? AND user=? ORDER BY created DESC,rowid DESC LIMIT 100').all(guild,user).map(row=>JSON.parse(row.data));
+    const history=this.db.prepare(`SELECT data FROM ${this.current.rounds} WHERE guild=? AND user=? ORDER BY created DESC,rowid DESC LIMIT 100`).all(guild,user).map(row=>JSON.parse(row.data));
     const last=this.lastCheckin(guild,user),checkin=weeklyCheckinState(last?.day,last?.checkin,taipeiDay(now),this.weeklyRewards);
     const revision=this.db.prepare('SELECT COALESCE(MAX(id),0) revision FROM ledger WHERE guild=? AND user=?').get(guild,user).revision;
     const spinCooldownMs=Math.max(0,wallet.last_spin+this.spinDelay-now);
-    const reset=this.db.prepare("SELECT id,time,after FROM ledger WHERE guild=? AND user=? AND kind='reset' ORDER BY id DESC LIMIT 1").get(guild,user);
-    const prior=reset?this.db.prepare("SELECT reference FROM ledger WHERE guild=? AND user=? AND kind='spin' AND id<? ORDER BY id DESC LIMIT 1").get(guild,user,reset.id):null;
+    const reset=this.db.prepare(`SELECT id,time,after FROM ${this.current.ledger} WHERE guild=? AND user=? AND kind='reset' ORDER BY id DESC LIMIT 1`).get(guild,user);
+    const prior=reset?this.db.prepare(`SELECT reference FROM ${this.current.ledger} WHERE guild=? AND user=? AND kind='spin' AND id<? ORDER BY id DESC LIMIT 1`).get(guild,user,reset.id):null;
     const priorRound=prior?JSON.parse(this.db.prepare('SELECT result FROM operations WHERE guild=? AND key=?').get(guild,`spin:${user}:${prior.reference}`).result).round.id:null;
     return {version:3,balance:wallet.balance,history,milestones:wallet.milestone?[12000]:[],environment:this.environment,guildId:guild,...checkin,nextCheckin:nextCheckin(now),revision,spinCooldownMs,...(reset?{balanceReset:resetMarker(reset,priorRound)}:{})};
   }
@@ -113,7 +131,7 @@ export class WalletStore {
   playerWallets(guild,{after='',limit=20}={}){
     this.assertGuild(guild);
     if((after&&!snowflake(after))||!Number.isInteger(limit)||limit<1||limit>20)throw problem(400,'無效的玩家名單頁碼。','WALLET_CURSOR');
-    const wallets=this.db.prepare('SELECT w.user,w.balance,(SELECT COUNT(*) FROM rounds r WHERE r.guild=w.guild AND r.user=w.user) rounds FROM wallets w WHERE w.guild=? AND w.user>? ORDER BY w.user LIMIT ?').all(guild,after,limit+1);
+    const wallets=this.db.prepare(`SELECT w.user,w.balance,(SELECT COUNT(*) FROM ${this.current.rounds} r WHERE r.guild=w.guild AND r.user=w.user) rounds FROM ${this.current.wallets} w WHERE w.guild=? AND w.user>? ORDER BY w.user LIMIT ?`).all(guild,after,limit+1);
     const rows=wallets.slice(0,limit).map(w=>({...w}));return {rows,next:wallets.length>limit?rows.at(-1).user:null,time:new Date(this.clock()).toISOString()};
   }
   walletResetReport(guild,actor,requestId,{page}={}){
@@ -135,7 +153,7 @@ export class WalletStore {
     return this.tx(()=>{
       const key='reset:'+requestId,fingerprint=resetFingerprint(actor),saved=this.db.prepare('SELECT * FROM operations WHERE guild=? AND key=?').get(guild,key);
       if(saved){if(saved.fingerprint!==fingerprint)throw problem(409,'此請求編號已用於其他操作。','REQUEST_CONFLICT');return {...expandResetResult(JSON.parse(saved.result),id=>this.db.prepare('SELECT * FROM ledger WHERE id=?').get(id)),duplicate:true};}
-      const wallets=this.db.prepare('SELECT user,balance FROM wallets WHERE guild=? ORDER BY user LIMIT ?').all(guild,RESET_WALLET_LIMIT+1);
+      const wallets=this.db.prepare(`SELECT user,balance FROM ${this.current.wallets} WHERE guild=? ORDER BY user LIMIT ?`).all(guild,RESET_WALLET_LIMIT+1);
       if(wallets.length>RESET_WALLET_LIMIT)throw problem(409,'玩家數量超出本次安全重設範圍，這次沒有變更任何餘額。','RESET_LIMIT');
       if(!wallets.length)throw problem(409,'本群還沒有已建立錢包的玩家。','RESET_EMPTY');
       const now=this.clock(),time=new Date(now).toISOString();
@@ -148,7 +166,7 @@ export class WalletStore {
   reverse(guild,actor,entryId,reason,requestId){
     this.validate(guild,actor);this.reason(reason);this.requestId(requestId);
     return this.tx(()=>this.once(guild,`admin:${requestId}`,JSON.stringify([actor,entryId,reason]),()=>{
-      const entry=this.db.prepare("SELECT * FROM ledger WHERE id=? AND guild=? AND kind='grant'").get(entryId,guild);
+      const entry=this.db.prepare(`SELECT * FROM ${this.current.ledger} WHERE id=? AND guild=? AND kind='grant'`).get(entryId,guild);
       if(!entry)throw problem(404,'找不到這筆管理員發放。','GRANT_MISSING');
       if(this.db.prepare("SELECT 1 FROM ledger WHERE guild=? AND reference=? AND kind='reversal'").get(guild,String(entryId)))throw problem(409,'這筆發放已更正過。','GRANT_REVERSED');
       return {entry:this.credit(guild,entry.user,-entry.delta,'reversal',actor,reason,String(entryId))};
@@ -156,7 +174,7 @@ export class WalletStore {
   }
   history(guild,user,before=Number.MAX_SAFE_INTEGER){
     this.validate(guild,user);if(!Number.isSafeInteger(before)||before<1)throw problem(400,'無效的紀錄游標。');
-    return this.db.prepare('SELECT * FROM ledger WHERE guild=? AND user=? AND id<? ORDER BY id DESC LIMIT 50').all(guild,user,before);
+    return this.db.prepare(`SELECT * FROM ${this.current.ledger} WHERE guild=? AND user=? AND id<? ORDER BY id DESC LIMIT 50`).all(guild,user,before);
   }
   auditHistory(guild,user,{category='rewards',before=Number.MAX_SAFE_INTEGER,days=0}={}){
     this.validate(guild,user);
@@ -173,9 +191,9 @@ export class WalletStore {
     this.validate(guild,user);
     if(![0,1,7,30].includes(days))throw problem(400,'無效的紀錄查詢期間。','AUDIT_FILTER');
     const since=days?taipeiDay(this.clock()-(days-1)*86400000):'0000-01-01';
-    const checkin=this.db.prepare("SELECT COUNT(DISTINCT day) days, COALESCE(SUM(delta),0) total FROM ledger WHERE guild=? AND user=? AND kind='checkin' AND day>=?").get(guild,user,since);
+    const checkin=this.db.prepare(`SELECT COUNT(DISTINCT day) days, COALESCE(SUM(delta),0) total FROM ${this.current.ledger} WHERE guild=? AND user=? AND kind='checkin' AND day>=?`).get(guild,user,since);
     const game=this.db.prepare(`SELECT COUNT(*) rounds, COALESCE(SUM(json_extract(data,'$.bet')),0) bet,
-      COALESCE(SUM(json_extract(data,'$.payout')),0) payout FROM rounds WHERE guild=? AND user=? AND created>=?`).get(guild,user,days?Date.parse(since+'T00:00:00+08:00'):0);
+      COALESCE(SUM(json_extract(data,'$.payout')),0) payout FROM ${this.current.rounds} WHERE guild=? AND user=? AND created>=?`).get(guild,user,days?Date.parse(since+'T00:00:00+08:00'):0);
     return {checkin,game:{...game,net:game.payout-game.bet}};
   }
 }

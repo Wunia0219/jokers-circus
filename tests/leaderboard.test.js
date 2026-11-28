@@ -1,3 +1,4 @@
+import {MemberCleanup} from '../cloud/member-cleanup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {leaderboardQuery,LEADERBOARD_PATH} from '../server/wallet/leaderboard.js';
@@ -15,6 +16,46 @@ const cycle=(board,game='total',page=1)=>board.page(guild,{period:'cycle',game,p
 const all=(board,game='total',page=1)=>board.page(guild,{period:'all',game,page});
 const outbox=sql=>sql.exec('SELECT payload,status FROM leaderboard_outbox ORDER BY id').toArray()
   .map(({payload,status})=>({...JSON.parse(payload),status}));
+
+test('name lookup failures keep scores, confirmed absence removes all scores and rejoin starts at zero',async t=>{
+  const f=previewFixture();t.after(f.close);
+  const {board}=f,who=user(0),state=new Map(),day=86400000;
+  let verifiedGuild=true,now=day,reply=Response.json({user:{id:who}}),removed=0;
+  const bot={verified:true,guild,verify:async()=>{if(!verifiedGuild)throw Error('guild access lost');},request:async path=>path.endsWith('/'+who)?reply.clone():Response.json({})};
+  const store={walletRef:()=>who,read:async()=>({revision:4}),retireMember:async(g,u,revision,stillAbsent)=>{
+    assert.equal(u,who);assert.equal(revision,4);assert.ok(stillAbsent());
+    board.apply([{guild,user:u,id:board.state().cursor+1,kind:'member_left'}]);removed++;return true;
+  }};
+  const sweep=new MemberCleanup({bot,store,board,state,source:'sample',clock:()=>now});
+  const scan=async()=>{state.delete(sweep.key('scan'));await sweep.work();};
+  for(const [status,body] of [[200,{user:{id:who}}],[404,{code:10004}],[403,{}],[502,{}],[429,{}]]){
+    reply=Response.json(body,{status});await scan();assert.equal(state.get(sweep.key(who)),undefined);now+=day;
+  }
+  reply=Response.json({code:10007},{status:404});await scan();now+=day-1;await scan();assert.equal(removed,0);
+  sweep.confirmed(guild,who);now+=day;await scan();assert.equal(removed,0);now+=day;verifiedGuild=false;await scan();assert.equal(removed,0);
+  verifiedGuild=true;await scan();assert.equal(removed,1);assert.equal(sweep.revokedAt(guild,who),now);
+  const status=sweep.status();
+  assert.equal(status.lastBatch.removed,1);assert.equal(status.lastBatch.absent,1);
+  assert.equal(status.rankings.length,6);assert.ok(status.rankings.every(r=>r.ordered&&r.count===12));
+  assert.ok(Number.isSafeInteger(status.withoutName));assert.ok(!JSON.stringify(status).includes(who));
+  assert.equal(board.page(guild,{period:'all',game:'total',page:1}).count,12);
+  board.apply([{guild,user:who,id:board.state().cursor+1,kind:'welcome'}]);
+  for(const period of ['all','cycle'])for(const game of ['slot','duel','total']){
+    const rows=[1,2].flatMap(page=>board.page(guild,{period,game,page}).rows);
+    assert.equal(rows.find(r=>r.user===who)?.amount,0);
+  }
+});
+
+test('rebuilding a leaderboard from immutable history honors departure and subsequent rejoin',t=>{
+  const ledger=[slot(1,4000),{id:2,kind:'member_left',guild,user:user(0)},slot(3,100,{user:user(1)}),
+    {id:4,kind:'welcome',guild,user:user(0)},slot(5,20)];
+  for(const [through,expected] of [[3,undefined],[4,0],[5,20]]){
+    const {sql,transaction,close}=memorySql();t.after(close);
+    const b=new CloudLeaderboard({storage:{sql,transactionSync:transaction},store:{settings:{namespace:'rebuild'}},meta:{nextId:through}}).board;
+    b.seed(ledger,through,[{guild,user:user(0)}]);
+    for(const period of ['all','cycle'])assert.equal(b.page(guild,{period,game:'total',page:1}).rows.find(r=>r.user===user(0))?.amount,expected);
+  }
+});
 
 test('six boards use committed stake, stable ties and ten rows per page',t=>{
   const fixture=previewFixture();t.after(fixture.close);

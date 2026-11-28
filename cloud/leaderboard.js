@@ -81,6 +81,7 @@ export class CloudLeaderboard {
           }
           const member=response.ok?await response.json():null;
           const checkedAt=this.clock();
+          if(member?.user?.id===user)this.onConfirmedMember?.(guild,user);
           const updated=this.board.name(guild,user,checkedAt);
           if(updated!==undefined)return updated||null;
           if(response.status===404)this.board.remember(guild,user,previous||'',checkedAt+3600000);

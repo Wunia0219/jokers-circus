@@ -31,6 +31,38 @@ async function fixture(t){
 }
 const compact={compact:true};
 
+test('confirmed departure closes only the current wallet and backup preserves the new lifetime',async t=>{
+  const h=await fixture(t),s=h.s,request=randomUUID();
+  await s.settlementPolicy(true);await s.checkin(guild,user,compact);
+  const spin=await s.spin(guild,user,20,request,compact);
+  const revision=spin.state.revision;
+  assert.equal(await s.retireMember(guild,user,revision-1,()=>true),false);
+  assert.equal(await s.retireMember(guild,user,revision,()=>false),false);
+  assert.equal(await s.retireMember(guild,user,revision,()=>true),true);
+  assert.equal(await s.retireMember(guild,user,revision,()=>true),false);
+  assert.equal(await s.read(s.walletRef(guild,user)),null);
+  await assert.rejects(s.state(guild,user,compact),{code:'MEMBER_LEFT'});
+  const settings=operationsSettings(h.env),maintenance=await h.create(h.settings,{quota:new MaintenanceQuota(settings)},false);
+  const restore=async()=>{
+    const backup=await performFirestoreMaintenance(settings,{store:maintenance,freeBytes:()=>1024**3,forceBackup:true});
+    assert.equal(backup.backup?.verified,true,JSON.stringify(backup));
+    const target=await h.create({...h.settings,namespace:'return-'+randomUUID()+'-test'});
+    await importFirestore(target,firestoreImportPlan(join(settings.directory,backup.backup.file),'test',{version:2}));
+    return target;
+  };
+  const closed=await restore();
+  await assert.rejects(closed.state(guild,user,compact),{code:'MEMBER_LEFT'});
+  s.confirmMember=async()=>true;
+  const fresh=await s.state(guild,user);
+  assert.equal(fresh.balance,10000);assert.deepEqual(fresh.history,[]);assert.equal(fresh.claimed,false);
+  await assert.rejects(s.spin(guild,user,20,request,compact),{code:'OLD_WALLET_REQUEST'});
+  assert.deepEqual((await s.history(guild,user)).map(e=>e.kind),['test_seed']);
+  const current=await s.spin(guild,user,100,randomUUID(),compact);
+  const reopened=await restore();
+  assert.deepEqual((await reopened.state(guild,user)).history,[current.round]);
+  assert.equal((await reopened.auditSummary(guild,user)).game.bet,100);
+});
+
 for(const version of [1,2])test(`v${version} production welcomes only newly created wallets, once across devices, and preserves legacy balances`,async t=>{
   const h=await fixture(t),settings={...h.settings,environment:'production',schemaVersion:version,namespace:`welcome-${version}-${randomUUID()}-production`};
   const a=await h.create(settings),file=join(h.directory,'legacy-production.sqlite'),local=new WalletStore({filename:file,environment:'production',guildIds:[guild]});

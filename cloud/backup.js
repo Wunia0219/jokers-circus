@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {MEMBER_LEFT} from '../server/wallet/membership.js';
 import {isOpeningKind} from '../server/wallet/wallet-opening.js';
 import {isDeepStrictEqual} from 'node:util';
 import {digest} from './snapshot.js';
@@ -55,7 +56,7 @@ export class CloudBackup {
     for(const name of ['ledger','operations','rounds','wallets','highlight_events','highlight_boards'])t[name]=[];
     if(job.phase==='ledger'&&job.cursor<job.target){
       const ids=Array.from({length:Math.min(20,job.target-job.cursor)},(_,i)=>job.cursor+i+1),docs=await this.read(ids.map(id=>s.root.collection('ledger').doc(String(id))),job.readTime),links=[];
-      docs.forEach((doc,i)=>{const e=unpack(doc);if(e.id!==ids[i])throw new Error('Ledger gap');t.ledger.push(e);if(isOpeningKind(e.kind))return;const key=doc.get('operationKey');if(e.kind==='reset'&&key===null)return;if(typeof key!=='string')throw new Error('Missing original retry key');links.push({guild:e.guild,user:e.user,key,roundStorage:doc.get('roundStorage')});});
+      docs.forEach((doc,i)=>{const e=unpack(doc);if(e.id!==ids[i])throw new Error('Ledger gap');t.ledger.push(e);if(isOpeningKind(e.kind)||e.kind===MEMBER_LEFT)return;const key=doc.get('operationKey');if(e.kind==='reset'&&key===null)return;if(typeof key!=='string')throw new Error('Missing original retry key');links.push({guild:e.guild,user:e.user,key,roundStorage:doc.get('roundStorage')});});
       const ops=await this.read(links.map(o=>s.root.collection('operations').doc(digest(o.guild+'\0'+o.key))),job.readTime),rounds=[];
       ops.forEach((doc,i)=>{const o=unpack(doc),link=links[i];t.operations.push({guild:link.guild,key:link.key,fingerprint:o.fingerprint,result:JSON.stringify(o.result)});if(link.key.startsWith('spin:')){
         if(o.roundStorage!==link.roundStorage||o.roundStorage!==undefined&&o.roundStorage!=='operation-v1')throw new Error('Round storage mismatch');
@@ -69,7 +70,7 @@ export class CloudBackup {
       const name=collections[job.collection];let query=s.root.collection(name).orderBy('__name__').limit(20);if(job.cursorId)query=query.startAfter(job.cursorId);
       // __name__ ordering only: reserve the full 20-document page, even if empty.
       s.quota.reserve({reads:this.readAttempts*20});const page=await s.db.query(query,{readTime:job.readTime});s.quota.observe(Buffer.byteLength(JSON.stringify(page.docs.map(d=>d.data()))));
-      for(const doc of page.docs){const row=unpack(doc);if(name==='wallets')t.wallets.push({guild:row.guild,user:row.user,balance:row.balance,milestone:Number(row.milestone),last_spin:row.last_spin,
+      for(const doc of page.docs){const row=unpack(doc);if(name==='wallets')t.wallets.push({guild:row.guild,user:row.user,balance:row.balance,milestone:Number(row.milestone),last_spin:row.last_spin,...(row.closedAt?{closedAt:row.closedAt}:{}),...(row.sinceDeparture?{sinceDeparture:row.sinceDeparture}:{}),
         ...(row.duel!==undefined?{duelDigest:duelDigest(row.duel)}:{})});else if(name==='highlightEvents')t.highlight_events.push(row);else t.highlight_boards.push(highlightBoardRecord(row));}
       if(page.size===20)job.cursorId=page.docs.at(-1).id;else{job.collection++;job.cursorId=null;}
       if(job.collection===collections.length)job.phase='audit';

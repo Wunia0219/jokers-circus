@@ -1,5 +1,7 @@
 import {problem} from './wallet-common.js';
 
+import {MEMBER_LEFT} from './membership.js';
+
 export const LEADERBOARD_PATH='/api/arcade/leaderboard';
 export const LEADERBOARD_PAGE_SIZE=10;
 export const leaderboardPeriods={all:'總排名',cycle:'月排名'};
@@ -165,6 +167,7 @@ export class Leaderboard {
       if(entry.id>through)break;
       if(entry.id!==++cursor)throw new Error('Leaderboard backup ledger gap');
       const {guild,user}=entry;
+      if(entry.kind===MEMBER_LEFT){scores.get(guild)?.delete(user);continue;}
       const score=scoreFor(guild,user);
       if(entry.kind==='reset'){
         if(cycles.get(guild)?.id===entry.reference)continue;
@@ -194,6 +197,13 @@ export class Leaderboard {
         if(entry.id!==cursor+1)throw new Error('Leaderboard ledger gap');
         cursor=entry.id;
         const {guild,user}=entry,stake=wager(entry);
+        if(entry.kind===MEMBER_LEFT){
+          this.sql.exec('DELETE FROM leaderboard_scores WHERE guild=? AND user=?',guild,user);
+          this.sql.exec('DELETE FROM leaderboard_names WHERE guild=? AND user=?',guild,user);
+          this.sql.exec('DELETE FROM leaderboard_departures WHERE guild=? AND user=?',guild,user);
+          if(guild===this.announcementGuild)this.sql.exec("DELETE FROM leaderboard_outbox WHERE status IN ('held','pending') AND json_extract(payload,'$.user')=?",user);
+          continue;
+        }
         if(!stake)this.sql.exec('INSERT OR IGNORE INTO leaderboard_scores (guild,user) VALUES(?,?)',guild,user);
         if(entry.kind==='reset'){
           if(this.reset(guild)?.id===entry.reference)continue;

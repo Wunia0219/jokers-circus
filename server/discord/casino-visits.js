@@ -70,7 +70,12 @@ export class CasinoVisits {
     this.data.events.push({id:randomUUID(),at:this.clock(),payload,status:'pending'});
   }
   async finish(key,visit,reason){
-    const end=account(await this.readAccount(visit.guild,visit.user,visit.start));
+    let end;
+    try{end=account(await this.readAccount(visit.guild,visit.user,visit.start));}
+    catch(error){
+      if(error.code!=='VISIT_WALLET_MISSING')throw error;
+      delete this.data.visits[key];this.save();return;
+    }
     const receipt=visitMessage(visit,end,reason);
     const queued=this.transaction(()=>{
       const queued=this.onFinish?.(visit,end,new Date(this.clock()).toISOString());

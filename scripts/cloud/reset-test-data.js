@@ -15,7 +15,14 @@ if(command==='plan'){
  const out=resolve(need('out'));if(existsSync(out))throw new Error('Use a new private output directory');mkdirSync(out,{recursive:true});
  const file=join(out,'source.sqlite');restoreCloudSnapshot(snapshot,file,'test');
  const plan=firestoreImportPlan(file,'test',{version:2}),manifest=envelope.archive.manifest;
- const input={action:'prepare',id:randomBytes(16).toString('hex'),confirm:'DELETE ALL TEST PLAYERS',projectId:source.projectId,namespace:source.namespace,generation:manifest.generation,sha256:manifest.sha256,revision:snapshot.revision,paths:plan.resources.map(r=>r.path)};
+ // Firestore keeps subcollections when a parent wallet is deleted. Include archived days in every lifetime.
+ const paths=new Set(plan.resources.map(r=>r.path)),closures=new Map();
+ for(const entry of snapshot.tables.ledger.toSorted((a,b)=>a.id-b.id)){
+   const wallet='wallets/'+entry.guild+'_'+entry.user;
+   if(entry.kind==='member_left')closures.set(wallet,entry.id);
+   if(['spin','checkin'].includes(entry.kind))paths.add(wallet+'/days'+(closures.has(wallet)?'-'+closures.get(wallet):'')+'/'+entry.day);
+ }
+ const input={action:'prepare',id:randomBytes(16).toString('hex'),confirm:'DELETE ALL TEST PLAYERS',projectId:source.projectId,namespace:source.namespace,generation:manifest.generation,sha256:manifest.sha256,revision:snapshot.revision,paths:[...paths]};
  writeFileSync(join(out,'plan.json'),JSON.stringify(input),{flag:'wx',mode:0o600});
  console.log(JSON.stringify({planned:true,source,revision:snapshot.revision,wallets:snapshot.tables.wallets.length,documents:input.paths.length,operationId:input.id,output:out}));
 }else if(['prepare','step'].includes(command)){

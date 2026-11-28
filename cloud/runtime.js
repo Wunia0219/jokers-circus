@@ -18,6 +18,7 @@ import {cloudFetch} from './fetch.js';
 import {GrantNotifications} from '../server/discord/grant-notification.js';
 import {arcadeControls,arcadeEnabled,operatorEnabled,readArcade} from './arcade-controls.js';
 import {FirestoreDuelAnnouncements} from '../server/firestore/duel-announcements.js';
+import {MemberCleanup} from './member-cleanup.js';
 import {CloudLeaderboard} from './leaderboard.js';
 
 export async function createCloudRuntime(project){
@@ -46,11 +47,17 @@ export async function createCloudRuntime(project){
     activeVisitStart:(guild,user)=>visits?.startRevision(guild,user),
     quota:backup.store.quota,wake:delay=>project.ctx.waitUntil(project.schedule(delay).catch(()=>{})),
   }):null;
+  const members=leaderboard?.memberBot?new MemberCleanup({bot:leaderboard.memberBot,store,board:leaderboard.board,state:project.state,source:leaderboard.source}):null;
+  if(members){
+    leaderboard.onConfirmedMember=(guild,user)=>members.confirmed(guild,user);
+    store.confirmMember=async(guild,user)=>await members.membership(guild,user)==='present';
+  }
   const visits=bot?new CasinoVisits({state:project.state,bot,readAccount:(guild,user,start)=>store.casinoAccount(guild,user,start),
     onFinish:(visit,end,time)=>leaderboard?.queueDeparture(visit,end,time),transaction:work=>project.ctx.storage.transactionSync(work),
     wake:()=>project.ctx.waitUntil(project.schedule(1000)),warn:message=>console.warn(message)}):null;
   if(leaderboard)store.onLedgerCommit=entries=>leaderboard.commit(entries);
-  const service=new WalletService(store,{fetchImpl:cloudFetch,sessions:new CloudSessions(project.ctx.storage,sealer),onProfile:session=>leaderboard?.remember(session)});
+  const service=new WalletService(store,{fetchImpl:cloudFetch,sessions:new CloudSessions(project.ctx.storage,sealer),onProfile:session=>{members?.confirmed(session.guild,session.user);leaderboard?.remember(session);},
+    revokedAt:members?.revokedAt.bind(members)});
   const slotOpen=arcade||operatorEnabled(project.env)?()=>readArcade(project.state).slot==='open':undefined;
   const testProfile=testCommandProfile(project.env);
   const simpleTestCommands=testProfile==='test-simple',testCommands=testProfile!==null;
@@ -60,5 +67,5 @@ export async function createCloudRuntime(project){
   const wallet={store,service,visits,arcade,leaderboard,slotOpen,previewAllCG,commandEffects,commandChannelIds,notifyGrant:notices.notify.bind(notices),removeGrantNotice:notices.remove.bind(notices),retryGrantNotice:notices.retry.bind(notices),adminRoles,highlights:highlights?{enqueue:(session,id,round)=>{if(highlights.enqueue(session,id,round)){project.state.set('highlights-dirty',true);project.ctx.waitUntil(project.schedule(bot?1000:10000));}}}:null};
   const handler=createActivityHandler({fetchImpl:cloudFetch,clientId:project.env.DISCORD_CLIENT_ID,clientSecret:project.env.DISCORD_CLIENT_SECRET,publicKey:project.env.DISCORD_PUBLIC_KEY,wallet,loginLimiter:new CloudLoginLimit(project.state),defer:p=>project.ctx.waitUntil(project.track(p)),operations:{isReady:()=>project.ready(),recordRequest:()=>{}}});
   wallet.duelAnnouncementWake=()=>{if(duelAnnouncements){project.state.set('duel-announcements-dirty',true);duelAnnouncements.nextAttempt=0;project.ctx.waitUntil(project.schedule(1000));}};
-  return {settings,store,service,highlights,duelAnnouncements,visits,backup,vault,leaderboard,handler};
+  return {settings,store,service,highlights,duelAnnouncements,visits,backup,vault,leaderboard,members,handler};
 }

@@ -25,7 +25,18 @@ export async function firestoreWalletConfig(env){
   try{
     highlights=firestoreHighlightsConfig(env,store);
     await store.initialize();
-    if(!localTest)return {store,service:new WalletService(store),adminRoles,commandChannelIds,highlights};
+    if(!localTest){
+      const service=new WalletService(store);
+      store.confirmMember=async(guild,user)=>{
+        for(const session of service.sessions.values()){
+          if(session.guild!==guild||session.user!==user||session.expires<=service.clock())continue;
+          await service.member(guild,user,session.accessToken);
+          return true;
+        }
+        return false;
+      };
+      return {store,service,adminRoles,commandChannelIds,highlights};
+    }
     const guild=guildIds[0];
     for(const profile of LOCAL_TEST_PROFILES)await store.ensureFixture(guild,profile.user,profile.balance,profile.key);
     const localOverview=async()=>({ok:await store.isReady(),environment:'test',version:APP_VERSION,

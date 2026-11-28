@@ -1,3 +1,4 @@
+import {departureReason} from '../server/wallet/membership.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -15,6 +16,31 @@ function fixture(t){
   const root=resolve('test-results/wallet-opening');mkdirSync(root,{recursive:true});const dir=mkdtempSync(join(root,'case-')),filename=join(dir,'production.sqlite');
   const s=new WalletStore({filename,environment:'production',guildIds:[guild],spinDelay:0});t.after(()=>s.close());return {s,filename,dir};
 }
+test('restoring a departed member preserves closure, then starts a separate lifetime on verified return',t=>{
+  const {s,filename,dir}=fixture(t),request=randomUUID();
+  const previous=s.spin(guild,user,100,request);s.checkin(guild,user);
+  const balance=s.state(guild,user).balance;
+  s.tx(()=>{
+    s.credit(guild,user,-balance,'member_left',null,departureReason);
+    s.db.prepare('UPDATE wallets SET milestone=0,last_spin=0 WHERE guild=? AND user=?').run(guild,user);
+  });s.close();
+  const snap=snapshotForCloud(filename,'production');
+  assert.ok(snap.tables.wallets[0].closedAt);
+  const file=join(dir,'returned.sqlite');restoreCloudSnapshot(snap,file,'production');
+  const local=new WalletStore({filename:file,environment:'production',guildIds:[guild]});t.after(()=>local.close());
+  assert.throws(()=>local.state(guild,user),{code:'MEMBER_LEFT'});
+  assert.deepEqual(local.playerWallets(guild).rows,[]);
+  local.confirmReturnedMember(guild,user);local.confirmReturnedMember(guild,user);
+  const state=local.state(guild,user);
+  assert.equal(state.balance,10000);assert.equal(state.claimed,false);assert.deepEqual(state.history,[]);
+  assert.deepEqual(local.history(guild,user).map(e=>e.kind),['welcome']);
+  assert.equal(local.auditSummary(guild,user).game.rounds,0);
+  assert.throws(()=>local.spin(guild,user,previous.round.bet,request),{code:'OLD_WALLET_REQUEST'});
+  const after=snapshotForCloud(file,'production');
+  assert.equal(after.tables.wallets[0].sinceDeparture,snap.tables.wallets[0].closedAt);
+  assert.equal(firestoreImportPlan(file,'production',{version:2}).memberDepartures,true);
+});
+
 test('production opening credits exactly once and never tops up existing zero or nonzero wallets across restart',t=>{
   const {s,filename}=fixture(t);
   // Genuine pre-upgrade wallets: no initial credit existed at creation time.

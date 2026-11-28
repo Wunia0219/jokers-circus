@@ -12,6 +12,8 @@ import {nextRecordCode,validRecordCode} from './record-codes.js';
 import {DUEL_LEDGER_KIND,duelFingerprint,duelIntent,duelKey,duelView,settleDuel} from '../wallet/duel-settlement.js';
 import {duelNoticeId,duelNoticeIndex} from './duel-announcements.js';
 
+import {MEMBER_LEFT,closedWallet,closedWalletId,dayCollection,departureReason} from '../wallet/membership.js';
+
 const maxBalance=1_000_000_000_000,maxDocument=512*1024;
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const packed=data=>({json:JSON.stringify(data)});
@@ -37,6 +39,32 @@ export class FirestoreWalletCore {
   reason=walletValidation.reason;
   requestId=walletValidation.requestId;
   walletRef(guild,user){return this.root.collection('wallets').doc(guild+'_'+user);}
+  closedRef(guild,user){return this.root.collection('wallets').doc(closedWalletId(guild,user));}
+  async retireMember(guild,user,revision,stillAbsent){
+    this.validate(guild,user);
+    if(this.schemaVersion!==2)throw new Error('Membership cleanup requires v2');
+    const task=async()=>{
+      const entry=await this.db.runTransaction(async tx=>{
+        const ref=this.walletRef(guild,user),[meta,wallet]=await this.readMany([this.meta,ref],tx);
+        this.checkMeta(meta);
+        if(!stillAbsent()||!Number.isSafeInteger(revision)||!wallet||wallet.revision!==revision)return null;
+        if(wallet.guild!==guild||wallet.user!==user||!Number.isSafeInteger(wallet.balance)||wallet.balance<0||wallet.balance>maxBalance)throw new Error('Invalid wallet owner or balance');
+        const now=this.clock(),id=meta.nextId+1;
+        if(!Number.isSafeInteger(id))throw new Error('Invalid ledger revision');
+        const row={id,guild,user,kind:MEMBER_LEFT,before:wallet.balance,delta:-wallet.balance,after:0,
+          actor:null,reference:null,reason:departureReason,time:new Date(now).toISOString(),day:taipeiDay(now)};
+        this.write(tx,this.root.collection('ledger').doc(String(id)),row,{create:true,index:{...ledgerIndex(row),operationKey:null}});
+        this.write(tx,this.closedRef(guild,user),closedWallet(row),{create:true});
+        tx.beforeCommit?.(()=>{if(!stillAbsent())throw new Error('Membership changed before commit');});
+        this.quota.reserve({writes:2});tx.delete(ref);
+        this.write(tx,this.meta,{...meta,nextId:id,memberDepartures:true});
+        return row;
+      },{maxAttempts:3});
+      if(entry){this.invalidateCache();this.publishLedger([entry]);}
+      return !!entry;
+    };
+    return this.settlementQueue?this.settlementQueue.run(task):task();
+  }
   async read(ref,tx){
     // Covers SDK transport retries conservatively; transaction callbacks reserve anew.
     this.quota.reserve({reads:6});
@@ -135,7 +163,7 @@ export class FirestoreWalletCore {
       // Reuse the sole writer's committed wallet, with the same freshness bound
       // as readState. Expiry, clock rollback and invalidation force a fresh read.
       const wallet=cached&&age>=0&&age<this.stateCacheMs?cached.wallet:await this.read(this.walletRef(guild,user));
-      if(!wallet||wallet.guild!==guild||wallet.user!==user)throw problem(404,'帳號尚未建立。');
+      if(!wallet||wallet.guild!==guild||wallet.user!==user||start&&start.revision<=wallet.sinceDeparture)throw problem(404,'本次造訪的錢包已不存在。','VISIT_WALLET_MISSING');
       const result={balance:wallet.balance,...wallet.summary.game,revision:wallet.revision};
       if(Number.isSafeInteger(start?.revision)){
         const duel={entries:0,clears:0,bet:0,payout:0,net:0};
@@ -202,17 +230,28 @@ export class FirestoreWalletCore {
         const key=kind==='checkin'?`daily:${user}:${day}`:kind==='spin'?`spin:${user}:${operation.requestId}`:kind===DUEL_LEDGER_KIND?duelKey(user,operation.requestId):
           ['grant','reversal','fixture'].includes(kind)?`admin:${operation.requestId}`:null;
         const opRef=key?this.root.collection('operations').doc(digest(guild+'\0'+key)):null;
-        const dayRef=ref.collection('days').doc(day),needsDay=kind==='spin'||kind==='checkin';
+        const needsDay=kind==='spin'||kind==='checkin';
+        const hint=needsDay?dayCollection(this.cache.get(guild+':'+user)?.wallet):'days';
+        let dayRef=ref.collection(hint).doc(day);
         // Accepted rounds still read exactly four documents. Fetching the daily
         // total with the first batch removes another network round trip.
         const [meta,savedWallet,existing,savedDay]=await this.readMany([this.meta,ref,...(opRef?[opRef]:[]),...(needsDay?[dayRef]:[])],tx);this.checkMeta(meta);
         let wallet=savedWallet;
+        const closed=!wallet&&meta.memberDepartures?await this.read(this.closedRef(guild,user),tx):null;
+        if(closed&&(existing||!this.confirmMember||!await this.confirmMember(guild,user)))throw problem(403,'這個錢包已因退群關閉，請重新入群並登入。','MEMBER_LEFT');
+        const since=wallet?.sinceDeparture||closed?.closedAt;
+        if(since&&existing&&(existing.result.entry?.id??existing.result.historyRevision??0)<=since)
+          throw problem(409,'此請求屬於退群前的錢包。','OLD_WALLET_REQUEST');
         if(existing){if(existing.fingerprint!==operation.fingerprint)throw problem(409,'此請求編號已用於其他操作。','REQUEST_CONFLICT');
           return {...existing.result,duplicate:true,state:wallet?this.snapshot(wallet,now):undefined,wallet};}
         if(allowPlay&&!allowPlay())throw problem(409,'野球拳維護中，請返回大廳。','DUEL_MAINTENANCE');
         const fresh=!wallet;
         wallet ||= {guild,user,balance:0,last_spin:0,milestone:false,claimedDay:null,revision:0,
           ...(this.schemaVersion===2?{historyRevision:0,historyCache:encodeHistory([])}:{history:[]}),summary:zeroSummary()};
+        if(since)wallet.sinceDeparture=since;
+        const scopeChanged=needsDay&&dayCollection(wallet)!==hint;
+        if(scopeChanged)dayRef=ref.collection(dayCollection(wallet)).doc(day);
+        const currentDay=scopeChanged?await this.read(dayRef,tx):savedDay;
         const adminRef=kind==='grant'?this.root.collection('adminDays').doc(guild+'_'+operation.actor+'_'+day):null;
         const adminDay=adminRef?(await this.read(adminRef,tx)||{used:0}):null;
         let original,reversalRef;
@@ -220,7 +259,7 @@ export class FirestoreWalletCore {
           original=await this.read(this.root.collection('ledger').doc(String(operation.entryId)),tx);
           reversalRef=this.root.collection('reversals').doc(String(operation.entryId));
           const reversed=await this.read(reversalRef,tx);
-          if(!original||original.kind!=='grant'||original.guild!==guild||original.user!==user)throw problem(404,'找不到這筆管理員發放。','GRANT_MISSING');
+          if(!original||original.id<=(since||0)||original.kind!=='grant'||original.guild!==guild||original.user!==user)throw problem(404,'找不到這筆管理員發放。','GRANT_MISSING');
           if(reversed)throw problem(409,'這筆發放已更正過。','GRANT_REVERSED');
         }
         if(kind==='spin'){
@@ -234,7 +273,7 @@ export class FirestoreWalletCore {
         // The current day is already part of the authoritative wallet write.
         // Flush it once on a day transition, including a backward clock change.
         const pendingDay=wallet.pendingDay;
-        const daySummary=needsDay?(pendingDay?.day===day?pendingDay.summary:(savedDay||zeroSummary())):null;
+        const daySummary=needsDay?(pendingDay?.day===day?pendingDay.summary:(currentDay||zeroSummary())):null;
         const entries=[];
         const credit=(delta,entryKind,actor,reason,reference=null)=>{
           const before=wallet.balance,after=before+delta;
@@ -287,6 +326,7 @@ export class FirestoreWalletCore {
         const cleared=kind===DUEL_LEDGER_KIND&&answer.entry?.delta>0&&this.duelAnnouncementsGuild===guild?wallet.duel.records[0]:null;
         const duelNotice=cleared?{guild,user,matchId:cleared.id,characterId:cleared.characterId,wins:cleared.wins,reward:cleared.reward,occurred:now,status:'pending'}:null;
         // All transaction reads finish before the first write.
+        if(closed){this.quota.reserve({writes:2});tx.delete(this.closedRef(guild,user));}
         if(entries.length){
           for(const entry of entries){
             if(this.schemaVersion===1)this.record(tx,ref,entry);
@@ -298,7 +338,7 @@ export class FirestoreWalletCore {
           }
           this.write(tx,this.meta,meta);this.write(tx,ref,wallet);
         }else if(fresh)this.write(tx,ref,wallet,{create:true});
-        if(needsDay&&pendingDay&&pendingDay.day!==day)this.write(tx,ref.collection('days').doc(pendingDay.day),pendingDay.summary);
+        if(needsDay&&pendingDay&&pendingDay.day!==day)this.write(tx,ref.collection(dayCollection(wallet)).doc(pendingDay.day),pendingDay.summary);
         if(needsDay&&!compactStorage)this.write(tx,dayRef,daySummary);
         if(round&&!compactStorage)this.write(tx,ref.collection('rounds').doc(round.id),round,{create:true,index:this.schemaVersion===2?{sequence:wallet.historyRevision}:{}});
         if(adminRef)this.write(tx,adminRef,{used:adminDay.used+operation.amount});

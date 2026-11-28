@@ -88,4 +88,10 @@
 
 出入場整合在 Cloudflare runtime，本機 Node／SQLite QA 不對真實頻道發送。以隔離資料驗證得獎、去重與恢復；正式環境唯讀檢查健康、指令與圖片。真人確認登入、入離場與手機提醒，不以正式下注製造測試大獎。部署現況見[客戶交付](customer-handoff.md)，測試見[驗收文件](testing.md)。
 
+## 退群玩家的錢包與排名
+
+背景排程分批核對機器人所在伺服器的玩家。對同一帳號收到兩次 Discord `Unknown Member`（10007），相隔至少 24 小時，且錢包版本相同，才會關閉錢包並移除所有榜單的分數。確認玩家仍在群內會取消先前的退群紀錄。名稱待同步、零分、Discord 限流或查詢失敗都會保留錢包。
+
+重新入群並通過成員驗證後，下次開啟錢包會取得新玩家的起始戲籌，下注排名、簽到、遊玩紀錄從頭累計。舊交易與退群結清記錄保留供驗帳及備份使用。
+
 參考：[Discord 訊息](https://docs.discord.com/developers/resources/message#create-message)、[限流](https://docs.discord.com/developers/topics/rate-limits)。

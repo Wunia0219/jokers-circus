@@ -1,3 +1,4 @@
+import {MEMBER_LEFT,closedWallet,closedWalletId,dayCollection} from '../wallet/membership.js';
 import {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
 import {inspectWalletDatabase} from '../sqlite/database.js';
@@ -20,6 +21,10 @@ export function firestoreImportPlan(filename,environment,{version=1}={}){
   const put=(path,data,index={})=>{if(documents.has(path))throw new Error('Duplicate import target');documents.set(path,{path,data,index});};
   try{
     db.exec('BEGIN');
+    const closures=new Map();
+    for(const row of db.prepare("SELECT guild,user,MAX(id) id FROM ledger WHERE kind='member_left' GROUP BY guild,user").iterate())
+      closures.set('wallets/'+row.guild+'_'+row.user,row.id);
+    if(closures.size&&version!==2)throw new Error('Membership recovery requires Firestore schema 2');
     const operationLinks=new Map(),spinRequests=new Map(),roundSequences=new Map(),resetLinks=new Map(),lastRounds=new Map(),codes=new Map(),referenceCodes=new Map(),seenCodes=new Set(),duelReceipts=new Map();
     for(const row of db.prepare('SELECT * FROM operations').iterate()){
       const result=JSON.parse(row.result);
@@ -37,12 +42,12 @@ export function firestoreImportPlan(filename,environment,{version=1}={}){
     }
     for(const row of db.prepare('SELECT * FROM wallets ORDER BY guild,user').iterate()){
       const base=`wallets/${row.guild}_${row.user}`;
-      wallets.set(base,{...row,claimedDay:null,revision:0,history:[],summary:blank(),milestone:!!row.milestone});
+      wallets.set(base,{...row,...(closures.has(base)?{sinceDeparture:closures.get(base)}:{}),claimedDay:null,revision:0,history:[],summary:blank(),milestone:!!row.milestone});
     }
     for(const entry of db.prepare('SELECT * FROM ledger ORDER BY id').iterate()){
       nextId=Math.max(nextId,entry.id);const base=`wallets/${entry.guild}_${entry.user}`,wallet=wallets.get(base),id=String(entry.id).padStart(16,'0'),cat=ledgerCategory(entry.kind);
-      wallet.revision=entry.id;
-      if(entry.kind===DUEL_LEDGER_KIND){
+      wallet.revision=entry.id;const current=entry.id>(wallet.sinceDeparture||0);
+      if(current&&entry.kind===DUEL_LEDGER_KIND){
         if(version!==2)throw new Error('Challenge recovery requires Firestore schema 2');
         const operation=duelReceipts.get(entry.id);
         wallet.duel=replayDuel(wallet.duel,operation,JSON.parse(operation.result),entry);
@@ -59,15 +64,15 @@ export function firestoreImportPlan(filename,environment,{version=1}={}){
         if(entry.kind==='spin'){
           const roundId=spinRequests.get(entry.guild+'\0'+key);
           if(!roundId)throw new Error('Source spin operation is missing');
-          roundSequences.set(base+'/'+roundId,entry.id);wallet.historyRevision=entry.id;
+          roundSequences.set(base+'/'+roundId,entry.id);if(current)wallet.historyRevision=entry.id;
         }
       }
-      if(entry.kind==='checkin'){
+      if(current&&entry.kind==='checkin'){
         wallet.claimedDay=entry.day;wallet.summary.checkin.days++;wallet.summary.checkin.total+=entry.delta;
-        const key=base+'/days/'+entry.day,summary=days.get(key)||blank();summary.checkin.days++;summary.checkin.total+=entry.delta;days.set(key,summary);
+        const key=base+'/'+dayCollection(wallet)+'/'+entry.day,summary=days.get(key)||blank();summary.checkin.days++;summary.checkin.total+=entry.delta;days.set(key,summary);
       }
-      if(entry.kind==='spin')lastRounds.set(base,spinRequests.get(entry.guild+'\0'+`spin:${entry.user}:${entry.reference}`));
-      if(entry.kind==='reset')wallet.balanceReset=resetMarker(entry,lastRounds.get(base)||null);
+      if(current&&entry.kind==='spin')lastRounds.set(base,spinRequests.get(entry.guild+'\0'+`spin:${entry.user}:${entry.reference}`));
+      if(current&&entry.kind==='reset')wallet.balanceReset=resetMarker(entry,lastRounds.get(base)||null);
       if(entry.kind==='reversal'){const recordCode=codes.get(entry.guild+'\0'+operationLinks.get(entry.id));put(`reversals/${entry.reference}`,{entryId:entry.id,...(recordCode?{recordCode}:{})});}
       if(entry.kind==='grant'){
         const key=`adminDays/${entry.guild}_${entry.actor}_${entry.day}`;adminDays.set(key,{used:(adminDays.get(key)?.used||0)+entry.delta});
@@ -75,13 +80,14 @@ export function firestoreImportPlan(filename,environment,{version=1}={}){
     }
     for(const row of db.prepare('SELECT * FROM rounds ORDER BY created DESC,rowid DESC').iterate()){
       const round=JSON.parse(row.data),base=`wallets/${row.guild}_${row.user}`,wallet=wallets.get(base);
+      put(`${base}/rounds/${round.id}`,round,version===2?{sequence:roundSequences.get(base+'/'+round.id)}:{});
+      if(wallet.sinceDeparture&&roundSequences.get(base+'/'+round.id)<=wallet.sinceDeparture)continue;
       if(version===1){if(wallet.history.length<100)wallet.history.push(round);}
       else{
         wallet.history.push({sequence:roundSequences.get(base+'/'+round.id),round});
         wallet.history.sort((a,b)=>b.sequence-a.sequence);wallet.history.length=Math.min(wallet.history.length,100);
       }
-      put(`${base}/rounds/${round.id}`,round,version===2?{sequence:roundSequences.get(base+'/'+round.id)}:{});
-      const day=taipeiDay(row.created),key=base+'/days/'+day,summary=days.get(key)||blank();
+      const day=taipeiDay(row.created),key=base+'/'+dayCollection(wallet)+'/'+day,summary=days.get(key)||blank();
       for(const target of [summary,wallet.summary]){target.game.rounds++;target.game.bet+=round.bet;target.game.payout+=round.payout;target.game.net=target.game.payout-target.game.bet;}
       days.set(key,summary);
     }
@@ -103,11 +109,17 @@ export function firestoreImportPlan(filename,environment,{version=1}={}){
     if(version===2)for(const wallet of wallets.values()){
       wallet.historyCache=encodeHistory(wallet.history);delete wallet.history;wallet.historyRevision ||= 0;
     }
-    for(const [path,data] of [...wallets,...days,...adminDays])put(path,data);
+    for(const [path,data] of [...wallets,...days,...adminDays]){
+      if(data.sinceDeparture&&data.sinceDeparture===data.revision){
+        if(data.balance||data.milestone||data.last_spin)throw new Error('Invalid closed wallet');
+        put('wallets/'+closedWalletId(data.guild,data.user),closedWallet({...data,id:data.revision}));
+      }
+      else put(path,data);
+    }
   }finally{db.exec('ROLLBACK');db.close();}
   const resources=[...documents.values()].sort((a,b)=>a.path.localeCompare(b.path));
   const fingerprint=digest(JSON.stringify(resources));
-  return {version,environment,audit,resources,fingerprint,nextId,...(Object.keys(recordCounters).length?{recordCounters}:{})};
+  return {version,environment,audit,resources,fingerprint,nextId,...(resources.some(r=>r.data.kind===MEMBER_LEFT)?{memberDepartures:true}:{}),...(Object.keys(recordCounters).length?{recordCounters}:{})};
 }
 
 // Imports into an empty namespace only. Each chunk and its progress commit atomically.
@@ -143,6 +155,7 @@ export async function importFirestore(store,plan,{batchSize=50}={}){
       if(!(await tx.get(store.root.collection('wallets').limit(1))).empty)throw new Error('Firestore namespace is not empty; no existing wallets overwritten');
     }
     store.write(tx,store.meta,{version:store.schemaVersion,environment:plan.environment,status:'importing',nextId:plan.nextId,
+      ...(plan.memberDepartures?{memberDepartures:true}:{}),
       ...(plan.recordCounters?{recordCounters:plan.recordCounters}:{}),
       ...(plan.audit.counts.highlight_events||plan.audit.counts.highlight_boards?{highlights:1}:{}),
       importFingerprint:plan.fingerprint,importDone:current?.importDone||0,importTotal:plan.resources.length});

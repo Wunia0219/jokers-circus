@@ -14,11 +14,17 @@ import {downloadRecoveryArchive,recoverySummary,recoveryNotification,sendRecover
 const guild='100000000000000001',other='100000000000000009',channel='100000000000000003',key='a'.repeat(64);
 const source={projectId:'demo-jokers-circus',namespace:'customer-production',environment:'production'};
 const webhook='https://discord.com/api/webhooks/100000000000000004/fixture-only-secret';
-function fixture(t,{players=1}={}){
+function fixture(t,{players=1,departure=false}={}){
   const root=resolve('test-results/wallet-recovery');mkdirSync(root,{recursive:true});const dir=mkdtempSync(join(root,'run-'));
   const file=join(dir,'source.sqlite'),wallet=new WalletStore({filename:file,environment:'production',guildIds:[guild],clock:()=>Date.now()-86400000,spinDelay:0});
   for(let i=0;i<players;i++){const user=String(100000000000000100n+BigInt(i));wallet.state(guild,user);if(i<5){wallet.checkin(guild,user);wallet.spin(guild,user,20,randomUUID());}}
-  wallet.resetWallets(guild,'100000000000000099',randomUUID());wallet.spin(guild,'100000000000000100',20,randomUUID());wallet.close();
+  wallet.resetWallets(guild,'100000000000000099',randomUUID());wallet.spin(guild,'100000000000000100',20,randomUUID());
+  if(departure){
+    const departed='100000000000000100',balance=wallet.state(guild,departed).balance;
+    wallet.credit(guild,departed,-balance,'member_left',null,'Discord 已確認退群');
+    wallet.db.prepare('UPDATE wallets SET last_spin=0,milestone=0 WHERE guild=? AND user=?').run(guild,departed);
+  }
+  wallet.close();
   const snapshot=snapshotForCloud(file,'production'),sql=new DatabaseSync(':memory:');t.after(()=>sql.close());
   const storage={sql:{exec:(q,...args)=>sql.prepare(q).all(...args).map(x=>({...x}))},transactionSync(fn){sql.exec('SAVEPOINT fixture');try{const result=fn();sql.exec('RELEASE fixture');return result;}catch(error){sql.exec('ROLLBACK TO fixture; RELEASE fixture');throw error;}}};
   const state=new CloudState(storage),vault=new SnapshotVault(storage,state,new Sealer(key));vault.save('fixture',snapshot);vault.publish('fixture');
@@ -87,6 +93,15 @@ test('wrong channel, failed receipt writes and unknown POST outcomes never cause
   const interrupted=notificationFixture();interrupted.report.notification={status:'sending'};assert.equal((await sendRecoveryNotification(interrupted.options)).status,'uncertain');assert.equal(interrupted.posts.length,0);
   const finalSave=notificationFixture(),save=finalSave.options.save;finalSave.options.save=async report=>{if(report.notification.status==='sent')throw new Error('disk full after POST');await save(report);};
   await assert.rejects(sendRecoveryNotification(finalSave.options));assert.equal(finalSave.report.notification.status,'sent');assert.equal(finalSave.posts.length,1);
+});
+
+test('offline recovery drill keeps departed wallets closed and rejects old requests',t=>{
+  const f=fixture(t,{players:2,departure:true}),archive=join(f.dir,'archive.json'),keyFile=join(f.dir,'key.txt'),out=join(f.dir,'drill');
+  writeFileSync(archive,JSON.stringify(f.envelope));writeFileSync(keyFile,key);
+  const result=spawnSync(process.execPath,['scripts/qa/rehearse-cloud-recovery.js','--archive',archive,'--key-file',keyFile,'--environment','production','--out',out],{encoding:'utf8',windowsHide:true});
+  assert.equal(result.status,0,result.stderr+result.stdout);
+  const report=JSON.parse(readFileSync(join(out,'report.json')));
+  assert.equal(report.archivedRequestsRejected,3);assert.equal(report.allSevenTablesUnchanged,true);
 });
 
 test('60-wallet CLI recovery preserves compact resets, original requests and source; refuses overwrite',t=>{

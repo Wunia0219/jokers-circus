@@ -113,6 +113,10 @@ export class CircusProject extends DurableObject {
       const backup=this.state.get('backup-status'),manifest=this.state.get('backup:'+this.state.get('backup-latest'));
       const status={version:APP_VERSION,cloudPlan:this.env.CLOUD_PLAN,mode:this.state.get('mode')||'unseeded',source:this.state.get('source'),backup:backup?{...backup,...(Number.isSafeInteger(manifest?.bytes)?{bytes:manifest.bytes,limitBytes:manifest.limitBytes,parts:manifest.parts,limitParts:manifest.format===2?BACKUP_MAX_PARTS:200}: {})}:null,alarm:this.state.get('alarm-status'),quota};
       if(arcadeEnabled(this.env))status.arcade=readArcade(this.state);
+      if(new URL(request.url).searchParams.get('check')==='membership'){
+        status.membership=this.instance?.members?.status()??null;
+        status.nextAlarm=await this.ctx.storage.getAlarm();
+      }
       const job=this.state.get('backup-job'),retry=this.state.get('backup-retry');
       if(job)status.backupProgress={phase:job.phase,cursor:job.cursor,target:job.target,startedAt:job.startedAt};
       if(retry)status.backupRetry=retry;
@@ -157,8 +161,9 @@ export class CircusProject extends DurableObject {
       const input=await body(request,1024),planVerified=activationPlanVerified(input,this.env.CLOUD_PLAN);
       if(input.writersStopped!==true||!planVerified)throw new Error('Cutover prerequisites');
       const r=await this.runtime(),snapshot=r.vault.load(this.state.get('backup-latest')),meta=await r.store.read(r.store.meta);r.store.checkMeta(meta);
+      if(snapshot.tables.wallets.some(w=>w.closedAt||w.sinceDeparture)&&meta.memberDepartures!==true)throw new Error('Wallet closure metadata missing');
       if(meta.nextId!==snapshot.revision||snapshot.upstreamImportFingerprint!==(meta.importFingerprint??null))throw new Error('Source moved since backup');
-      for(const w of snapshot.tables.wallets){const actual=await r.store.read(r.store.walletRef(w.guild,w.user));if(!actual||actual.balance!==w.balance||Number(actual.milestone)!==w.milestone||actual.last_spin!==w.last_spin||
+      for(const w of snapshot.tables.wallets){const actual=await r.store.read(w.closedAt?r.store.closedRef(w.guild,w.user):r.store.walletRef(w.guild,w.user));if(!actual||actual.closedAt!==w.closedAt||actual.sinceDeparture!==w.sinceDeparture||w.closedAt&&await r.store.read(r.store.walletRef(w.guild,w.user))||actual.balance!==w.balance||Number(actual.milestone)!==w.milestone||actual.last_spin!==w.last_spin||
         (snapshot.readTime||w.duelDigest!==undefined)&&duelDigest(actual.duel)!==w.duelDigest)throw new Error('Wallet mismatch');}
       r.store.invalidateCache();this.state.set('mode','active');await this.schedule(1000);return json({active:true});
     }
@@ -229,6 +234,7 @@ export class CircusProject extends DurableObject {
           if(r.highlights.dirty)await this.schedule(Math.max(10000,r.highlights.nextAttempt-Date.now()));
         }
         if(housekeepingDue){
+          try{await r.members?.work();}catch{console.warn('Membership verification deferred');}
           this.ctx.storage.sql.exec('DELETE FROM sessions WHERE expires<=?',now);
           this.ctx.storage.sql.exec('DELETE FROM quota_usage WHERE slot<?',now-86520000);
           this.state.set('maintenance-next',now+600000);

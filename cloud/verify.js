@@ -10,11 +10,20 @@ export async function verifyCloudSnapshot(snapshot,store){
   store.write=()=>{throw new Error('Verification cannot write');};
   const audit=auditSnapshot(snapshot,store.environment),before=store.quota.status().used.writes;
   const meta=await store.read(store.meta);store.checkMeta(meta);requireMatch(meta.nextId,snapshot.revision);
+  if(snapshot.tables.wallets.some(w=>w.closedAt||w.sinceDeparture))requireMatch(meta.memberDepartures,true);
   let retries=0,originalResults=0;
   for(const w of snapshot.tables.wallets){
-    const rows=snapshot.tables.ledger.filter(e=>e.guild===w.guild&&e.user===w.user),rounds=snapshot.tables.rounds.filter(r=>r.guild===w.guild&&r.user===w.user).map(r=>JSON.parse(r.data));
+    if(w.closedAt){
+      requireMatch(await store.read(store.walletRef(w.guild,w.user)),null);
+      requireMatch((await store.read(store.closedRef(w.guild,w.user)))?.closedAt,w.closedAt);
+      continue;
+    }
+    const rows=snapshot.tables.ledger.filter(e=>e.guild===w.guild&&e.user===w.user&&e.id>(w.sinceDeparture||0));
+    const spins=new Set(rows.filter(e=>e.kind==='spin').map(e=>'spin:'+w.user+':'+e.reference));
+    const spinOps=snapshot.tables.operations.filter(o=>o.guild===w.guild&&spins.has(o.key));
+    const rounds=spinOps.map(o=>JSON.parse(o.result).round);
     const state=await store.state(w.guild,w.user);requireMatch(state.balance,w.balance);
-    requireMatch(state.claimed,snapshot.tables.operations.some(o=>o.guild===w.guild&&o.key===`daily:${w.user}:${taipeiDay(Date.now())}`));
+    requireMatch(state.claimed,rows.some(e=>e.kind==='checkin'&&e.day===taipeiDay(Date.now())));
     const summary={checkin:{days:0,total:0},game:{rounds:rounds.length,bet:0,payout:0,net:0}};
     for(const e of rows)if(e.kind==='checkin'){summary.checkin.days++;summary.checkin.total+=e.delta;}
     for(const r of rounds)for(const k of ['bet','payout','net'])summary.game[k]+=r[k];
@@ -24,10 +33,11 @@ export async function verifyCloudSnapshot(snapshot,store){
     for(const row of page.rows)requireMatch(row.round,rounds.find(r=>r.id===row.round.id));
     for(const op of snapshot.tables.operations.filter(o=>o.guild===w.guild&&o.key.startsWith(`daily:${w.user}:`))){
       const expected=JSON.parse(op.result),entry=rows.find(e=>e.id===expected.entry.id);
+      if(!entry)continue;
       store.clock=()=>Date.parse(entry.time);const result=await store.checkin(w.guild,w.user,{compact:true});requireMatch(result.duplicate,true);requireMatch(result.entry,expected.entry);retries++;
     }
     store.clock=Date.now;
-    const op=snapshot.tables.operations.findLast(o=>o.guild===w.guild&&o.key.startsWith(`spin:${w.user}:`));
+    const op=spinOps.at(-1);
     if(op){const r=await store.spin(w.guild,w.user,Number(op.fingerprint),op.key.slice(`spin:${w.user}:`.length),{compact:true});requireMatch(r.duplicate,true);requireMatch(r.round,JSON.parse(op.result).round);retries++;}
   }
   for(const o of snapshot.tables.operations.filter(o=>!o.key.startsWith('spin:'))){

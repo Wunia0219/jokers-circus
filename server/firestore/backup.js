@@ -1,5 +1,6 @@
 import {unpack} from './documents.js';
 import {DatabaseSync} from 'node:sqlite';
+import {MEMBER_LEFT,closedWalletId,dayCollection} from '../wallet/membership.js';
 import {isOpeningKind} from '../wallet/wallet-opening.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
@@ -108,7 +109,7 @@ async function readWallets(store,tx){
     for(const doc of page.docs){
       store.quota.observe(Buffer.byteLength(JSON.stringify(doc.data())));
       const wallet=unpack(doc);
-      if(!/^\d{17,20}$/.test(wallet.guild)||!/^\d{17,20}$/.test(wallet.user)||doc.id!==wallet.guild+'_'+wallet.user)throw fail('BACKUP_WALLET_INVALID');
+      if(!/^\d{17,20}$/.test(wallet.guild)||!/^\d{17,20}$/.test(wallet.user)||doc.id!==(wallet.closedAt?closedWalletId(wallet.guild,wallet.user):wallet.guild+'_'+wallet.user))throw fail('BACKUP_WALLET_INVALID');
       wallets.push(wallet);
     }
     if(page.size<pageSize)break;cursor=page.docs.at(-1).id;
@@ -116,7 +117,7 @@ async function readWallets(store,tx){
   return wallets;
 }
 function operationKey(entry,document){
-  if(isOpeningKind(entry.kind))return null;
+  if(isOpeningKind(entry.kind)||entry.kind===MEMBER_LEFT)return null;
   const linked=document.get('operationKey');
   if(entry.kind==='reset'){
     if(linked===null)return null;
@@ -231,9 +232,9 @@ export async function createFirestoreSnapshot(store,settings,{now=Date.now(),pre
     const audit=inspectWalletDatabase(partial,settings.environment);if(!audit.ok)throw fail('BACKUP_AUDIT_FAILED');
     const plan=firestoreImportPlan(partial,settings.environment,{version:store.schemaVersion});
     for(const wallet of remoteWallets){
-      const expected=plan.resources.find(row=>row.path===`wallets/${wallet.guild}_${wallet.user}`)?.data;
+      const expected=plan.resources.find(row=>row.path===`wallets/${wallet.closedAt?closedWalletId(wallet.guild,wallet.user):wallet.guild+'_'+wallet.user}`)?.data;
       const {pendingDay,operationRoundsAfter,legacyRoundThrough,...portable}=wallet;
-      if(pendingDay){const daily=plan.resources.find(row=>row.path===`wallets/${wallet.guild}_${wallet.user}/days/${pendingDay.day}`)?.data;
+      if(pendingDay){const daily=plan.resources.find(row=>row.path===`wallets/${wallet.guild}_${wallet.user}/${dayCollection(wallet)}/${pendingDay.day}`)?.data;
         if(!/^\d{4}-\d{2}-\d{2}$/.test(pendingDay.day)||!daily||!isDeepStrictEqual(pendingDay.summary,daily))throw fail('BACKUP_WALLET_MISMATCH');}
       for(const value of [operationRoundsAfter,legacyRoundThrough])if(value!==undefined&&(!Number.isSafeInteger(value)||value<0||value>wallet.historyRevision))throw fail('BACKUP_WALLET_MISMATCH');
       if((operationRoundsAfter===undefined)!==(legacyRoundThrough===undefined)||operationRoundsAfter>legacyRoundThrough)throw fail('BACKUP_WALLET_MISMATCH');

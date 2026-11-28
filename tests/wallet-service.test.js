@@ -22,5 +22,8 @@ test('sessions bind identity verified by Discord to an allowed guild, expire and
  assert.deepEqual(remembered.at(-1),{guild,user,name:'玩家名稱'});
  now+=301000;member=false;await assert.rejects(service.authorize('Bearer '+session.token),/無法確認/);
  await assert.rejects(service.authorize('Bearer '+session.token),/登入已過期/);
- member=true;const second=await service.create(token,guild);now+=3600001;await assert.rejects(service.authorize('Bearer '+second.token),/登入已過期/);
+ member=true;const revoked=await service.create(token,guild),cutoff=now;
+ service.revokedAt=(g,u)=>g===guild&&u===user?cutoff:null;
+ await assert.rejects(service.authorize('Bearer '+revoked.token),/登入已過期/);
+ now++;const second=await service.create(token,guild);assert.equal((await service.authorize('Bearer '+second.token)).user,user);now+=3600001;await assert.rejects(service.authorize('Bearer '+second.token),/登入已過期/);
 });

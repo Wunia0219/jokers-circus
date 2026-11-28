@@ -1,3 +1,4 @@
+import {MEMBER_LEFT,validDeparture} from '../wallet/membership.js';
 import {isDeepStrictEqual} from 'node:util';
 import {BETS,MODEL_VERSION,LEGACY_MODELS,gridFromStops,evaluateGrid} from '../../src/game/index.js';
 import {previousDay,validCheckinTransition} from '../wallet/weekly-checkin.js';
@@ -53,6 +54,12 @@ function sameEntry(entry,cached){
 export function inspectSettlements(db){
   const errors=new Map(),add=name=>errors.set(name,(errors.get(name)??0)+1);
   const roundById=reader(db,'SELECT * FROM rounds WHERE guild=? AND user=? AND id=?');
+  const departures=new Map();
+  for(const row of reader(db,"SELECT guild,user,id FROM ledger WHERE kind='member_left' ORDER BY id").iterate()){
+    const owner=row.guild+'_'+row.user;
+    if(!departures.has(owner))departures.set(owner,[]);
+    departures.get(owner).push(row.id);
+  }
   const operationByKey=reader(db,'SELECT * FROM operations WHERE guild=? AND key=?');
   const entryById=reader(db,'SELECT * FROM ledger WHERE id=?');
   let rounds=0,spinOperations=0,entryOperations=0,spinEntries=0,otherEntries=0;
@@ -89,7 +96,7 @@ export function inspectSettlements(db){
       const day=previousDay(entry.day),prior=parse(operationByKey.get(row.guild,`daily:${entry.user}:${day}`)?.result);
       valid=entry.kind==='checkin'&&entry.user===daily[1]&&entry.day===daily[2]
         &&entry.actor===entry.user&&entry.delta>0&&row.fingerprint==='daily'
-        &&validCheckinTransition(result,prior?{...prior,day}:null,entry.day);
+        &&validCheckinTransition(result,prior&&!departures.get(entry.guild+'_'+entry.user)?.some(id=>id>prior.entry.id&&id<entry.id)?{...prior,day}:null,entry.day);
     }
     else if(admin){
       const fingerprint=parse(row.fingerprint);
@@ -102,11 +109,12 @@ export function inspectSettlements(db){
     if(!valid)add('Operation result errors');
   }
 
-  const seenOwners=new Set(),duelStates=new Map();
+  const closed=new Set(),seenOwners=new Set(),duelStates=new Map();
   for(const entry of reader(db,'SELECT * FROM ledger ORDER BY id').iterate()){
     const owner=entry.guild+'_'+entry.user;
-    if(entry.kind==='welcome'&&(!validWelcomeEntry(entry)||seenOwners.has(owner)))add('Invalid welcome credit');
-    seenOwners.add(owner);
+    if(closed.has(owner)&&!['test_seed','welcome'].includes(entry.kind))add('Closed wallet ledger');
+    if(entry.kind==='welcome'&&(!validWelcomeEntry(entry)||seenOwners.has(owner)&&!closed.has(owner)))add('Invalid welcome credit');
+    seenOwners.add(owner);closed.delete(owner);
     if(!balance(entry.before)||!balance(entry.after)||!Number.isSafeInteger(entry.delta)
       ||entry.after!==entry.before+entry.delta)add('Invalid ledger amounts');
     const time=typeof entry.time==='string'?Date.parse(entry.time):NaN,day=new Date(time+8*3600000);
@@ -137,6 +145,9 @@ export function inspectSettlements(db){
         const original=/^[1-9]\d*$/.test(entry.reference??'')?entryById.get(entry.reference):null;
         if(!original||original.guild!==entry.guild||original.user!==entry.user||original.kind!=='grant'||entry.delta!==-original.delta)add('Ledger reversal errors');
       }
+    }else if(entry.kind===MEMBER_LEFT){
+      if(!validDeparture(entry))add('Invalid membership closure');
+      closed.add(owner);duelStates.delete(owner);
     }else if(entry.kind!=='test_seed'&&entry.kind!=='welcome')add('Unsupported ledger kinds');
   }
 

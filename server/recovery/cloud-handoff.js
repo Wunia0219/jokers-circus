@@ -11,6 +11,13 @@ export function snapshotForCloud(filename,environment,{upstreamImportFingerprint
   const audit=inspectWalletDatabase(filename,environment);if(!audit.ok)throw new Error('Snapshot audit failed');
   const db=new DatabaseSync(filename,{readOnly:true});let tables;
   try{db.exec('BEGIN');tables=Object.fromEntries(WALLET_TABLES.map(t=>[t,db.prepare('SELECT * FROM '+t).all().map(row=>({...row}))]));}finally{db.close();}
+  const lifetimes=new Map();
+  for(const entry of tables.ledger.toSorted((a,b)=>a.id-b.id)){
+    const key=entry.guild+'_'+entry.user;
+    if(entry.kind==='member_left')lifetimes.set(key,{closedAt:entry.id});
+    else if(lifetimes.get(key)?.closedAt)lifetimes.set(key,{sinceDeparture:lifetimes.get(key).closedAt});
+  }
+  for(const wallet of tables.wallets)Object.assign(wallet,lifetimes.get(wallet.guild+'_'+wallet.user));
   const snapshot={format:1,environment,createdAt:Date.now(),upstreamImportFingerprint,revision:tables.ledger.reduce((max,e)=>Math.max(max,e.id),0),tables};auditSnapshot(snapshot,environment);return snapshot;
 }
 export function quotaForCloud(settings){
@@ -36,7 +43,7 @@ export function decodeCloudArchive(archive,key,environment){
 export function restoreCloudSnapshot(snapshot,target,environment){
   auditSnapshot(snapshot,environment);if(existsSync(target))throw new Error('Restore target exists');const temporary=target+'.partial-'+randomUUID();closeSync(openSync(temporary,'wx',0o600));
   const db=openWalletDatabase(temporary,environment);
-  try{db.exec('BEGIN IMMEDIATE; PRAGMA defer_foreign_keys=ON');for(const table of WALLET_TABLES){if(table==='settings')continue;for(const row of snapshot.tables[table]){const columns=Object.keys(row).filter(c=>table!=='wallets'||c!=='duelDigest');const schema=new Set(db.prepare('PRAGMA table_info('+table+')').all().map(c=>c.name));if(columns.some(c=>!schema.has(c)))throw new Error('Unsupported snapshot column');db.prepare(`INSERT INTO ${table}(${columns.join(',')}) VALUES(${columns.map(()=>'?').join(',')})`).run(...columns.map(c=>row[c]));}}db.exec('COMMIT');}catch(error){try{db.exec('ROLLBACK');}catch{}throw error;}finally{db.close();}
+  try{db.exec('BEGIN IMMEDIATE; PRAGMA defer_foreign_keys=ON');for(const table of WALLET_TABLES){if(table==='settings')continue;for(const row of snapshot.tables[table]){const columns=Object.keys(row).filter(c=>table!=='wallets'||!['duelDigest','closedAt','sinceDeparture'].includes(c));const schema=new Set(db.prepare('PRAGMA table_info('+table+')').all().map(c=>c.name));if(columns.some(c=>!schema.has(c)))throw new Error('Unsupported snapshot column');db.prepare(`INSERT INTO ${table}(${columns.join(',')}) VALUES(${columns.map(()=>'?').join(',')})`).run(...columns.map(c=>row[c]));}}db.exec('COMMIT');}catch(error){try{db.exec('ROLLBACK');}catch{}throw error;}finally{db.close();}
   try{const result=inspectWalletDatabase(temporary,environment);if(!result.ok)throw new Error('Restored snapshot audit failed');linkSync(temporary,target);return result;}
   finally{for(const file of [temporary,temporary+'-wal',temporary+'-shm'])if(existsSync(file))unlinkSync(file);}
 }
