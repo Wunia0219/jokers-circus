@@ -112,6 +112,41 @@ test('moves outside the top ten retain both positions and post one card with the
   assert.match(posts[0].attachments[0].description,/上升 1 名/);
 });
 
+test('one departure releases the combined changes after projection catches up',async t=>{
+  const player=user(12);
+  let start;
+  const fixture=previewFixture({activeVisitStart:(g,u)=>g===guild&&u===player?start:undefined});
+  t.after(fixture.close);
+  const {board,sql}=fixture;
+  start=board.state().cursor;
+  const startRevision=start;
+  const first=board.position(guild,'all','slot',player);
+  const posts=[];
+  const notices=new LeaderboardNotices({sql,source:'case',send:async message=>{
+    posts.push(message);return {kind:'sent'};
+  }});
+  fixture.climb();
+  await notices.flush();
+  assert.equal(posts.length,0);
+  assert.deepEqual(outbox(sql).map(event=>event.status),['held']);
+
+  const finish=board.state().cursor+1;
+  assert.equal(board.queueDeparture({guild,user:player,start:{revision:startRevision,rounds:0}},
+    {revision:finish,rounds:2},time),true);
+  start=undefined;
+  board.releaseDepartures(finish-1);
+  await notices.flush();
+  assert.equal(posts.length,0);
+  board.apply([slot(finish,10000,{user:player})]);
+  board.releaseDepartures(finish);
+  board.releaseDepartures(finish);
+  await notices.flush();
+  assert.equal(posts.length,1);
+  const current=board.position(guild,'all','slot',player);
+  assert.ok(posts[0].embeds[0].description.includes(`老虎機　第 ${first} 名 → 第 ${current} 名`));
+  assert.deepEqual(outbox(sql),[]);
+});
+
 test('rank notices preserve retry deadlines and quarantine interrupted sends',async t=>{
   const fixture=previewFixture();t.after(fixture.close);
   const {sql}=fixture;

@@ -24,9 +24,9 @@ export function memorySql(){
   return {sql,transaction,close:()=>db.close()};
 }
 
-export function previewFixture(){
+export function previewFixture({activeVisitStart}={}){
   const storage=memorySql(),entries=[],date='2026-11-01T12:00:00.000Z';
-  const board=new Leaderboard({...storage,source:'local-preview',announcementGuild:previewGuild});
+  const board=new Leaderboard({...storage,source:'local-preview',announcementGuild:previewGuild,activeVisitStart});
   function wager(index,game,amount,time=date){
     return {id:entries.length+1,guild:previewGuild,user:previewUser(index),time,kind:game==='slot'?'spin':'duel',
       delta:game==='slot'?0:-amount,reason:game==='slot'?`下注 ${amount}／派彩 ${amount}`:'挑戰入場費'};

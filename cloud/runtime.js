@@ -31,7 +31,6 @@ export async function createCloudRuntime(project){
   const meta=await store.read(store.meta);store.checkMeta(meta);store.walletEpoch=meta.walletEpoch;store.resetAt=meta.resetAt;store.ready=true;store.readyAt=Date.now();
   const hs=highlightSettings(project.env,store);
   const bot=hs?.botSettings?new CasinoBot({...hs.botSettings,fetchImpl:cloudFetch}):null;
-  const visits=bot?new CasinoVisits({state:project.state,bot,readAccount:(guild,user,start)=>store.casinoAccount(guild,user,start),wake:()=>project.ctx.waitUntil(project.schedule(1000)),warn:message=>console.warn(message)}):null;
   const highlights=hs?new FirestoreHighlights(new FirestoreWalletCore(settings,{...options,db:transport(),quota:new CloudQuota(project.ctx.storage,project.state,{scope:'highlights'})}),{...hs,bot,fetchImpl:cloudFetch}):null;
   if(hs)store.highlightsGuild=hs.guild;
   const duelAnnouncements=bot?new FirestoreDuelAnnouncements(highlights.store,{bot}):null;
@@ -44,8 +43,12 @@ export async function createCloudRuntime(project){
   const leaderboard=arcade?new CloudLeaderboard({
     storage:project.ctx.storage,state:project.state,vault,store,meta,bot,
     memberBot:memberSettings?new CasinoBot({...memberSettings,fetchImpl:cloudFetch}):bot,
+    activeVisitStart:(guild,user)=>visits?.startRevision(guild,user),
     quota:backup.store.quota,wake:delay=>project.ctx.waitUntil(project.schedule(delay).catch(()=>{})),
   }):null;
+  const visits=bot?new CasinoVisits({state:project.state,bot,readAccount:(guild,user,start)=>store.casinoAccount(guild,user,start),
+    onFinish:(visit,end,time)=>leaderboard?.queueDeparture(visit,end,time),transaction:work=>project.ctx.storage.transactionSync(work),
+    wake:()=>project.ctx.waitUntil(project.schedule(1000)),warn:message=>console.warn(message)}):null;
   if(leaderboard)store.onLedgerCommit=entries=>leaderboard.commit(entries);
   const service=new WalletService(store,{fetchImpl:cloudFetch,sessions:new CloudSessions(project.ctx.storage,sealer),onProfile:session=>leaderboard?.remember(session)});
   const slotOpen=arcade||operatorEnabled(project.env)?()=>readArcade(project.state).slot==='open':undefined;

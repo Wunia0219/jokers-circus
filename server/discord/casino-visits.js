@@ -49,8 +49,8 @@ export function visitMessage(visit,end,reason){
 
 // Devices share one visit; only entry/exit read the authoritative ledger.
 export class CasinoVisits {
-  constructor({state,bot,readAccount,clock=Date.now,wake=()=>{},warn=()=>{}}){
-    Object.assign(this,{state,bot,readAccount,clock,wake,warn});this.tail=Promise.resolve();this.running=null;
+  constructor({state,bot,readAccount,clock=Date.now,wake=()=>{},warn=()=>{},onFinish,transaction=work=>work()}){
+    Object.assign(this,{state,bot,readAccount,clock,wake,warn,onFinish,transaction});this.tail=Promise.resolve();this.running=null;
     this.data=state.get('casino-visits')||{version:1,visits:{},closed:{},events:[],nextAttempt:0};
     if(this.data.version!==1)throw new Error('Unknown casino visit state');
     let changed=false;for(const e of this.data.events)if(e.status==='sending'){e.status='uncertain';changed=true;}
@@ -71,8 +71,15 @@ export class CasinoVisits {
   }
   async finish(key,visit,reason){
     const end=account(await this.readAccount(visit.guild,visit.user,visit.start));
-    this.enqueue(visitMessage(visit,end,reason));delete this.data.visits[key];this.save();
+    const receipt=visitMessage(visit,end,reason);
+    const queued=this.transaction(()=>{
+      const queued=this.onFinish?.(visit,end,new Date(this.clock()).toISOString());
+      this.enqueue(receipt);delete this.data.visits[key];this.save();
+      return queued;
+    });
+    if(queued)this.wake();
   }
+  startRevision(guild,user){return this.data.visits[guild+':'+user]?.start.revision;}
   request(session,input){return this.serial(async()=>{
     if(session.guild!==this.bot.guild)throw problem(403,'此群組未開啟賭場公告。');
     if(!input||!id(input.instanceId)||!['enter','heartbeat','leave'].includes(input.action))throw problem(400,'遊戲連線狀態無效。');

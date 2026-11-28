@@ -184,13 +184,14 @@ async function verifyLeaderboardLayout(page,lobby,{short=false}={}){
     const count=params.get('game')==='slot'?0:13;
     const rows=Array.from({length:Math.min(10,count-(page-1)*10)},(_,index)=>{
       const rank=(page-1)*10+index+1;
-      return {rank,name:`測試玩家 ${rank}`,amount:14000-rank*1000};
+      return rank===1?{rank,name:'帶著很長暱稱與 Discord 表情的測試玩家 🎪',amount:9876543210}:
+        {rank,name:`測試玩家 ${rank}`,amount:14000-rank*1000};
     });
     return route.fulfill({json:{rows,page,pages:count?2:1,lastReset:null}});
   };
   await page.route(pattern,fixture);
-  const open=lobby.getByRole('button',{name:'總投入排行榜',exact:true});
-  const dialog=lobby.getByRole('dialog',{name:'總投入排行榜',exact:true});
+  const open=lobby.getByRole('button',{name:'午夜賭城排行榜',exact:true});
+  const dialog=lobby.getByRole('dialog',{name:'午夜賭城排行榜',exact:true});
   const period=name=>dialog.getByRole('button',{name,exact:true});
   const rows=dialog.locator('table:visible tbody tr');
   const ready=label=>dialog.getByText(label,{exact:true}).waitFor();
@@ -202,8 +203,23 @@ async function verifyLeaderboardLayout(page,lobby,{short=false}={}){
     assert.equal(await period('月排名').getAttribute('aria-pressed'),'true');
     assert.equal(await rows.count(),10);
     const full=await layout();
-    assert.ok(full[0].y>=0&&full[0].y+full[0].height<=page.viewportSize().height);
-    assert.equal(await dialog.locator('.leaderboard-results').evaluate(el=>el.scrollHeight>el.clientHeight),short);
+    const {width,height}=page.viewportSize();
+    assert.ok(full[0].x>=0&&full[0].x+full[0].width<=width&&full[0].y>=0&&full[0].y+full[0].height<=height);
+    assert.deepEqual(await dialog.locator('.leaderboard-results').evaluate(el=>({
+      horizontal:el.scrollWidth>el.clientWidth, vertical:el.scrollHeight>el.clientHeight,
+    })),{horizontal:false,vertical:short});
+    assert.equal(await dialog.getByRole('img',{name:'午夜賭城排行榜',exact:true}).evaluate(async img=>{
+      await img.decode();
+      const close=img.closest('header').querySelector('button');
+      return img.getBoundingClientRect().right<=close.getBoundingClientRect().left;
+    }),true);
+    if(!short){
+      await page.setViewportSize({width:2560,height:1440});
+      const [larger]=await layout();
+      assert.ok(larger.width>full[0].width&&larger.height>full[0].height,'a large screen increases the panel size');
+      await page.setViewportSize({width,height});
+      assert.deepEqual(await layout(),full,'resizing back restores the original layout');
+    }
 
     await period('下一頁').click();
     await ready('正在載入排行榜…');

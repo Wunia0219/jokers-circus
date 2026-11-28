@@ -1,12 +1,13 @@
 import './leaderboard-dialog.css';
 import {prepareNumberFont,setBitmapNumber} from '../ui/shared/bitmap-number.js';
+import wordmarkUrl from '../../images/lobby/leaderboard-wordmark.webp';
 
 const format=new Intl.NumberFormat('en-US');
 const resetDate=new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'numeric',day:'numeric'});
 const panels=new WeakMap();
 const markup=`
   <header class="leaderboard-header">
-    <h2 id="leaderboard-title">總投入排行榜</h2>
+    <h2 id="leaderboard-title"><img src="${wordmarkUrl}" width="960" height="320" alt="午夜賭城排行榜"></h2>
     <button type="button" class="leaderboard-close" aria-label="關閉排行榜" data-action="close">×</button>
   </header>
   <div class="leaderboard-controls">
@@ -21,7 +22,7 @@ const markup=`
     </div>
   </div>
   <p class="leaderboard-since"></p>
-  <div class="leaderboard-results">
+  <div class="leaderboard-results" role="region" aria-label="排行榜名次" tabindex="0">
     <table>
       <thead><tr><th scope="col">名次</th><th scope="col">玩家</th><th scope="col">投入戲籌</th></tr></thead>
       <tbody></tbody>

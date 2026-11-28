@@ -29,8 +29,8 @@ function wager(entry){
 }
 
 export class Leaderboard {
-  constructor({sql,transaction,source,announcementGuild=null}){
-    Object.assign(this,{sql,transaction,source,announcementGuild});
+  constructor({sql,transaction,source,announcementGuild=null,activeVisitStart}){
+    Object.assign(this,{sql,transaction,source,announcementGuild,activeVisitStart});
     sql.exec(`CREATE TABLE IF NOT EXISTS leaderboard_state (id INTEGER PRIMARY KEY CHECK(id=1),source TEXT NOT NULL,
       cursor INTEGER NOT NULL, quiet_through INTEGER NOT NULL, seeded INTEGER NOT NULL)`);
     sql.exec('CREATE TABLE IF NOT EXISTS leaderboard_projection (id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL)');
@@ -40,6 +40,8 @@ export class Leaderboard {
     sql.exec('CREATE TABLE IF NOT EXISTS leaderboard_names (guild TEXT NOT NULL, user TEXT NOT NULL, name TEXT NOT NULL, expires INTEGER NOT NULL, PRIMARY KEY(guild,user))');
     sql.exec(`CREATE TABLE IF NOT EXISTS leaderboard_outbox (id INTEGER PRIMARY KEY, payload TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending', due INTEGER NOT NULL DEFAULT 0)`);
+    sql.exec(`CREATE TABLE IF NOT EXISTS leaderboard_departures (id INTEGER PRIMARY KEY, guild TEXT NOT NULL,
+      user TEXT NOT NULL, start INTEGER NOT NULL, time TEXT NOT NULL)`);
     for(const [period,games] of Object.entries(amounts))for(const [game,expression] of Object.entries(games))
       sql.exec(`CREATE INDEX IF NOT EXISTS leaderboard_${period}_${game} ON leaderboard_scores(guild, (${expression}) DESC, user)`);
   }
@@ -50,13 +52,48 @@ export class Leaderboard {
       const sameSource=saved?.source===this.source&&saved.cursor<=revision;
       const version=this.sql.exec('SELECT version FROM leaderboard_projection WHERE id=1').toArray()[0]?.version;
       if(sameSource&&version===projectionVersion)return;
-      for(const table of sameSource?['scores','cycles','state']:['scores','cycles','names','outbox','state'])
+      for(const table of sameSource?['scores','cycles','state']:['scores','cycles','names','outbox','departures','state'])
         this.sql.exec('DELETE FROM leaderboard_'+table);
       // Rebuild the old projection without replaying announcements or forgetting verified names.
       const quietThrough=sameSource?Math.max(saved.cursor,saved.quietThrough):revision;
       this.sql.exec('INSERT INTO leaderboard_state VALUES(1,?,0,?,0)',this.source,quietThrough);
       this.sql.exec('INSERT OR REPLACE INTO leaderboard_projection VALUES(1,?)',projectionVersion);
     });
+  }
+  inVisit({guild,user,id}){
+    const start=this.activeVisitStart(guild,user);
+    return (Number.isSafeInteger(start)&&id>start)||this.sql.exec(`SELECT 1 FROM leaderboard_departures
+      WHERE guild=? AND user=? AND start<? AND id>=? LIMIT 1`,guild,user,id,id).toArray().length>0;
+  }
+  queueDeparture({guild,user,start},end,time){
+    if(guild!==this.announcementGuild||!Number.isSafeInteger(start.revision)||!Number.isSafeInteger(end.revision)||
+      end.revision<=start.revision||end.revision<=this.state().quietThrough)return false;
+    if(end.rounds===start.rounds&&!end.duel?.entries)return false;
+    this.sql.exec('INSERT OR IGNORE INTO leaderboard_departures VALUES(?,?,?,?,?)',end.revision,guild,user,start.revision,time);
+    return true;
+  }
+  releaseDepartures(cursor){
+    const closed=this.sql.exec('SELECT * FROM leaderboard_departures WHERE id<=? ORDER BY id LIMIT 16',cursor).toArray();
+    for(const {id,guild,user,start,time} of closed)this.transaction(()=>{
+      const rows=this.sql.exec(`SELECT id,payload FROM leaderboard_outbox WHERE id>? AND id<=?
+        AND status='held' AND json_extract(payload,'$.user')=? ORDER BY id`,start,id,user).toArray();
+      const cycle=this.reset(guild)?.id??null,boards=new Map();
+      for(const row of rows){
+        const event=JSON.parse(row.payload);
+        for(const change of event.changes){
+          if(change.period==='cycle'&&event.cycle!==cycle)continue;
+          const key=change.period+':'+change.game;
+          const previous=boards.get(key)?.previous??change.previous;
+          boards.set(key,{...change,previous});
+        }
+        this.sql.exec('DELETE FROM leaderboard_outbox WHERE id=?',row.id);
+      }
+      const changes=[...boards.values()].filter(change=>change.current<change.previous);
+      if(changes.length)this.sql.exec('INSERT OR IGNORE INTO leaderboard_outbox (id,payload) VALUES(?,?)',id,
+        JSON.stringify({user,time,sharedPeriod:cycle===null,changes,departure:true}));
+      this.sql.exec('DELETE FROM leaderboard_departures WHERE id=?',id);
+    });
+    return closed.length===16;
   }
   reset(guild){
     return this.sql.exec('SELECT reset_id AS id,reset_time AS time FROM leaderboard_cycles WHERE guild=?',guild).toArray()[0];
@@ -145,8 +182,10 @@ export class Leaderboard {
         }
         if(!stake)continue;
         const {game,amount}=stake;
-        const canAnnounce=guild===this.announcementGuild&&entry.id>state.quietThrough;
-        const periods=canAnnounce?(this.reset(guild)?['all','cycle']:['all']):[];
+        const canAnnounce=guild===this.announcementGuild&&entry.id>state.quietThrough&&
+          (!this.activeVisitStart||this.inVisit(entry));
+        const cycle=canAnnounce?this.reset(guild)?.id??null:null;
+        const periods=canAnnounce?(cycle===null?['all']:['all','cycle']):[];
         const boards=periods.flatMap(period=>['total',game].map(game=>({period,game,previous:this.position(guild,period,game,user)})));
         this.sql.exec(`INSERT INTO leaderboard_scores (guild,user,all_${game},cycle_${game}) VALUES(?,?,?,?)
           ON CONFLICT(guild,user) DO UPDATE SET all_${game}=all_${game}+excluded.all_${game},
@@ -155,10 +194,10 @@ export class Leaderboard {
         for(const {period,game,previous} of boards){
           if(previous===null)continue;
           const current=this.position(guild,period,game,user);
-          if(current<previous)changes.push({period,game,previous,current});
+          if(this.activeVisitStart||current<previous)changes.push({period,game,previous,current});
         }
-        if(changes.length)this.sql.exec('INSERT INTO leaderboard_outbox (id,payload) VALUES(?,?)',entry.id,
-          JSON.stringify({user,time:entry.time,sharedPeriod:periods.length===1,changes}));
+        if(changes.length)this.sql.exec('INSERT INTO leaderboard_outbox (id,payload,status) VALUES(?,?,?)',entry.id,
+          JSON.stringify({user,time:entry.time,sharedPeriod:periods.length===1,cycle,changes}),this.activeVisitStart?'held':'pending');
       }
       this.sql.exec('UPDATE leaderboard_state SET cursor=? WHERE id=1',cursor);
     });

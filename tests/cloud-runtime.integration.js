@@ -283,13 +283,11 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
   assert.deepEqual(replay.data.nextHand,{matchId:beginDuel.requestId,index:0});
   assert.equal(replay.data.plan,undefined);
   assert.equal((await call('/api/wallet',{token})).data.state.balance,replay.data.wallet.balance);
-  const stopRankWait=new AbortController();
-  try{
-   const rank=await Promise.race([rankAnnouncement.promise,delay(15000,null,{signal:stopRankWait.signal}).then(()=>{throw new Error('Test leaderboard announcement was not sent');})]);
-   assert.match(rank.embeds[0].description,/野球拳\s+第 2 名 → 第 1 名（\*\*上升 1 名\*\*）/u);
-   assert.equal(rank.embeds[0].image.url,'attachment://casino-leaderboard.png');
-   assert.deepEqual(rank.allowed_mentions,{parse:[]});
-  }finally{stopRankWait.abort();}
+  const currentDuelBoard=()=>call('/api/arcade/leaderboard?period=cycle&game=duel&page=1',{token});
+  let board=await currentDuelBoard();
+  for(let i=0;i<150&&board.data.rows?.[0]?.amount!==1000;i++){await delay(100);board=await currentDuelBoard();}
+  assert.equal(board.data.rows?.[0]?.amount,1000,'the live board reflects the committed entry during play');
+  assert.ok(!announcements.some(post=>post.content===testLeaderboardLabel),'no rank announcement while the visit is active');
   const watching=call('/api/arcade?after=1');
   await change('m','m',1);
   const notified=await watching;
@@ -369,7 +367,16 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
    const started=await call('/__operator/backup',{headers:operatorHeaders,body:{}});
    assert.equal(started.status,200);assert.equal(started.data.backup.running,true);
    const metadataBeforeContinuation=metadataReads;
+   assert.ok(!announcements.some(post=>post.content===testLeaderboardLabel),'rank announcements wait for departure');
    await call('/api/casino-visit',{token,body:{action:'leave',instanceId:visitId}});
+   const stopRankWait=new AbortController();
+   try{
+    const rank=await Promise.race([rankAnnouncement.promise,delay(20000,null,{signal:stopRankWait.signal}).then(()=>{throw new Error('Departure leaderboard announcement was not sent');})]);
+    assert.match(rank.embeds[0].description,/野球拳\s+第 2 名 → 第 1 名（\*\*上升 1 名\*\*）/u);
+    assert.equal(rank.embeds[0].image.url,'attachment://casino-leaderboard.png');
+    assert.deepEqual(rank.allowed_mentions,{parse:[]});
+   }finally{stopRankWait.abort();}
+   assert.equal(announcements.filter(post=>post.content===testLeaderboardLabel).length,1);
    for(let i=0;i<150&&!announcements.some(p=>p.content?.includes('離開賭場'));i++)await delay(100);
    assert.equal(announcements.filter(p=>p.content?.includes('**入場**')).length,1);
    const exits=announcements.filter(p=>p.content?.includes('離開賭場'));assert.equal(exits.length,1);assert.equal(exits[0].embeds[0].title,'賭場・離場結算');

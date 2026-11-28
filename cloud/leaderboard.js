@@ -7,7 +7,7 @@ const STEP=128,LIVE_DELAY=1000,NAME_TTL=86400000;
 const sourceKey=(store,meta)=>JSON.stringify([store.settings.namespace,meta.walletEpoch??null,meta.importFingerprint??null]);
 
 export class CloudLeaderboard {
-  constructor({storage,state,vault,store,meta,quota,bot,memberBot=bot,wake}){
+  constructor({storage,state,vault,store,meta,quota,bot,memberBot=bot,wake,activeVisitStart=()=>null}){
     Object.assign(this,{storage,state,vault,store,quota,memberBot,wake});
     this.pending=new Map();
     this.names=new Map();
@@ -15,9 +15,17 @@ export class CloudLeaderboard {
     this.source=sourceKey(store,meta);
     const announces=bot?.leaderboardRoleId||bot?.leaderboardText;
     this.board=new Leaderboard({sql:storage.sql,transaction:work=>storage.transactionSync(work),source:this.source,
-      announcementGuild:announces?bot.guild:null});
+      announcementGuild:announces?bot.guild:null,activeVisitStart:announces?activeVisitStart:undefined});
     this.board.initialize(this.target);
+    // Pending cards from the per-round delivery path cannot be sent under the new rule.
+    if(announces)storage.sql.exec(`UPDATE leaderboard_outbox SET status='superseded'
+      WHERE status='pending' AND json_extract(payload,'$.departure') IS NULL`);
     this.notices=announces?new LeaderboardNotices({sql:storage.sql,source:this.source,send:bot.sendLeaderboard.bind(bot)}):null;
+  }
+  queueDeparture(visit,end,time){
+    if(!this.notices||!this.board.queueDeparture(visit,end,time))return false;
+    this.target=Math.max(this.target,end.revision);
+    return true;
   }
   observeMeta(meta){
     if(sourceKey(this.store,meta)!==this.source)throw new Error('Leaderboard source changed');
@@ -116,7 +124,8 @@ export class CloudLeaderboard {
     }
     const {cursor}=this.board.state();
     for(const id of this.pending.keys())if(id<=cursor)this.pending.delete(id);
-    if(cursor<this.target)this.wake(LIVE_DELAY);
+    const moreDepartures=this.notices&&this.board.releaseDepartures(cursor);
+    if(cursor<this.target||moreDepartures)this.wake(LIVE_DELAY);
     await this.notices?.flush();
     const delay=this.notices?.nextDelay();
     if(delay!==null&&delay!==undefined)this.wake(delay);
