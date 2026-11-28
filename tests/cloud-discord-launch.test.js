@@ -53,4 +53,5 @@ test('edge launch enforces the signature, app, origin, channel, guild and panel 
   const testPanel={...button,data:{component_type:2,custom_id:`jct|go|${guild}|${user}`}};
   assert.equal((await (await invoke(testPanel)).json()).type,4);
   assert.deepEqual(await (await invoke(testPanel,{},testEnv)).json(),{type:12});
+  assert.deepEqual(await (await invoke(testPanel,{},{...testEnv,DISCORD_COMMAND_PROFILE:'test-simple'})).json(),{type:12});
 });
