@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CasinoBot,casinoBotSettings} from '../server/discord/casino-bot.js';
 import {highlightAnnouncement} from '../server/discord/highlight-card.js';
+import {casinoPreviewCommand} from '../server/discord/casino-preview.js';
 import {visitMessage} from '../server/discord/casino-visits.js';
 import {handleCommand} from '../server/discord/commands.js';
 import {completeDeferredCommand} from '../server/discord/deferred-command.js';
@@ -51,6 +52,7 @@ test('new cards upload only to the original private reply, with accessible text 
   }
   const samples={
     'exit-mixed':['本次戲籌變化 +2,400','老虎機 12 局：−600','野球拳 入場 2 場 · 通關 1 場：+3,000'],
+    'timeout-receipt':['本次戲籌變化 +2,400','老虎機 12 局：−600','野球拳 入場 2 場 · 通關 1 場：+3,000'],
     'exit-slot':['本次戲籌變化 −850','老虎機 18 局：−850'],
     'exit-duel':['本次戲籌變化 0','野球拳 入場 5 場 · 通關 1 場：0'],
     'clear-dealer':['命運荷官','累積 2 勝','2,500'], 'clear-youran':['優然','累積 3 勝','5,000'],
@@ -66,7 +68,8 @@ test('new cards upload only to the original private reply, with accessible text 
       const data=JSON.parse(options.body.get('payload_json'));
       assert.deepEqual(data.allowed_mentions,{parse:[]});
       assert.equal(data.previewCard,undefined);
-      const receipt=choice.startsWith('exit-'),filename=receipt?'casino-arcade-receipt.png':`${choice}.webp`;
+      const receipt=choice.startsWith('exit-')||choice==='timeout-receipt',filename=receipt?'casino-arcade-receipt.png':`${choice}.webp`;
+      if(choice==='timeout-receipt')assert.match(data.content,/暫時離開賭場/);
       assert.equal(data.arcadeReceipt,undefined);
       assert.equal(data.embeds[0].image.url,`attachment://${filename}`);
       assert.equal(data.components[0].components[0].label,'開啟遊戲');
@@ -83,6 +86,36 @@ test('new cards upload only to the original private reply, with accessible text 
   }
   assert.equal(uploads.size,8);
 });
+
+test('timeout and leaderboard previews are private and use complete sample content without pings',async()=>{
+  const user='100000000000000009';
+  const store={environment:'test',backend:'firestore',validate(){}};
+  const preview=async(choice,channelId=channel)=>(await handleCommand({type:2,guild_id:guild,channel_id:channelId,
+    member:{user:{id:user}},data:{name:'推播預覽',options:[{name:'樣式',value:choice}]}},store,[],[channel],{casinoPreview:true})).data;
+  const choices=casinoPreviewCommand.options[0].choices;
+  assert.ok(choices.length<=25);
+  const expected={'timeout-idle':/暫時離開賭場.*這次還沒下注/,'timeout-receipt':/暫時離開賭場/,
+    'leaderboard-entry':/進入前十，本次第 \*\*10\*\* 名/,'leaderboard-promotion':/從第 \*\*7\*\* 名升至第 \*\*3\*\* 名/};
+  for(const [choice,copy] of Object.entries(expected)){
+    assert.equal(choices.filter(option=>option.value===choice).length,1);
+    const result=await preview(choice);
+    assert.equal(result.flags,64);
+    assert.deepEqual(result.allowed_mentions,{parse:[]});
+    if(!choice.startsWith('leaderboard-')){
+      assert.match(result.content,copy);
+      assert.equal(Boolean(result.arcadeReceipt),choice==='timeout-receipt');
+      continue;
+    }
+    assert.equal(result.content,'@試運者｜Aleator');
+    const [embed]=result.embeds;
+    assert.match(embed.title,/月排名 · 總投入/);
+    assert.match(embed.description,copy);
+    assert.equal(embed.description.split('\n').filter(line=>/^\d+\. 測試玩家 \d+　\*\*[\d,]+\*\* 戲籌$/.test(line)).length,10);
+    assert.doesNotMatch(JSON.stringify(result),/<@/);
+    assert.equal((await preview(choice,user)).content,undefined);
+  }
+});
+
 test('existing casino visit receipts still send through the bot',async()=>{
   const f=fixture();
   const start={net:0,rounds:0,bet:0,payout:0,balance:1506};

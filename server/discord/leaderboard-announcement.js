@@ -3,16 +3,16 @@ import {leaderboardGames,leaderboardPeriods} from '../wallet/leaderboard.js';
 
 const format=new Intl.NumberFormat('en-US');
 
-export function leaderboardNotice(event){
-  const actor=playerMention(event.user)??'玩家';
+export function leaderboardNotice(event,displayPlayer=playerMention){
+  const actor=displayPlayer(event.user)??'玩家';
   return {embeds:event.changes.map(({period,game,previous,current,rows})=>({
-    title:`總投入排行榜 · ${event.sharedPeriod?'開服至今／月重設後':leaderboardPeriods[period]} · ${leaderboardGames[game]}`,
+    title:`總投入排行榜 · ${event.sharedPeriod?`${leaderboardPeriods.cycle}／${leaderboardPeriods.all}`:leaderboardPeriods[period]} · ${leaderboardGames[game]}`,
     color:0xcda459,
     description:[
       previous===null?`${actor} 進入前十，本次第 **${current}** 名。`:
         `${actor} 從第 **${previous}** 名升至第 **${current}** 名。`,
       '',
-      ...rows.map(({user,rank,amount})=>`${rank}. ${playerMention(user)??'玩家'}　**${format.format(amount)}** 戲籌`),
+      ...rows.map(({user,rank,amount})=>`${rank}. ${displayPlayer(user)??'玩家'}　**${format.format(amount)}** 戲籌`),
     ].join('\n'),
     timestamp:event.time,
   }))};

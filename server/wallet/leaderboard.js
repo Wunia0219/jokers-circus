@@ -2,12 +2,13 @@ import {problem} from './wallet-common.js';
 
 export const LEADERBOARD_PATH='/api/arcade/leaderboard';
 export const LEADERBOARD_PAGE_SIZE=10;
-export const leaderboardPeriods={all:'開服至今',cycle:'月重設後'};
+export const leaderboardPeriods={all:'總排名',cycle:'月排名'};
 export const leaderboardGames={total:'總投入',slot:'老虎機',duel:'野球拳'};
 const amounts={
   all:{total:'all_slot+all_duel',slot:'all_slot',duel:'all_duel'},
   cycle:{total:'cycle_slot+cycle_duel',slot:'cycle_slot',duel:'cycle_duel'},
 };
+const projectionVersion=2;
 
 export function leaderboardQuery(params){
   const period=params.get('period')??'all',game=params.get('game')??'total';
@@ -32,6 +33,7 @@ export class Leaderboard {
     Object.assign(this,{sql,transaction,source,announcementGuild});
     sql.exec(`CREATE TABLE IF NOT EXISTS leaderboard_state (id INTEGER PRIMARY KEY CHECK(id=1),source TEXT NOT NULL,
       cursor INTEGER NOT NULL, quiet_through INTEGER NOT NULL, seeded INTEGER NOT NULL)`);
+    sql.exec('CREATE TABLE IF NOT EXISTS leaderboard_projection (id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL)');
     sql.exec(`CREATE TABLE IF NOT EXISTS leaderboard_scores (guild TEXT NOT NULL, user TEXT NOT NULL, all_slot INTEGER NOT NULL DEFAULT 0,
       all_duel INTEGER NOT NULL DEFAULT 0, cycle_slot INTEGER NOT NULL DEFAULT 0, cycle_duel INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(guild,user))`);
     sql.exec('CREATE TABLE IF NOT EXISTS leaderboard_cycles (guild TEXT PRIMARY KEY, reset_id TEXT NOT NULL, reset_time TEXT NOT NULL)');
@@ -45,9 +47,15 @@ export class Leaderboard {
   initialize(revision){
     this.transaction(()=>{
       const saved=this.state();
-      if(saved?.source===this.source&&saved.cursor<=revision)return;
-      for(const table of ['scores','cycles','names','outbox','state'])this.sql.exec('DELETE FROM leaderboard_'+table);
-      this.sql.exec('INSERT INTO leaderboard_state VALUES(1,?,0,?,0)',this.source,revision);
+      const sameSource=saved?.source===this.source&&saved.cursor<=revision;
+      const version=this.sql.exec('SELECT version FROM leaderboard_projection WHERE id=1').toArray()[0]?.version;
+      if(sameSource&&version===projectionVersion)return;
+      for(const table of sameSource?['scores','cycles','state']:['scores','cycles','names','outbox','state'])
+        this.sql.exec('DELETE FROM leaderboard_'+table);
+      // Rebuild the old projection without replaying announcements or forgetting verified names.
+      const quietThrough=sameSource?Math.max(saved.cursor,saved.quietThrough):revision;
+      this.sql.exec('INSERT INTO leaderboard_state VALUES(1,?,0,?,0)',this.source,quietThrough);
+      this.sql.exec('INSERT OR REPLACE INTO leaderboard_projection VALUES(1,?)',projectionVersion);
     });
   }
   reset(guild){
@@ -64,23 +72,31 @@ export class Leaderboard {
   rows(guild,period,game,limit,offset=0){
     const expression=amounts[period][game];
     return this.sql.exec(`SELECT user,${expression} AS amount FROM leaderboard_scores
-      WHERE guild=? AND ${expression}>0 ORDER BY ${expression} DESC,user LIMIT ? OFFSET ?`,guild,limit,offset).toArray()
+      WHERE guild=? ORDER BY ${expression} DESC,user LIMIT ? OFFSET ?`,guild,limit,offset).toArray()
       .map((row,i)=>({user:row.user,amount:row.amount,rank:offset+i+1}));
   }
   page(guild,{period,game,page}){
-    const lastReset=this.reset(guild)?.time??null,expression=amounts[period][game];
-    const count=this.sql.exec(`SELECT COUNT(*) AS count FROM leaderboard_scores WHERE guild=? AND ${expression}>0`,guild).one().count;
+    const lastReset=this.reset(guild)?.time??null;
+    const count=this.sql.exec('SELECT COUNT(*) AS count FROM leaderboard_scores WHERE guild=?',guild).one().count;
     const pages=Math.max(1,Math.ceil(count/LEADERBOARD_PAGE_SIZE));
     page=Math.min(page,pages);
     return {period,game,page,pages,count,lastReset,rows:this.rows(guild,period,game,LEADERBOARD_PAGE_SIZE,(page-1)*LEADERBOARD_PAGE_SIZE)};
   }
-  seed(entries,through){
+  seed(entries,through,wallets=[]){
     const scores=new Map(),cycles=new Map();
+    const scoreFor=(guild,user)=>{
+      if(!scores.has(guild))scores.set(guild,new Map());
+      const users=scores.get(guild);
+      if(!users.has(user))users.set(user,{slot:0,duel:0,cycleSlot:0,cycleDuel:0});
+      return users.get(user);
+    };
+    for(const {guild,user} of wallets)scoreFor(guild,user);
     let cursor=0;
     for(const entry of entries){
       if(entry.id>through)break;
       if(entry.id!==++cursor)throw new Error('Leaderboard backup ledger gap');
       const {guild,user}=entry;
+      const score=scoreFor(guild,user);
       if(entry.kind==='reset'){
         if(cycles.get(guild)?.id===entry.reference)continue;
         cycles.set(guild,{id:entry.reference,time:entry.time});
@@ -89,10 +105,6 @@ export class Leaderboard {
       }
       const stake=wager(entry);
       if(!stake)continue;
-      if(!scores.has(guild))scores.set(guild,new Map());
-      const users=scores.get(guild);
-      if(!users.has(user))users.set(user,{slot:0,duel:0,cycleSlot:0,cycleDuel:0});
-      const score=users.get(user);
       score[stake.game]+=stake.amount;
       score[stake.game==='slot'?'cycleSlot':'cycleDuel']+=stake.amount;
     }
@@ -112,20 +124,22 @@ export class Leaderboard {
         if(entry.id<=cursor)continue;
         if(entry.id!==cursor+1)throw new Error('Leaderboard ledger gap');
         cursor=entry.id;
+        const {guild,user}=entry,stake=wager(entry);
+        if(!stake)this.sql.exec('INSERT OR IGNORE INTO leaderboard_scores (guild,user) VALUES(?,?)',guild,user);
         if(entry.kind==='reset'){
-          if(this.reset(entry.guild)?.id===entry.reference)continue;
-          this.sql.exec('UPDATE leaderboard_scores SET cycle_slot=0,cycle_duel=0 WHERE guild=? AND (cycle_slot>0 OR cycle_duel>0)',entry.guild);
+          if(this.reset(guild)?.id===entry.reference)continue;
+          this.sql.exec('UPDATE leaderboard_scores SET cycle_slot=0,cycle_duel=0 WHERE guild=? AND (cycle_slot>0 OR cycle_duel>0)',guild);
           this.sql.exec(`INSERT INTO leaderboard_cycles VALUES(?,?,?) ON CONFLICT(guild) DO UPDATE SET
-            reset_id=excluded.reset_id,reset_time=excluded.reset_time`,entry.guild,entry.reference,entry.time);
+            reset_id=excluded.reset_id,reset_time=excluded.reset_time`,guild,entry.reference,entry.time);
           continue;
         }
-        const stake=wager(entry);
         if(!stake)continue;
-        const {guild,user}=entry,{game,amount}=stake;
+        const {game,amount}=stake;
         const canAnnounce=guild===this.announcementGuild&&entry.id>state.quietThrough;
         const periods=canAnnounce?(this.reset(guild)?['all','cycle']:['all']):[];
         const boards=periods.flatMap(period=>['total',game].map(game=>({
-          period,game,previous:this.rows(guild,period,game,LEADERBOARD_PAGE_SIZE).find(row=>row.user===user)?.rank,
+          // A zero row appears on screen, but qualifies for entry notices with its first wager.
+          period,game,previous:this.rows(guild,period,game,LEADERBOARD_PAGE_SIZE).find(row=>row.user===user&&row.amount>0)?.rank,
         })));
         this.sql.exec(`INSERT INTO leaderboard_scores (guild,user,all_${game},cycle_${game}) VALUES(?,?,?,?)
           ON CONFLICT(guild,user) DO UPDATE SET all_${game}=all_${game}+excluded.all_${game},

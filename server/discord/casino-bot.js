@@ -6,9 +6,11 @@ import {previewArt} from './casino-preview-art.js';
 import {commandChannels,TEST_PARITY_PROFILE} from './discord-channel-scope.js';
 const snowflake=value=>/^\d{17,20}$/.test(value||'');
 
-export function casinoBotSettings(env,store){
-  if(!env.DISCORD_CASINO_ENABLED||env.DISCORD_CASINO_ENABLED==='false')return null;
-  if(env.DISCORD_CASINO_ENABLED!=='true')throw new Error('Invalid casino notification switch');
+export function casinoBotSettings(env,store,{lookupOnly=false}={}){
+  const token=env.DISCORD_BOT_TOKEN?.trim();
+  if(lookupOnly&&!token)return null;
+  if(!lookupOnly&&(!env.DISCORD_CASINO_ENABLED||env.DISCORD_CASINO_ENABLED==='false'))return null;
+  if(!lookupOnly&&env.DISCORD_CASINO_ENABLED!=='true')throw new Error('Invalid casino notification switch');
   const guild=env.DISCORD_CASINO_GUILD_ID?.trim()||(store.guildIds.size===1?[...store.guildIds][0]:''),channel=env.DISCORD_CASINO_CHANNEL_ID?.trim(),applicationId=env.DISCORD_CLIENT_ID;
   store.assertGuild(guild);
   const test=env.APP_ENV==='test';
@@ -17,10 +19,9 @@ export function casinoBotSettings(env,store){
     if(env.DISCORD_COMMAND_PROFILE!==TEST_PARITY_PROFILE||store.guildIds.size!==1||channels.length!==1||channels[0]!==channel)
       throw new Error('Test casino bot must use the sole test guild and command channel');
   }
-  const token=env.DISCORD_BOT_TOKEN?.trim();
   if(!snowflake(channel)||!snowflake(applicationId)||!/^[-\w.]{30,200}$/.test(token||''))throw new Error('Casino bot configuration is incomplete');
   const role=env.DISCORD_LEADERBOARD_ROLE_ID?.trim();
-  const leaderboardRoleId=(test||env.APP_ENV==='production')&&snowflake(role)?role:null;
+  const leaderboardRoleId=!lookupOnly&&(test||env.APP_ENV==='production')&&snowflake(role)?role:null;
   return {guild,channel,applicationId,token,leaderboardRoleId,textOnly:test};
 }
 

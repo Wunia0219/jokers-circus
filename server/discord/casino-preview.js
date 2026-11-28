@@ -4,6 +4,7 @@ import {grantAnnouncement} from './grant-notification.js';
 import {receiptColors} from './casino-receipt.js';
 import {clearPreviews, exitPreviews} from './casino-preview-design.js';
 import {ARCADE_RECEIPT_NAME,arcadeReceiptSummary} from './arcade-receipt.js';
+import {leaderboardNotice} from './leaderboard-announcement.js';
 
 const previews = [...clearPreviews, ...exitPreviews];
 
@@ -14,9 +15,13 @@ export const casinoPreviewCommand = {
     choices: [
       {name: '入場', value: 'enter'}, {name: '沒下注就離場', value: 'idle'},
       ...previews.map(({key, label}) => ({name: label, value: key})),
+      {name: '連線到期｜未下注', value: 'timeout-idle'},
+      {name: '連線到期｜離場收據', value: 'timeout-receipt'},
       {name: 'BIG WIN', value: 'big'},
       {name: 'SUPER WIN', value: 'super'}, {name: 'MEGA WIN', value: 'mega'},
       {name: '獲得戲籌', value: 'grant'},
+      {name: '排行榜｜進入前十', value: 'leaderboard-entry'},
+      {name: '排行榜｜名次晉升', value: 'leaderboard-promotion'},
     ],
   }],
 };
@@ -24,17 +29,27 @@ export const casinoPreviewCommand = {
 const start = {net: 0, rounds: 0, bet: 0, payout: 0, balance: 1506};
 const visit = {name: '測試玩家', start};
 const wins = {big: 15, super: 48, mega: 128};
+const leaderboardRows=Array.from({length:10},(_,index)=>({user:`測試玩家 ${index+1}`,rank:index+1,amount:22000-index*1500}));
+
+function previewLeaderboard({previous,current}){
+  const event={user:leaderboardRows[current-1].user,changes:[{period:'cycle',game:'total',previous,current,rows:leaderboardRows}]};
+  return {content:'@試運者｜Aleator',...leaderboardNotice(event,name=>name)};
+}
 
 export function casinoPreviewMessage(choice,{user}={}) {
   const playerVisit={...visit,user};
   if (choice === 'enter') return visitMessage(playerVisit);
   if (choice === 'idle') return visitMessage(playerVisit, start, 'closed');
-  const sample = previews.find(({key}) => key === choice);
+  if (choice === 'timeout-idle') return visitMessage(playerVisit, start, 'timeout');
+  if (choice === 'leaderboard-entry') return previewLeaderboard({previous:null,current:10});
+  if (choice === 'leaderboard-promotion') return previewLeaderboard({previous:7,current:3});
+  const timeoutReceipt=choice==='timeout-receipt';
+  const sample = previews.find(({key}) => key === (timeoutReceipt?'exit-mixed':choice));
   if(sample?.rows){
     const arcadeReceipt={slot:sample.rows.find(r=>r.icon==='slot')??{rounds:0,net:0},duel:sample.rows.find(r=>r.icon==='duel')??{entries:0,clears:0,net:0}};
     const summary=arcadeReceiptSummary(arcadeReceipt);
     const {content,allowed_mentions}=visitMessage({...playerVisit,start:{...start,revision:0}},
-      {...start,rounds:arcadeReceipt.slot.rounds,net:arcadeReceipt.slot.net,duel:arcadeReceipt.duel},'closed');
+      {...start,rounds:arcadeReceipt.slot.rounds,net:arcadeReceipt.slot.net,duel:arcadeReceipt.duel},timeoutReceipt?'timeout':'closed');
     return {content,allowed_mentions,embeds:[{title:sample.title,description:summary.description.replaceAll('；','\n'),color:receiptColors[summary.tone],image:{url:`attachment://${ARCADE_RECEIPT_NAME}`}}],arcadeReceipt};
   }
   if (sample) return {

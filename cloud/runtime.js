@@ -5,8 +5,8 @@ import {WalletService} from '../server/wallet/wallet-service.js';
 import {highlightSettings} from '../server/discord/highlights.js';
 import {createActivityHandler} from '../server/http/app-handler.js';
 import {CloudBackup} from './backup.js';
-import {commandChannels,TEST_PARITY_PROFILE} from '../server/discord/discord-channel-scope.js';
-import {CasinoBot} from '../server/discord/casino-bot.js';
+import {commandChannels,testCommandProfile} from '../server/discord/discord-channel-scope.js';
+import {CasinoBot,casinoBotSettings} from '../server/discord/casino-bot.js';
 import {FirestoreRest} from './firestore-rest.js';
 import {CloudSessions,CloudLoginLimit,Sealer} from './storage.js';
 import {SnapshotVault} from './snapshot.js';
@@ -29,7 +29,7 @@ export async function createCloudRuntime(project){
   const store=new FirestoreWalletCore(settings,{...options,db:transport(),quota:project.quota,settlementQueue:new SettlementQueue(),stateCacheMs:30000});
   // Never initialize an empty remote namespace from a public request.
   const meta=await store.read(store.meta);store.checkMeta(meta);store.walletEpoch=meta.walletEpoch;store.resetAt=meta.resetAt;store.ready=true;store.readyAt=Date.now();
-  const service=new WalletService(store,{fetchImpl:cloudFetch,sessions:new CloudSessions(project.ctx.storage,sealer)}),hs=highlightSettings(project.env,store);
+  const hs=highlightSettings(project.env,store);
   const bot=hs?.botSettings?new CasinoBot({...hs.botSettings,fetchImpl:cloudFetch}):null;
   const visits=bot?new CasinoVisits({state:project.state,bot,readAccount:(guild,user,start)=>store.casinoAccount(guild,user,start),wake:()=>project.ctx.waitUntil(project.schedule(1000)),warn:message=>console.warn(message)}):null;
   const highlights=hs?new FirestoreHighlights(new FirestoreWalletCore(settings,{...options,db:transport(),quota:new CloudQuota(project.ctx.storage,project.state,{scope:'highlights'})}),{...hs,bot,fetchImpl:cloudFetch}):null;
@@ -40,14 +40,17 @@ export async function createCloudRuntime(project){
   const commandChannelIds=commandChannels(project.env);
   const notices=new GrantNotifications({bot,commandChannelIds,state:project.state});
   const arcade=arcadeEnabled(project.env)&&store.schemaVersion===2?arcadeControls(project,store):null;
+  const memberSettings=arcade&&!bot?casinoBotSettings(project.env,store,{lookupOnly:true}):null;
   const leaderboard=arcade?new CloudLeaderboard({
     storage:project.ctx.storage,state:project.state,vault,store,meta,bot,
+    memberBot:memberSettings?new CasinoBot({...memberSettings,fetchImpl:cloudFetch}):bot,
     quota:backup.store.quota,wake:delay=>project.ctx.waitUntil(project.schedule(delay).catch(()=>{})),
   }):null;
   if(leaderboard)store.onLedgerCommit=entries=>leaderboard.commit(entries);
+  const service=new WalletService(store,{fetchImpl:cloudFetch,sessions:new CloudSessions(project.ctx.storage,sealer),onProfile:session=>leaderboard?.remember(session)});
   const slotOpen=arcade||operatorEnabled(project.env)?()=>readArcade(project.state).slot==='open':undefined;
-  const testProfile=settings.environment==='test'?project.env.DISCORD_COMMAND_PROFILE:null;
-  const simpleTestCommands=testProfile==='test-simple',testCommands=simpleTestCommands||testProfile===TEST_PARITY_PROFILE;
+  const testProfile=testCommandProfile(project.env);
+  const simpleTestCommands=testProfile==='test-simple',testCommands=testProfile!==null;
   const previewAllCG=settings.environment==='test'&&arcade!==null&&project.env.ARCADE_CG_PREVIEW_ALL==='true';
   if(testCommands&&!bot)store.grantNotificationsEnabled=false;
   const commandEffects=testCommands?{arcade:simpleTestCommands?null:arcade,panelPrefix:'jct',casinoPreview:true}:null;

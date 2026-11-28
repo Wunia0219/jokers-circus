@@ -11,8 +11,8 @@ const markup=`
   </header>
   <div class="leaderboard-controls">
     <div class="leaderboard-periods" role="group" aria-label="統計期間">
-      <button type="button" data-period="all">開服至今</button>
-      <button type="button" data-period="cycle">月重設後</button>
+      <button type="button" data-period="cycle">月排名</button>
+      <button type="button" data-period="all">總排名</button>
     </div>
     <div class="leaderboard-games" role="group" aria-label="排名分類">
       <button type="button" data-game="total">總投入</button>
@@ -45,7 +45,7 @@ function createLeaderboard(button,{fetchBoard,getDuelTitle}){
   const results=get('.leaderboard-results'),table=get('table'),body=get('tbody'),status=get('.leaderboard-status');
   const pageLabel=get('.leaderboard-pages span'),since=get('.leaderboard-since');
   const previous=get('[data-action="prev"]'),next=get('[data-action="next"]'),retry=get('[data-action="retry"]');
-  let period='all',game='total',page=1,pages=1,request,visibleRows=[];
+  let period,game='total',page=1,pages=1,request,visibleRows=[];
 
   function drawRows(){
     body.replaceChildren(...visibleRows.map(({rank,name,amount})=>{
@@ -119,10 +119,11 @@ function createLeaderboard(button,{fetchBoard,getDuelTitle}){
     duel.hidden=!duelTitle;
     duel.textContent=duelTitle??'';
     duel.parentElement.classList.toggle('has-duel',Boolean(duelTitle));
-    if(!duelTitle&&game==='duel'){game='total';page=1;}
+    if(!duelTitle&&game==='duel')game='total';
+    period='cycle';
     dialog.showModal();
     get('[data-action="close"]').focus({preventScroll:true});
-    void load();
+    void load(1);
   };
 }
 

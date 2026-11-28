@@ -15,13 +15,19 @@ const auth = await fetch(base + '/oauth2/token', {
 });
 assert.ok(auth.ok, 'Test App authorization returned HTTP ' + auth.status);
 const {access_token: token} = await auth.json();
-const response = await fetch(base + '/applications/' + id + '/guilds/' + guild + '/commands', {
-  method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15000),
-  headers: {Authorization: 'Bearer ' + token, 'Content-Type': 'application/json'},
-  body: JSON.stringify(casinoPreviewCommand),
+const endpoint = base + '/applications/' + id + '/guilds/' + guild + '/commands';
+const headers = {Authorization: 'Bearer ' + token};
+const current = await fetch(endpoint, {headers, redirect: 'error', signal: AbortSignal.timeout(15000)});
+assert.ok(current.ok, 'Test command listing returned HTTP ' + current.status);
+const existing = (await current.json()).find(command => command.name === casinoPreviewCommand.name && command.type === casinoPreviewCommand.type);
+const response = await fetch(existing ? endpoint + '/' + existing.id : endpoint, {
+  method: existing ? 'PATCH' : 'POST', redirect: 'error', signal: AbortSignal.timeout(15000),
+  headers: {...headers, 'Content-Type': 'application/json'},
+  body: JSON.stringify(existing ? {options: casinoPreviewCommand.options} : casinoPreviewCommand),
 });
 assert.ok(response.ok, 'Test command registration returned HTTP ' + response.status);
 const command = await response.json();
 assert.deepEqual([command.application_id, command.guild_id, command.name], [id, guild, casinoPreviewCommand.name]);
+if(existing)assert.equal(command.id, existing.id);
 assert.deepEqual(command.options?.[0]?.choices?.map(({name,value})=>({name,value})), casinoPreviewCommand.options[0].choices);
 console.log('已註冊測試伺服器專用 /' + command.name);

@@ -173,6 +173,68 @@ const inspect=async(page,platform,loginFailure)=>{
   await page.goto(origin+'/__host?platform='+platform);
   return page.frameLocator('iframe[title="Discord 活動"]');
 };
+
+async function verifyLeaderboardLayout(page,lobby,{short=false}={}){
+  const pattern=/\/api\/arcade\/leaderboard\?/;
+  const secondPage=Promise.withResolvers();
+  const fixture=async route=>{
+    const params=new URL(route.request().url()).searchParams;
+    const page=Number(params.get('page'));
+    if(page===2)await secondPage.promise;
+    const count=params.get('game')==='slot'?0:13;
+    const rows=Array.from({length:Math.min(10,count-(page-1)*10)},(_,index)=>{
+      const rank=(page-1)*10+index+1;
+      return {rank,name:`測試玩家 ${rank}`,amount:14000-rank*1000};
+    });
+    return route.fulfill({json:{rows,page,pages:count?2:1,lastReset:null}});
+  };
+  await page.route(pattern,fixture);
+  const open=lobby.getByRole('button',{name:'總投入排行榜',exact:true});
+  const dialog=lobby.getByRole('dialog',{name:'總投入排行榜',exact:true});
+  const period=name=>dialog.getByRole('button',{name,exact:true});
+  const rows=dialog.locator('table:visible tbody tr');
+  const ready=label=>dialog.getByText(label,{exact:true}).waitFor();
+  const layout=()=>dialog.evaluate(el=>[el,...el.querySelectorAll('.leaderboard-controls,.leaderboard-results,.leaderboard-pages')]
+    .map(node=>{const {x,y,width,height}=node.getBoundingClientRect();return {x,y,width,height};}));
+  try{
+    await open.click();
+    await ready('1 / 2');
+    assert.equal(await period('月排名').getAttribute('aria-pressed'),'true');
+    assert.equal(await rows.count(),10);
+    const full=await layout();
+    assert.ok(full[0].y>=0&&full[0].y+full[0].height<=page.viewportSize().height);
+    assert.equal(await dialog.locator('.leaderboard-results').evaluate(el=>el.scrollHeight>el.clientHeight),short);
+
+    await period('下一頁').click();
+    await ready('正在載入排行榜…');
+    assert.deepEqual(await layout(),full,'the loading state keeps the layout fixed');
+    secondPage.resolve();
+    await ready('2 / 2');
+    assert.equal(await rows.count(),3);
+    assert.deepEqual(await layout(),full,'a shorter page keeps the layout fixed');
+
+    await period('總排名').click();
+    await ready('1 / 2');
+    assert.deepEqual(await layout(),full,'switching periods keeps the layout fixed');
+    await period('老虎機').click();
+    await ready('1 / 1');
+    assert.equal(await rows.count(),0);
+    assert.deepEqual(await layout(),full,'an empty category keeps the layout fixed');
+    await period('總投入').click();
+    await ready('1 / 2');
+    await period('下一頁').click();
+    await ready('2 / 2');
+    await period('關閉排行榜').click();
+    await open.click();
+    await ready('1 / 2');
+    assert.equal(await period('月排名').getAttribute('aria-pressed'),'true','reopening starts on the monthly leaderboard');
+    await period('關閉排行榜').click();
+  }finally{
+    secondPage.resolve();
+    await page.unroute(pattern,fixture);
+  }
+}
+
 try{
   browser=await launchBrowser();
   const old=await browser.newPage({viewport:{width:1280,height:800}}),oldGame=await inspect(old,'desktop');
@@ -212,6 +274,7 @@ try{
   const desktopCard=desktopLobby.getByRole('button',{name:'選擇老虎機',exact:true});
   await desktopCard.waitFor();
   assert.equal(await desktopLobby.getByRole('button',{name:'進入遊戲',exact:true}).count(),0);
+  await verifyLeaderboardLayout(desktop,desktopLobby);
   await desktop.screenshot({path:resolve(output,'lobby-desktop.png')});
   await desktopCard.click();
   await desktopLobby.frameLocator('#arcade-game').locator('#spin:enabled').waitFor({timeout:45000});
@@ -228,6 +291,9 @@ try{
   const featureCard=lobby.getByRole('button',{name:'選擇野球拳',exact:true});
   await lobby.locator('#launch-screen').waitFor({state:'detached'});
   if(mobileEntry)assert.equal((await mobileEntry).status,200);
+  await page.setViewportSize({width:390,height:360});
+  await verifyLeaderboardLayout(page,lobby,{short:true});
+  await page.setViewportSize({width:390,height:844});
   await slotCard.waitFor({timeout:30000});
   assert.equal(await lobby.locator('#feature-status').textContent(),'即將揭曉');
   assert.equal(await featureCard.count(),0);

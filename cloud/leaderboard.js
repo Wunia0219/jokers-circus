@@ -3,12 +3,12 @@ import {LeaderboardNotices} from '../server/discord/leaderboard-announcement.js'
 import {unpack} from '../server/firestore/documents.js';
 import {problem} from '../server/wallet/wallet-common.js';
 
-const STEP=128,LIVE_DELAY=1000;
+const STEP=128,LIVE_DELAY=1000,NAME_TTL=86400000;
 const sourceKey=(store,meta)=>JSON.stringify([store.settings.namespace,meta.walletEpoch??null,meta.importFingerprint??null]);
 
 export class CloudLeaderboard {
-  constructor({storage,state,vault,store,meta,quota,bot,wake}){
-    Object.assign(this,{storage,state,vault,store,quota,bot,wake});
+  constructor({storage,state,vault,store,meta,quota,bot,memberBot=bot,wake}){
+    Object.assign(this,{storage,state,vault,store,quota,memberBot,wake});
     this.pending=new Map();
     this.names=new Map();
     this.target=meta.nextId;
@@ -31,25 +31,40 @@ export class CloudLeaderboard {
     if(entries.length)this.wake(LIVE_DELAY);
   }
   remember({guild,user,profile}){
-    if(profile?.name&&this.board.name(guild,user)!==profile.name)this.board.remember(guild,user,profile.name);
+    if(profile?.name&&this.board.name(guild,user)!==profile.name)this.board.remember(guild,user,profile.name,Date.now()+NAME_TTL);
+  }
+  async verifyMemberBot(){
+    if(this.memberBot.verified)return;
+    this.memberVerification??=this.memberBot.verify().catch(error=>{
+      this.nameLookupAfter=Date.now()+60000;
+      throw error;
+    }).finally(()=>{this.memberVerification=null;});
+    await this.memberVerification;
   }
   async name(guild,user){
     const saved=this.board.name(guild,user);
-    if(saved!==undefined||this.bot?.guild!==guild||this.nameLookupAfter>Date.now())return saved||null;
+    if(saved!==undefined)return saved||null;
+    const previous=this.board.name(guild,user,0)||null;
+    if(this.memberBot?.guild!==guild||this.nameLookupAfter>Date.now())return previous;
     const key=guild+':'+user;
     if(!this.names.has(key)){
-      if(this.names.size>=10)return null;
+      if(this.names.size>=10)return previous;
       const lookup=(async()=>{
         try{
-          const response=await this.bot.request(`/guilds/${guild}/members/${user}`);
-          if(response.status===404){this.board.remember(guild,user,'',Date.now()+3600000);return null;}
+          await this.verifyMemberBot();
+          const response=await this.memberBot.request(`/guilds/${guild}/members/${user}`);
           if(response.status===429)this.nameLookupAfter=Date.now()+60000;
-          if(!response.ok)return null;
+          const updated=this.board.name(guild,user);
+          if(updated!==undefined)return updated||null;
+          if(response.status===404)this.board.remember(guild,user,previous||'',Date.now()+3600000);
+          if(!response.ok)return previous;
           const member=await response.json();
-          if(member.user?.id!==user)return null;
-          this.board.remember(guild,user,member.nick||member.user.global_name||member.user.username,Date.now()+86400000);
-          return this.board.name(guild,user)||null;
-        }catch{return null;}
+          if(member.user?.id!==user)return previous;
+          const name=this.board.name(guild,user);
+          if(name!==undefined)return name||null;
+          this.board.remember(guild,user,member.nick||member.user.global_name||member.user.username||previous,Date.now()+NAME_TTL);
+          return this.board.name(guild,user)||previous;
+        }catch{return previous;}
       })().finally(()=>this.names.delete(key));
       this.names.set(key,lookup);
     }
@@ -64,7 +79,7 @@ export class CloudLeaderboard {
     this.remember(session);
     const page=this.board.page(session.guild,query);
     return {...page,rows:await Promise.all(page.rows.map(async({user,rank,amount})=>({
-      rank,amount,name:await this.name(session.guild,user)||`玩家 · ${user.slice(-4)}`,
+      rank,amount,name:await this.name(session.guild,user)||'Discord 名稱待同步',
     })))};
   }
   work(){
@@ -76,8 +91,10 @@ export class CloudLeaderboard {
     if(!snapshot.seeded){
       const generation=this.state.get('backup-latest'),manifest=this.vault.manifest(generation);
       const through=Math.min(manifest.revision,snapshot.quietThrough);
-      const rows=manifest.format===2?this.vault.rows(generation,'ledger'):this.vault.load(generation).tables.ledger.sort((a,b)=>a.id-b.id);
-      this.board.seed(rows,through);
+      const tables=manifest.format===2?null:this.vault.load(generation).tables;
+      const rows=tables?tables.ledger.sort((a,b)=>a.id-b.id):this.vault.rows(generation,'ledger');
+      const wallets=tables?tables.wallets:this.vault.rows(generation,'wallets');
+      this.board.seed(rows,through,wallets);
       snapshot=this.board.state();
     }
     if(snapshot.cursor<this.target){

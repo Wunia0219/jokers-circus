@@ -44,13 +44,14 @@ test('reset clears current scores once per guild reset and preserves lifetime to
   const reset={id:start+1,guild,user:user(0),kind:'reset',delta:0,time,reference:'monthly-a'};
   board.apply([reset,{...reset,id:start+2,user:user(1)}]);
   assert.deepEqual(all(board).rows,before);
-  assert.deepEqual(cycle(board).rows,[]);
+  assert.equal(cycle(board).count,13);
+  assert.ok(cycle(board).rows.every(row=>row.amount===0));
   assert.deepEqual(outbox(sql),[]);
-  board.apply([slot(start+3,500)]);
+  board.apply([slot(start+3,500,{user:user(1)})]);
   board.apply([reset]);
   assert.equal(cycle(board).rows[0].amount,500);
   assert.equal(cycle(board).lastReset,time);
-  assert.equal(all(board).rows[0].amount,37000);
+  assert.equal(all(board).rows[0].amount,36500);
   assert.deepEqual(outbox(sql).map(e=>e.changes.map(c=>[c.period,c.game])),[[['cycle','total'],['cycle','slot']]]);
   assert.throws(()=>board.apply([slot(start+4,100),slot(start+6,100)]),/ledger gap/);
   assert.equal(cycle(board).rows[0].amount,500);
@@ -114,7 +115,7 @@ test('archive bootstraps quietly and the live projection recovers missing commit
   const store={settings:{namespace:'test'},root:{collection:()=>({doc:Number})},
     db:{batchGet:async ids=>{fetches.push(ids);return ids.map(readDoc);}}};
   const quota={reserve(){},observe(){}};
-  const vault={manifest:()=>({format:2,revision:1}),rows:()=>ledger.slice(0,1)};
+  const vault={manifest:()=>({format:2,revision:1}),rows:(_,table)=>table==='wallets'?[{guild,user:user(1)}]:ledger.slice(0,1)};
   const options={storage,state:{get:()=>null},vault,store,quota,wake(){}};
   const cloud=new CloudLeaderboard({...options,meta:{nextId:2}});
   await cloud.work();
@@ -125,10 +126,56 @@ test('archive bootstraps quietly and the live projection recovers missing commit
   await restarted.work();
   assert.deepEqual(fetches,[[2],[3]]);
   const page=await restarted.page({guild,user:user(0),profile:{name:'樣本'}},new URLSearchParams());
-  assert.deepEqual(page.rows,[{rank:1,amount:3500,name:'樣本'}]);
+  assert.deepEqual(page.rows,[{rank:1,amount:3500,name:'樣本'},{rank:2,amount:0,name:'Discord 名稱待同步'}]);
   const fresh=new CloudLeaderboard({...options,meta:{nextId:0,walletEpoch:'new'},vault:{manifest:()=>({format:2,revision:0}),rows:()=>[]}});
   await fresh.work();
   assert.equal(all(fresh.board).count,0);
+});
+
+test('the deployed projection backfills zero rows and preserves verified names and queued announcements',async t=>{
+  const {sql,transaction,close}=memorySql();t.after(close);
+  const ledger=[slot(1,1000),{id:2,guild,user:user(2),kind:'welcome'},{id:3,guild:otherGuild,user:user(3),kind:'welcome'}];
+  const meta={nextId:3},store={settings:{namespace:'test'},root:{collection:()=>({doc:Number})},db:{batchGet:async ids=>ids.map(id=>({exists:true,get:()=>JSON.stringify(ledger[id-1]),data:()=>ledger[id-1]}))}};
+  const options={storage:{sql,transactionSync:transaction},state:{get:()=>null},store,meta,quota:{reserve(){},observe(){}},wake(){},
+    vault:{manifest:()=>({format:2,revision:1}),rows:(_,table)=>table==='wallets'?[{guild,user:user(1)}]:ledger.slice(0,1)}};
+  const prior=new CloudLeaderboard(options);
+  prior.board.seed(ledger,3);
+  prior.board.remember(guild,user(0),'舊版已核對');
+  sql.exec('DELETE FROM leaderboard_scores WHERE all_slot=0');
+  sql.exec('INSERT INTO leaderboard_outbox(id,payload) VALUES(1,?)','{}');
+  sql.exec('DELETE FROM leaderboard_projection');
+  const upgraded=new CloudLeaderboard(options);
+  await upgraded.work();
+  assert.equal(upgraded.board.name(guild,user(0)),'舊版已核對');
+  assert.equal(outbox(sql).length,1);
+  assert.deepEqual(all(upgraded.board).rows.map(row=>[row.user,row.amount]),[[user(0),1000],[user(1),0],[user(2),0]]);
+  for(const period of ['all','cycle'])for(const game of ['total','slot','duel'])assert.equal(upgraded.board.page(guild,{period,game,page:1}).count,3);
+  assert.equal(upgraded.board.page(otherGuild,{period:'all',game:'total',page:1}).count,1);
+  upgraded.board.remember(guild,user(4),'有登入、無錢包');
+  assert.equal(all(upgraded.board).count,3);
+  const newWallet={id:4,guild,user:user(5),kind:'welcome'};
+  upgraded.commit([newWallet]);
+  await upgraded.work();
+  assert.equal(all(upgraded.board).count,4);
+  assert.equal(outbox(sql).length,1);
+});
+
+test('a verified lookup-only bot resolves past players and does not enable announcements',async t=>{
+  const {sql,transaction,close}=memorySql();t.after(close);
+  let verifies=0,lookups=0;
+  const memberBot={guild,verified:false,async verify(){verifies++;this.verified=true;},
+    async request(path){lookups++;const id=path.split('/').at(-1);return id===user(0)?
+      Response.json({nick:'群內暱稱',user:{id,username:'帳號名稱'}}):Response.json({user:{id,global_name:'顯示名稱'}});}};
+  const cloud=new CloudLeaderboard({storage:{sql,transactionSync:transaction},state:{get:()=>null},store:{settings:{namespace:'test'}},
+    meta:{nextId:0},memberBot,wake(){},vault:{manifest:()=>({format:2,revision:0}),rows:(_,table)=>table==='wallets'?[0,1,2].map(index=>({guild,user:user(index)})):[]}});
+  await cloud.work();
+  const session={guild,user:user(2),profile:{name:'登入已核對'}};
+  const first=await cloud.page(session,new URLSearchParams());
+  assert.deepEqual(first.rows.map(row=>row.name),['群內暱稱','顯示名稱','登入已核對']);
+  await cloud.page(session,new URLSearchParams());
+  assert.deepEqual([verifies,lookups],[1,2]);
+  assert.equal(await cloud.name(otherGuild,user(0)),null);
+  assert.equal(cloud.notices,null);
 });
 
 test('leaderboard HTTP reads use only the signed-in guild and respect the feature reveal gate',async()=>{

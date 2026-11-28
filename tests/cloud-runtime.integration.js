@@ -112,6 +112,15 @@ for(const casino of [false,true])test(`real workerd persists quotas/sessions, Di
  assert.equal((await call('/healthz')).data.version,APP_VERSION);
  const monitorHeaders={Authorization:'Bearer '+monitorToken};
  const beforeSeed=await call('/__ops/status',{headers:monitorHeaders});assert.equal(beforeSeed.status,200);assert.equal(beforeSeed.data.mode,'unseeded');assert.equal(beforeSeed.data.operations.ok,false);
+ // The Discord response must be available even before the wallet can initialize.
+ const coldLaunch=JSON.stringify({type:3,application_id:client,guild_id:guild,channel_id:'100000000000000006',
+   member:{user:{id:user}},data:{component_type:2,custom_id:'casino:open-game'}});
+ const coldTimestamp=String(Math.floor(Date.now()/1000));
+ const coldResponse=await mf.dispatchFetch('http://localhost/api/interactions',{method:'POST',headers:{
+   'x-signature-timestamp':coldTimestamp,'x-signature-ed25519':sign(null,Buffer.from(coldTimestamp+coldLaunch),ed.privateKey).toString('hex')},body:coldLaunch});
+ assert.equal(coldResponse.status,200);
+ assert.deepEqual(await coldResponse.json(),{type:12});
+ assert.equal((await call('/api/wallet')).status,503);
  for(const path of ['/__ops/seed','/__ops/pause','/__ops/activate','/__ops/backup','/__ops/archive','/__ops/export','/__ops/verify','/__ops/status','/__ops/quota-limits','/__ops/quota-policy','/__ops/settlement-policy'])assert.equal((await call(path,{body:{},headers:monitorHeaders})).status,403,path+' is not authorized by a monitor token');
  const snapshot=snapshotForCloud(source,'test',{upstreamImportFingerprint:plan.fingerprint}),quota={projectId:settings.projectId,exportedAt:Date.now(),scopes:Object.fromEntries(Object.entries(QUOTA_LIMITS).map(([k,v])=>[k,{limits:{...v},growth:300,usage:[{slot:Math.floor(Date.now()/60000)*60000,reads:37,writes:k==='maintenance'?0:13,egressBytes:3}],documents:[]}]))};
  if(casino)quota.scopes.global.usage[0].writes=20000;
