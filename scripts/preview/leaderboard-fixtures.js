@@ -40,7 +40,7 @@ export function previewFixture(){
   previewNames.forEach((name,index)=>board.remember(previewGuild,previewUser(index),name));
   const commit=entry=>{entries.push(entry);board.apply([entry]);};
   return {...storage,board,commit,
-    newcomer:()=>commit(wager(13,'slot',14500,new Date().toISOString())),
+    climb:()=>commit(wager(12,'slot',10000,new Date().toISOString())),
     promote:()=>commit(wager(8,'duel',13000,new Date().toISOString())),
     reset:()=>commit({id:entries.length+1,guild:previewGuild,user:previewUser(0),kind:'reset',delta:0,time:new Date().toISOString(),reference:'local-'+(entries.length+1)}),
   };

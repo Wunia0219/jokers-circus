@@ -10,13 +10,30 @@ WIDTH, HEIGHT = 680, 276
 OUT = Path(__file__).resolve().parents[2] / "server/discord/casino-receipt-art.js"
 FONTS = Path("C:/Windows/Fonts")
 LABELS = {"amount": "這次獲得", "rounds": "總遊玩"}
+LEADERBOARD_INK = {"rise": (219, 177, 111), "previous": (173, 156, 162), "current": (204, 190, 184)}
+LEADERBOARD_BOARD_LAYOUT = {"left": 318, "top": 190, "width": 300, "height": 42}
 
 
 def pack(data):
     return base64.b64encode(zlib.compress(data, 9)).decode("ascii")
 
 
-def frame(grant=False):
+def leaderboard_board_labels():
+    periods = {"cycle": "月排名", "all": "總排名"}
+    games = {"total": "總投入", "slot": "老虎機", "duel": "野球拳"}
+    width, height = LEADERBOARD_BOARD_LAYOUT["width"], LEADERBOARD_BOARD_LAYOUT["height"]
+    font = ImageFont.truetype(str(FONTS / "msjhbd.ttc"), 24)
+    labels = {}
+    for period, period_name in periods.items():
+        for game, game_name in games.items():
+            image = Image.new("RGB", (width, height), "#24171d")
+            ImageDraw.Draw(image).text((width // 2, height // 2), f"{period_name} · {game_name}",
+                                       font=font, fill="#c9ad96", anchor="mm")
+            labels[f"{period}-{game}"] = pack(image.tobytes())
+    return labels
+
+
+def frame(kind="visit"):
     image = Image.new("RGB", (WIDTH, HEIGHT), "#33212a")
     draw = ImageDraw.Draw(image)
     for x in range(-HEIGHT, WIDTH, 15):
@@ -32,7 +49,16 @@ def frame(grant=False):
         draw.line(corner([(0, 31), (5, 18), (11, 11), (18, 5), (31, 0)]), fill="#d3a575", width=2)
         draw.polygon(corner([(12, 7), (17, 12), (12, 17), (7, 12)]), fill="#d3a575")
     font = ImageFont.truetype(str(FONTS / "msjhbd.ttc"), 26)
-    if grant:
+    if kind == "leaderboard":
+        draw.line((287, 61, 287, 217), fill="#604034")
+        draw.polygon([(287, 131), (294, 138), (287, 145), (280, 138)], fill="#b08763")
+        draw.text((57, 74), "上升名次", font=font, fill=LEADERBOARD_INK["rise"], anchor="lm")
+        draw.text((57, 209), "名", font=font, fill=LEADERBOARD_INK["rise"], anchor="lm")
+        draw.text((377, 91), "原名次", font=font, fill=LEADERBOARD_INK["previous"], anchor="mm")
+        draw.text((559, 91), "新名次", font=font, fill=LEADERBOARD_INK["current"], anchor="mm")
+        draw.line((448, 150, 485, 150), fill="#d3a575", width=2)
+        draw.line([(477, 142), (485, 150), (477, 158)], fill="#d3a575", width=2)
+    elif kind == "grant":
         draw.text((57, 69), "這次獲得", font=font, fill="#ecd8bf", anchor="lm")
         draw.text((57, 219), "戲籌", font=font, fill="#ecd8bf", anchor="lm")
         draw.polygon([(527, 84), (586, 139), (527, 194), (468, 139)], outline="#815641", width=2)
@@ -60,7 +86,11 @@ OUT.write_text(
     f"export const receiptLayout = {json.dumps(dict(width=WIDTH, height=HEIGHT, numberTop=109, glyphHeight=76))};\n"
     f"export const receiptLabels = {json.dumps(LABELS, ensure_ascii=False)};\n"
     f"export const receiptFrame = {json.dumps(frame())};\n"
-    f"export const grantFrame = {json.dumps(frame(grant=True))};\n"
+    f"export const grantFrame = {json.dumps(frame('grant'))};\n"
+    f"export const leaderboardFrame = {json.dumps(frame('leaderboard'))};\n"
+    f"export const leaderboardInk = {json.dumps(LEADERBOARD_INK)};\n"
+    f"export const leaderboardBoardLayout = {json.dumps(LEADERBOARD_BOARD_LAYOUT)};\n"
+    f"export const leaderboardBoardLabels = {json.dumps(leaderboard_board_labels())};\n"
     f"export const receiptGlyphs = {json.dumps(glyphs, ensure_ascii=False)};\n",
     encoding="utf-8",
 )

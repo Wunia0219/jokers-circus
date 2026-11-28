@@ -1,9 +1,10 @@
 import {inflateSync} from 'node:zlib';
-import {grantFrame, receiptFrame, receiptGlyphs, receiptLabels, receiptLayout} from './casino-receipt-art.js';
+import {grantFrame, leaderboardBoardLabels, leaderboardBoardLayout, leaderboardFrame, leaderboardInk, receiptFrame, receiptGlyphs, receiptLabels, receiptLayout} from './casino-receipt-art.js';
 import {rgbPng} from './rgb-png.js';
 
 export const RECEIPT_NAME = 'casino-receipt.png';
 export const GRANT_RECEIPT_NAME = 'casino-grant.png';
+export const LEADERBOARD_RECEIPT_NAME = 'casino-leaderboard.png';
 export const receiptColors = {gain: 0xf17b85, loss: 0x65be98, even: 0xba8d61};
 const {width, height, numberTop, glyphHeight} = receiptLayout;
 const stride = width * 3;
@@ -12,12 +13,13 @@ const format = new Intl.NumberFormat('en-US');
 const glyphs = Object.fromEntries(Object.entries(receiptGlyphs).map(([char, [advance, encoded]]) =>
   [char, {advance, alpha: inflateSync(Buffer.from(encoded, 'base64'))}]));
 
-function writeNumber(pixels, text, x, y, maxWidth, color) {
+function writeNumber(pixels, text, x, y, maxWidth, color, centered = false) {
   const digits = Array.from(text, char => glyphs[char]);
   const naturalWidth = digits.reduce((total, glyph) => total + glyph.advance, 0);
   const scale = Math.min(1, maxWidth / naturalWidth);
   const scaledHeight = Math.ceil(glyphHeight * scale);
   const top = y + Math.floor((glyphHeight - scaledHeight) / 2);
+  if (centered) x -= Math.floor(naturalWidth * scale / 2);
   let advance = 0;
   for (const glyph of digits) {
     const left = Math.round(advance * scale);
@@ -62,6 +64,22 @@ export function grantReceiptAmount(amount) {
 export function renderGrantReceipt(amount) {
   const pixels = inflateSync(Buffer.from(grantFrame, 'base64'));
   writeNumber(pixels, grantReceiptAmount(amount), 55, numberTop, 393, ink.gain);
+  return encodeReceipt(pixels);
+}
+
+export function renderLeaderboardReceipt({previous, current, board}) {
+  const pixels = inflateSync(Buffer.from(leaderboardFrame, 'base64'));
+  writeNumber(pixels, '+' + format.format(previous - current), 55, numberTop, 192, leaderboardInk.rise);
+  writeNumber(pixels, format.format(previous), 377, numberTop, 120, leaderboardInk.previous, true);
+  writeNumber(pixels, format.format(current), 559, numberTop, 120, leaderboardInk.current, true);
+  if (Object.hasOwn(leaderboardBoardLabels, board)) {
+    const {left, top, width, height} = leaderboardBoardLayout;
+    const label = inflateSync(Buffer.from(leaderboardBoardLabels[board], 'base64'));
+    const labelStride = width * 3;
+    for (let y = 0; y < height; y++) {
+      label.copy(pixels, (top + y) * stride + left * 3, y * labelStride, (y + 1) * labelStride);
+    }
+  }
   return encodeReceipt(pixels);
 }
 

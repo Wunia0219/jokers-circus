@@ -75,6 +75,16 @@ export class Leaderboard {
       WHERE guild=? ORDER BY ${expression} DESC,user LIMIT ? OFFSET ?`,guild,limit,offset).toArray()
       .map((row,i)=>({user:row.user,amount:row.amount,rank:offset+i+1}));
   }
+  position(guild,period,game,user){
+    const expression=amounts[period][game];
+    const row=this.sql.exec(`SELECT ${expression} AS amount FROM leaderboard_scores WHERE guild=? AND user=?`,guild,user).toArray()[0];
+    if(!row)return null;
+    const {amount}=row;
+    return this.sql.exec(`SELECT 1 +
+      (SELECT COUNT(*) FROM leaderboard_scores WHERE guild=? AND (${expression})>?) +
+      (SELECT COUNT(*) FROM leaderboard_scores WHERE guild=? AND (${expression})=? AND user<?) AS rank`,
+      guild,amount,guild,amount,user).one().rank;
+  }
   page(guild,{period,game,page}){
     const lastReset=this.reset(guild)?.time??null;
     const count=this.sql.exec('SELECT COUNT(*) AS count FROM leaderboard_scores WHERE guild=?',guild).one().count;
@@ -137,18 +147,15 @@ export class Leaderboard {
         const {game,amount}=stake;
         const canAnnounce=guild===this.announcementGuild&&entry.id>state.quietThrough;
         const periods=canAnnounce?(this.reset(guild)?['all','cycle']:['all']):[];
-        const boards=periods.flatMap(period=>['total',game].map(game=>({
-          // A zero row appears on screen, but qualifies for entry notices with its first wager.
-          period,game,previous:this.rows(guild,period,game,LEADERBOARD_PAGE_SIZE).find(row=>row.user===user&&row.amount>0)?.rank,
-        })));
+        const boards=periods.flatMap(period=>['total',game].map(game=>({period,game,previous:this.position(guild,period,game,user)})));
         this.sql.exec(`INSERT INTO leaderboard_scores (guild,user,all_${game},cycle_${game}) VALUES(?,?,?,?)
           ON CONFLICT(guild,user) DO UPDATE SET all_${game}=all_${game}+excluded.all_${game},
           cycle_${game}=cycle_${game}+excluded.cycle_${game}`,guild,user,amount,amount);
         const changes=[];
         for(const {period,game,previous} of boards){
-          const rows=this.rows(guild,period,game,LEADERBOARD_PAGE_SIZE),current=rows.find(row=>row.user===user)?.rank;
-          if(current!==undefined&&(previous===undefined||current<previous))
-            changes.push({period,game,previous:previous??null,current,rows});
+          if(previous===null)continue;
+          const current=this.position(guild,period,game,user);
+          if(current<previous)changes.push({period,game,previous,current});
         }
         if(changes.length)this.sql.exec('INSERT INTO leaderboard_outbox (id,payload) VALUES(?,?)',entry.id,
           JSON.stringify({user,time:entry.time,sharedPeriod:periods.length===1,changes}));

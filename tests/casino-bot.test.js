@@ -94,10 +94,11 @@ test('timeout and leaderboard previews are private and use complete sample conte
     member:{user:{id:user}},data:{name:'推播預覽',options:[{name:'樣式',value:choice}]}},store,[],[channel],{casinoPreview:true})).data;
   const choices=casinoPreviewCommand.options[0].choices;
   assert.ok(choices.length<=25);
+  assert.deepEqual(choices.filter(choice=>choice.value.startsWith('leaderboard-')).map(choice=>choice.value),['leaderboard-promotion']);
   const expected={'timeout-idle':/暫時離開賭場.*這次還沒下注/,'timeout-receipt':/暫時離開賭場/,
-    'leaderboard-entry':/進入前十，本次第 \*\*10\*\* 名/,'leaderboard-promotion':/從第 \*\*7\*\* 名升至第 \*\*3\*\* 名/};
+    'leaderboard-entry':/第 12 名 → 第 10 名（\*\*上升 2 名\*\*）/,'leaderboard-promotion':/第 6 名 → 第 2 名（\*\*上升 4 名\*\*）/};
   for(const [choice,copy] of Object.entries(expected)){
-    assert.equal(choices.filter(option=>option.value===choice).length,1);
+    assert.equal(choices.filter(option=>option.value===choice).length,choice==='leaderboard-entry'?0:1);
     const result=await preview(choice);
     assert.equal(result.flags,64);
     assert.deepEqual(result.allowed_mentions,{parse:[]});
@@ -106,12 +107,21 @@ test('timeout and leaderboard previews are private and use complete sample conte
       assert.equal(Boolean(result.arcadeReceipt),choice==='timeout-receipt');
       continue;
     }
-    assert.equal(result.content,'@試運者｜Aleator');
+    assert.equal(result.content,'@試運者');
     const [embed]=result.embeds;
-    assert.match(embed.title,/月排名 · 總投入/);
+    assert.equal(embed.title,'排行榜 · 名次晉升');
     assert.match(embed.description,copy);
-    assert.equal(embed.description.split('\n').filter(line=>/^\d+\. 測試玩家 \d+　\*\*[\d,]+\*\* 戲籌$/.test(line)).length,10);
-    assert.doesNotMatch(JSON.stringify(result),/<@/);
+    assert.ok(embed.description.startsWith(`<@${user}>\n`));
+    assert.equal(embed.image.url,'attachment://casino-leaderboard.png');
+    assert.equal(result.leaderboardReceipt.previous-result.leaderboardReceipt.current,choice==='leaderboard-entry'?2:4);
+    if(choice==='leaderboard-promotion'){
+      assert.deepEqual(embed.description.split('\n').slice(1),['','**月排名**',
+        '總投入　第 8 名 → 第 5 名（**上升 3 名**）','老虎機　第 6 名 → 第 2 名（**上升 4 名**）',
+        '','**總排名**','老虎機　第 12 名 → 第 11 名（**上升 1 名**）']);
+      assert.equal(result.leaderboardReceipt.board,'cycle-slot');
+      assert.equal(result.leaderboardReceipt.description,'月排名 · 老虎機　第 6 名 → 第 2 名（上升 4 名）');
+    }
+    assert.doesNotMatch(JSON.stringify(result),/<@&/);
     assert.equal((await preview(choice,user)).content,undefined);
   }
 });

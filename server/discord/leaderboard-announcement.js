@@ -1,21 +1,37 @@
 import {playerMention} from './player-display.js';
 import {leaderboardGames,leaderboardPeriods} from '../wallet/leaderboard.js';
+import {LEADERBOARD_RECEIPT_NAME} from './casino-receipt.js';
 
-const format=new Intl.NumberFormat('en-US');
+const placesGained=({previous,current})=>previous-current;
 
-export function leaderboardNotice(event,displayPlayer=playerMention){
-  const actor=displayPlayer(event.user)??'玩家';
-  return {embeds:event.changes.map(({period,game,previous,current,rows})=>({
-    title:`總投入排行榜 · ${event.sharedPeriod?`${leaderboardPeriods.cycle}／${leaderboardPeriods.all}`:leaderboardPeriods[period]} · ${leaderboardGames[game]}`,
-    color:0xcda459,
-    description:[
-      previous===null?`${actor} 進入前十，本次第 **${current}** 名。`:
-        `${actor} 從第 **${previous}** 名升至第 **${current}** 名。`,
-      '',
-      ...rows.map(({user,rank,amount})=>`${rank}. ${displayPlayer(user)??'玩家'}　**${format.format(amount)}** 戲籌`),
-    ].join('\n'),
+function boardDescription({period,game,previous,current},sharedPeriod,boldGain=false){
+  const periodName=sharedPeriod?`${leaderboardPeriods.cycle}／${leaderboardPeriods.all}`:leaderboardPeriods[period];
+  return `${periodName} · ${rankDescription({game,previous,current},boldGain)}`;
+}
+
+function rankDescription({game,previous,current},boldGain){
+  const gain=`上升 ${previous-current} 名`;
+  return `${leaderboardGames[game]}　第 ${previous} 名 → 第 ${current} 名（${boldGain?`**${gain}**`:gain}）`;
+}
+
+export function leaderboardNotice(event,{groupPeriods=false}={}){
+  const changes=event.changes.filter(change=>change.previous!==null&&placesGained(change)>0);
+  if(!changes.length)return null;
+  const actor=playerMention(event.user)??'玩家';
+  const featured=changes.reduce((best,change)=>placesGained(change)>placesGained(best)?change:best);
+  const grouped=groupPeriods&&!event.sharedPeriod;
+  const lines=grouped?['cycle','all'].flatMap(period=>{
+    const boards=changes.filter(change=>change.period===period);
+    return boards.length?['',`**${leaderboardPeriods[period]}**`,...boards.map(change=>rankDescription(change,true))]:[];
+  }):changes.map(change=>boardDescription(change,event.sharedPeriod,true));
+  return {embeds:[{
+    title:'排行榜 · 名次晉升',
+    color:0xb08763,
+    description:[actor,...lines].join('\n'),
+    image:{url:`attachment://${LEADERBOARD_RECEIPT_NAME}`},
     timestamp:event.time,
-  }))};
+  }],leaderboardReceipt:{previous:featured.previous,current:featured.current,
+    ...(grouped?{board:`${featured.period}-${featured.game}`}:{}),description:boardDescription(featured,event.sharedPeriod)}};
 }
 
 export class LeaderboardNotices {
@@ -38,7 +54,10 @@ export class LeaderboardNotices {
       if(!event||event.due>this.clock())return;
       this.sql.exec("UPDATE leaderboard_outbox SET status='sending' WHERE id=?",event.id);
       let result;
-      try{result=await this.send(leaderboardNotice(JSON.parse(event.payload)),`leaderboard:${this.source}:${event.id}`);}
+      try{
+        const message=leaderboardNotice(JSON.parse(event.payload));
+        result=message?await this.send(message,`leaderboard:${this.source}:${event.id}`):{kind:'sent'};
+      }
       catch{result={kind:'uncertain'};}
       if(result.kind==='sent')this.sql.exec('DELETE FROM leaderboard_outbox WHERE id=?',event.id);
       else if(result.kind==='retry')this.sql.exec("UPDATE leaderboard_outbox SET status='pending',due=? WHERE id=?",this.clock()+result.delay,event.id);

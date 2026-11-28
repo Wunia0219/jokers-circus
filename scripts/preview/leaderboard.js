@@ -13,7 +13,7 @@ const bot=new CasinoBot({guild:previewGuild,channel,applicationId,leaderboardRol
   if(path.endsWith('/users/@me'))return Response.json({id:applicationId,bot:true});
   if(path.endsWith('/channels/'+channel))return Response.json({id:channel,guild_id:previewGuild,type:0});
   if(path.endsWith('/channels/'+channel+'/messages')&&options.method==='POST'){
-    lastNotices.push(JSON.parse(options.body));
+    lastNotices.push(JSON.parse(options.body.get('payload_json')));
     return Response.json({id:'100000000000000010',channel_id:channel});
   }
   throw new Error('Only the local Discord mock is available');
@@ -43,7 +43,7 @@ const server=await createServer({
           if(action==='restore'){
             fixture.close();
             fixture=previewFixture();
-          }else if(['newcomer','promote','reset'].includes(action)){
+          }else if(['climb','promote','reset'].includes(action)){
             fixture[action]();
             await new LeaderboardNotices({sql:fixture.sql,source:'local-preview',send:bot.sendLeaderboard.bind(bot)}).flush();
           }else return json(res,400,{error:'未知的預覽操作。'});

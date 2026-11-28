@@ -13,10 +13,11 @@ export class CloudLeaderboard {
     this.names=new Map();
     this.target=meta.nextId;
     this.source=sourceKey(store,meta);
+    const announces=bot?.leaderboardRoleId||bot?.leaderboardText;
     this.board=new Leaderboard({sql:storage.sql,transaction:work=>storage.transactionSync(work),source:this.source,
-      announcementGuild:bot?.leaderboardRoleId?bot.guild:null});
+      announcementGuild:announces?bot.guild:null});
     this.board.initialize(this.target);
-    this.notices=bot?.leaderboardRoleId?new LeaderboardNotices({sql:storage.sql,source:this.source,send:bot.sendLeaderboard.bind(bot)}):null;
+    this.notices=announces?new LeaderboardNotices({sql:storage.sql,source:this.source,send:bot.sendLeaderboard.bind(bot)}):null;
   }
   observeMeta(meta){
     if(sourceKey(this.store,meta)!==this.source)throw new Error('Leaderboard source changed');

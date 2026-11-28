@@ -22,13 +22,14 @@ export function casinoBotSettings(env,store,{lookupOnly=false}={}){
   if(!snowflake(channel)||!snowflake(applicationId)||!/^[-\w.]{30,200}$/.test(token||''))throw new Error('Casino bot configuration is incomplete');
   const role=env.DISCORD_LEADERBOARD_ROLE_ID?.trim();
   const leaderboardRoleId=!lookupOnly&&(test||env.APP_ENV==='production')&&snowflake(role)?role:null;
-  return {guild,channel,applicationId,token,leaderboardRoleId,textOnly:test};
+  const leaderboardText=!lookupOnly&&test?env.DISCORD_LEADERBOARD_TEXT?.trim()||null:null;
+  return {guild,channel,applicationId,token,leaderboardRoleId,leaderboardText,textOnly:test};
 }
 
 // REST delivery does not require a Gateway connection or an online presence.
 // Never log upstream response bodies, headers or credentials.
 export class CasinoBot {
-  constructor({guild,channel,applicationId,token,leaderboardRoleId=null,textOnly=false,fetchImpl=fetch,clock=Date.now}){Object.assign(this,{guild,channel,applicationId,token,leaderboardRoleId,textOnly,fetchImpl,clock});this.verified=false;this.blockedUntil=0;}
+  constructor({guild,channel,applicationId,token,leaderboardRoleId=null,leaderboardText=null,textOnly=false,fetchImpl=fetch,clock=Date.now}){Object.assign(this,{guild,channel,applicationId,token,leaderboardRoleId,leaderboardText,textOnly,fetchImpl,clock});this.verified=false;this.blockedUntil=0;}
   request(path,options={}){return this.fetchImpl('https://discord.com/api/v10'+path,{...options,headers:{...options.headers,Authorization:'Bot '+this.token},signal:AbortSignal.timeout(8000),redirect:'error'});}
   async verify(){
     const identity=await this.request('/users/@me');const bot=identity.ok?await identity.json():null;
@@ -38,15 +39,16 @@ export class CasinoBot {
     this.verified=true;
   }
   async sendLeaderboard(payload,eventId){
-    if(!snowflake(this.leaderboardRoleId))return {kind:'uncertain'};
-    return this.send({...payload,content:`<@&${this.leaderboardRoleId}>`},eventId,{leaderboard:true});
+    const content=snowflake(this.leaderboardRoleId)?`<@&${this.leaderboardRoleId}>`:this.leaderboardText;
+    if(!content)return {kind:'uncertain'};
+    return this.send({...payload,content},eventId,{leaderboard:true});
   }
   async send(payload,eventId,{leaderboard=false}={}){
     if(this.blockedUntil>this.clock())return {kind:'retry',delay:this.blockedUntil-this.clock()};
     if(!this.verified){try{await this.verify();}catch{return {kind:'retry',delay:300000};}}
     const nonce=createHash('sha256').update(eventId).digest('hex').slice(0,24);
     let response;
-    const allowed_mentions=leaderboard&&snowflake(this.leaderboardRoleId)?{parse:[],roles:[this.leaderboardRoleId]}:playerMentions(payload.allowed_mentions?.users);
+    const allowed_mentions=leaderboard?{parse:[],...(snowflake(this.leaderboardRoleId)?{roles:[this.leaderboardRoleId]}:{})}:playerMentions(payload.allowed_mentions?.users);
     const message=withAnnouncementLaunch({...payload,allowed_mentions,nonce,enforce_nonce:true});
     try{response=await this.request('/channels/'+this.channel+'/messages',{method:'POST',...discordMessageBody(message,previewArt)});}
     catch{return {kind:'uncertain'};}

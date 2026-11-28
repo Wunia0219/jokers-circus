@@ -57,19 +57,22 @@ test('reset clears current scores once per guild reset and preserves lifetime to
   assert.equal(cycle(board).rows[0].amount,500);
 });
 
-test('new entry and promotion each send one grouped message and only ping the configured role',async t=>{
+test('rank moves each send one grouped message and only ping the configured role',async t=>{
   const fixture=previewFixture();t.after(fixture.close);
   const {board,sql}=fixture;
-  fixture.newcomer();fixture.promote();
+  fixture.climb();fixture.promote();
   board.apply([slot(board.state().cursor+1,100,{user:user(0)})]); // #1 keeps the same rank
+  board.apply([slot(board.state().cursor+1,50000,{user:user(13)})]); // No previous rank
   const events=outbox(sql);
   assert.equal(events.length,2);
-  assert.ok(events.every(e=>e.sharedPeriod&&e.changes.every(c=>c.rows.length===10)));
-  assert.ok(events[0].changes.every(c=>c.previous===null));
-  assert.ok(events[1].changes.every(c=>c.previous>c.current));
+  assert.ok(events.every(e=>e.sharedPeriod&&e.changes.length===2));
+  assert.ok(events[0].changes.every(c=>c.previous===13&&c.current<=10));
+  assert.ok(events.every(e=>e.changes.every(c=>c.previous>c.current)));
   const posts=[];
   const bot=new CasinoBot({guild,channel:otherGuild,applicationId:user(0),leaderboardRoleId:role,fetchImpl:async(_,options)=>{
-    posts.push(JSON.parse(options.body));
+    const message=JSON.parse(options.body.get('payload_json'));
+    assert.equal(options.body.get('files[0]').name,'casino-leaderboard.png');
+    posts.push(message);
     return Response.json({id:user(1),channel_id:otherGuild});
   }});
   bot.verified=true;
@@ -80,14 +83,39 @@ test('new entry and promotion each send one grouped message and only ping the co
   for(const post of posts){
     assert.equal(post.content,`<@&${role}>`);
     assert.deepEqual(post.allowed_mentions,{parse:[],roles:[role]});
+    assert.equal(post.embeds.length,1);
+    assert.equal(post.embeds[0].title,'排行榜 · 名次晉升');
+    assert.equal(post.embeds[0].image.url,'attachment://casino-leaderboard.png');
     assert.equal(post.components[0].components[0].label,'開啟遊戲');
   }
+});
+
+test('moves outside the top ten retain both positions and post one card with the test label',async t=>{
+  const fixture=previewFixture();t.after(fixture.close);
+  const {board,sql}=fixture;
+  board.apply([slot(board.state().cursor+1,2100,{user:user(12)})]);
+  const [event]=outbox(sql);
+  assert.deepEqual(event.changes,[{period:'all',game:'total',previous:13,current:12},{period:'all',game:'slot',previous:13,current:12}]);
+  const posts=[];
+  const bot=new CasinoBot({guild,channel:otherGuild,applicationId:user(0),leaderboardText:'@試運者',fetchImpl:async(url,options)=>{
+    assert.ok(url.endsWith(`/channels/${otherGuild}/messages`));
+    posts.push(JSON.parse(options.body.get('payload_json')));
+    return Response.json({id:user(1),channel_id:otherGuild});
+  }});
+  bot.verified=true;
+  await new LeaderboardNotices({sql,source:'case',send:bot.sendLeaderboard.bind(bot)}).flush();
+  assert.equal(posts.length,1);
+  assert.equal(posts[0].content,'@試運者');
+  assert.deepEqual(posts[0].allowed_mentions,{parse:[]});
+  assert.match(posts[0].embeds[0].description,new RegExp(`<@${user(12)}>.*`));
+  assert.match(posts[0].embeds[0].description,/第 13 名 → 第 12 名（\*\*上升 1 名\*\*）/);
+  assert.match(posts[0].attachments[0].description,/上升 1 名/);
 });
 
 test('rank notices preserve retry deadlines and quarantine interrupted sends',async t=>{
   const fixture=previewFixture();t.after(fixture.close);
   const {sql}=fixture;
-  fixture.newcomer();fixture.promote();
+  fixture.climb();fixture.promote();
   let now=1000,attempts=0;
   const options={sql,source:'case',clock:()=>now,send:async()=>{
     attempts++;
