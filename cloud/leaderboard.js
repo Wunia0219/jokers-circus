@@ -33,6 +33,8 @@ export class CloudLeaderboard {
   observeMeta(meta){
     if(sourceKey(this.store,meta)!==this.source)throw new Error('Leaderboard source changed');
     this.target=Math.max(this.target,meta.nextId);
+    const {cursor,seeded}=this.board.state();
+    if(!seeded||cursor<this.target)this.requestSync();
   }
   commit(entries){
     for(const entry of entries){
@@ -49,20 +51,22 @@ export class CloudLeaderboard {
     this.syncDue=due;
   }
   remember({guild,user,profile}){
-    if(profile?.name&&this.board.name(guild,user)!==profile.name)this.board.remember(guild,user,profile.name,Date.now()+NAME_TTL);
+    const now=this.clock();
+    if(profile?.name&&this.board.name(guild,user,now)!==profile.name)this.board.remember(guild,user,profile.name,now+NAME_TTL);
   }
   async verifyMemberBot(){
     if(this.memberBot.verified)return;
     this.memberVerification??=this.memberBot.verify().catch(error=>{
-      this.nameLookupAfter=Date.now()+60000;
+      this.nameLookupAfter=this.clock()+60000;
       throw error;
     }).finally(()=>{this.memberVerification=null;});
     await this.memberVerification;
   }
   async name(guild,user,saved=this.board.pageNames(guild,[user]).get(user)){
-    if(saved?.expires>Date.now())return saved.name||null;
+    const now=this.clock();
+    if(saved?.expires>now)return saved.name||null;
     const previous=saved?.name||null;
-    if(this.memberBot?.guild!==guild||this.nameLookupAfter>Date.now())return previous;
+    if(this.memberBot?.guild!==guild||this.nameLookupAfter>now)return previous;
     const key=guild+':'+user;
     if(!this.names.has(key)){
       if(this.names.size>=10)return previous;
@@ -70,17 +74,18 @@ export class CloudLeaderboard {
         try{
           await this.verifyMemberBot();
           const response=await this.memberBot.request(`/guilds/${guild}/members/${user}`);
-          if(response.status===429)this.nameLookupAfter=Date.now()+60000;
-          const updated=this.board.name(guild,user);
+          if(response.status===429){
+            const seconds=Number(response.headers.get('Retry-After'));
+            const delay=Number.isFinite(seconds)&&seconds>0?seconds*1000:60000;
+            this.nameLookupAfter=Math.max(this.nameLookupAfter||0,this.clock()+delay);
+          }
+          const member=response.ok?await response.json():null;
+          const checkedAt=this.clock();
+          const updated=this.board.name(guild,user,checkedAt);
           if(updated!==undefined)return updated||null;
-          if(response.status===404)this.board.remember(guild,user,previous||'',Date.now()+3600000);
-          if(!response.ok)return previous;
-          const member=await response.json();
-          if(member.user?.id!==user)return previous;
-          const name=this.board.name(guild,user);
-          if(name!==undefined)return name||null;
-          this.board.remember(guild,user,member.nick||member.user.global_name||member.user.username||previous,Date.now()+NAME_TTL);
-          return this.board.name(guild,user)||previous;
+          if(response.status===404)this.board.remember(guild,user,previous||'',checkedAt+3600000);
+          if(member?.user?.id!==user)return previous;
+          return this.board.remember(guild,user,member.nick||member.user.global_name||member.user.username||previous,checkedAt+NAME_TTL)||previous;
         }catch{return previous;}
       })().finally(()=>this.names.delete(key));
       this.names.set(key,lookup);
@@ -137,8 +142,12 @@ export class CloudLeaderboard {
     }
     if(snapshot.cursor<this.target){
       const ids=Array.from({length:Math.min(this.target-snapshot.cursor,STEP)},(_,i)=>snapshot.cursor+i+1);
-      const missing=ids.filter(id=>!this.pending.has(id));
-      const batch=new Map(ids.filter(id=>this.pending.has(id)).map(id=>[id,this.pending.get(id)]));
+      const missing=[],batch=new Map();
+      for(const id of ids){
+        const entry=this.pending.get(id);
+        if(entry)batch.set(id,entry);
+        else missing.push(id);
+      }
       if(missing.length){
         this.quota.reserve({reads:missing.length});
         const docs=await this.store.db.batchGet(missing.map(id=>this.store.root.collection('ledger').doc(String(id))));

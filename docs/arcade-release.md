@@ -29,18 +29,19 @@
 
 ## 正式雙遊戲發布準備
 
-正式雙遊戲使用 `wrangler.arcade-production.jsonc` 與 `dist-arcade-production`。沿用正式 Worker、Discord App、DO、Firestore、週簽到、管理額度與公告設定；只將 `ARCADE_RELEASE_ENABLED` 開啟，讓兩款遊戲共用同一錢包。不搬移或重建玩家資料，也不把測試服的簡化指令、全 CG 預覽或優然浴巾下載帶入正式版。
+1.2.0 使用 `wrangler.arcade-production.jsonc` 與 `dist-arcade-production`。排行榜沿用正式錢包、最近的有效備份及既有 SQLite Durable Object；首次開榜會在背景建立排名。離場晉升卡沿用正式遊玩頻道，通知「試運者｜Aleator」。[排行榜規則與推播](casino-announcements.md#總投入排行榜)
+
+1. 核對線上版本、`/readyz` 與 `/__ops/status` 的備份、帳本來源。確認正式 Bot 可在公告頻道發送訊息、嵌入連結、附加檔案及提及指定身分組。
+2. 使用目前已上線的素材做最後一次建置。完整 CI 也會建置同一個輸出目錄，所以下列指令依序執行。
 
 ```sh
-npm run arcade:preflight -- production-arcade --legacy <目前正式服實際上線產物>
-node scripts/qa/arcade-release.js --production
+npm run verify:ci
+npm run arcade:preflight -- production-arcade --legacy <現行正式版產物目錄>
+npx wrangler versions upload --config wrangler.arcade-production.jsonc --tag 1.2.0
 ```
 
-預檢只建置及執行 Wrangler dry-run，**不部署**。初次啟用會沿用正式 DO 已保存的老虎機狀態，未設定的野球拳預設為「即將揭曉」。正式揭曉須在實際部署後從正式 `/operator` 操作。兩款遊戲皆支援維護、返回大廳與原請求恢復；正式服管理員的 @ 發放通知保留。
-
-實際發布前要核對當時線上版本、可用備份、Secrets、完整前版雜湊素材與下載站。不能用本機重新建置的舊版本冒充「實際上線產物」。若尚未取得該產物，預檢不加 `--legacy` 只能證明候選版可建置，不能宣稱已完成更新不中斷準備。
-
-授權正式部署後才執行 `wrangler deploy --config wrangler.arcade-production.jsonc`。1.1.1 已取得正式部署與合併授權；驗證及實際發布狀態見 [1.1.1 發布紀錄](releases/1.1.1.md)。以下單一老虎機流程僅適用舊版配置。
+3. 記錄候選版本 ID 與線上版本 ID。授權發布時執行 `npx wrangler versions deploy <候選版本ID>@100 --config wrangler.arcade-production.jsonc`。要回退時用同一指令指定前版 ID。
+4. 發布後核對健康、備份及大廳實際版本，以正式帳號開啟排行榜並切換榜單。用下一次符合晉升條件的離場，確認公告頻道收到一張小卡且只提及指定身分組。
 
 ## 單一老虎機正式服接入
 

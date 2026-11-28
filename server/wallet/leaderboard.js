@@ -114,6 +114,7 @@ export class Leaderboard {
     name=Array.from(String(name??'').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g,'').trim()).slice(0,48).join('');
     this.sql.exec(`INSERT INTO leaderboard_names VALUES(?,?,?,?) ON CONFLICT(guild,user) DO UPDATE SET
       name=excluded.name,expires=excluded.expires WHERE name<>excluded.name OR expires<>excluded.expires`,guild,user,name,expires);
+    return name;
   }
   rows(guild,period,game,limit,offset=0){
     const expression=amounts[period][game];

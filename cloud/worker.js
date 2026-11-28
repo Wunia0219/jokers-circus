@@ -222,10 +222,7 @@ export class CircusProject extends DurableObject {
       // per-second Firestore poll. Keep normal maintenance on its own clock.
       if(housekeepingDue||highlightDue){
         const meta=await r.store.read(r.store.meta);r.store.checkMeta(meta);
-        if(r.leaderboard){
-          r.leaderboard.observeMeta(meta);
-          if(r.leaderboard.board.state().cursor<meta.nextId)await this.schedule(1000);
-        }
+        r.leaderboard?.observeMeta(meta);
         const revision=meta.highlightsRevision??(meta.highlights?meta.nextId:0);
         if(r.highlights&&(this.state.get('highlights-dirty')||revision!==(this.state.get('highlights-revision')||0))){
           r.highlights.dirty=true;await r.highlights.flush();this.state.set('highlights-dirty',r.highlights.dirty);if(!r.highlights.dirty)this.state.set('highlights-revision',revision);

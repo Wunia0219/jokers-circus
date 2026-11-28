@@ -257,6 +257,10 @@ test('frequent alarms share a failed gap read and resume after the retry deadlin
     state:{get:()=>null},vault:{manifest:()=>({format:2,revision:0}),rows:()=>[]},meta:{nextId:1},
     clock:()=>now,wake(){},quota:{reserve:cost=>reserved.push(cost),observe(){}}});
   await assert.rejects(cloud.work(),/temporarily unavailable/);
+  const wakes=[];
+  cloud.wake=delay=>wakes.push(delay);
+  cloud.observeMeta({nextId:2});
+  assert.deepEqual(wakes,[]);
   cloud.commit([slot(2,200)]);
   for(now=2000;now<31000;now+=1000)await cloud.work();
   assert.deepEqual(reads,[[1]]);
@@ -336,6 +340,27 @@ test('a verified lookup-only bot resolves past players and does not enable annou
   assert.deepEqual([verifies,lookups],[1,2]);
   assert.equal(await cloud.name(otherGuild,user(0)),null);
   assert.equal(cloud.notices,null);
+});
+
+test('member lookups honor Discord retry-after while cached login names remain available',async t=>{
+  const {sql,transaction,close}=memorySql();t.after(close);
+  let now=1000,requests=0;
+  const memberBot={guild,verified:true,async request(){
+    requests++;
+    return requests===1?new Response(null,{status:429,headers:{'Retry-After':'120'}}):
+      Response.json({user:{id:user(0),username:'恢復查詢'}});
+  }};
+  const cloud=new CloudLeaderboard({storage:{sql,transactionSync:transaction},store:{settings:{namespace:'test'}},
+    meta:{nextId:0},clock:()=>now,memberBot,wake(){}});
+  assert.equal(await cloud.name(guild,user(0)),null);
+  now+=60000;
+  cloud.remember({guild,user:user(1),profile:{name:'已登入玩家'}});
+  assert.equal(await cloud.name(guild,user(1)),'已登入玩家');
+  assert.equal(await cloud.name(guild,user(0)),null);
+  assert.equal(requests,1);
+  now+=60000;
+  assert.equal(await cloud.name(guild,user(0)),'恢復查詢');
+  assert.equal(requests,2);
 });
 
 test('leaderboard HTTP reads use only the signed-in guild and respect the feature reveal gate',async()=>{

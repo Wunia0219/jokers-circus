@@ -60,6 +60,7 @@ if(target==='test'){
   if(vars.DISCORD_LEADERBOARD_ROLE_ID!==undefined)assert.match(vars.DISCORD_LEADERBOARD_ROLE_ID,/^\d{17,20}$/);
 }else{
   if(target==='production-arcade'){
+    assert.equal(vars.DISCORD_LEADERBOARD_ROLE_ID,'1566497145274630344','Check the production leaderboard role');
     assert.equal(vars.ARCADE_RELEASE_ENABLED,'true');
     assert.equal(config.assets.run_worker_first,true);
     assert.equal(config.assets.html_handling,'none');
