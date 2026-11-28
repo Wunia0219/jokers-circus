@@ -170,6 +170,103 @@ test('rank notices preserve retry deadlines and quarantine interrupted sends',as
   assert.equal(afterInterruptedSend.nextDelay(),null);
 });
 
+test('interleaved wagers count only players overtaken, including ties at either end',t=>{
+  const storage=memorySql();t.after(storage.close);
+  const cloud=new CloudLeaderboard({storage:{sql:storage.sql,transactionSync:storage.transaction},
+    store:{settings:{namespace:'test'}},meta:{nextId:0},wake(){}});
+  const board=cloud.board;
+  board.announcementGuild=guild;
+  board.activeVisitStart=()=>0;
+  board.seed([],0,Array.from({length:18},(_,i)=>({guild,user:user(i)})));
+  board.apply([{id:1,guild,user:user(0),kind:'reset',time,reference:'test-reset'}]);
+  for(let i=0;i<90;i++){
+    const actor=user(i*7%18),bet=100*(1+i%3),game=i%3===1?'duel':'slot';
+    const boards=['all','cycle'].flatMap(period=>['total',game].map(game=>({period,game})));
+    const rank=({period,game})=>board.rows(guild,period,game,18).find(row=>row.user===actor).rank;
+    const previous=boards.map(rank),id=i+2;
+    board.apply([slot(id,bet,{user:actor,...(game==='duel'?{kind:'duel',delta:-bet}:{})})]);
+    const actual=JSON.parse(storage.sql.exec('SELECT payload FROM leaderboard_outbox WHERE id=?',id).one().payload);
+    assert.deepEqual(actual.changes,boards.map((b,j)=>({...b,previous:previous[j],current:rank(b)})));
+  }
+});
+
+test('a burst of commits and concurrent page reads shares ranking work without Firestore access',async t=>{
+  const storage=memorySql();t.after(storage.close);
+  const wakes=[],queries=[];
+  const sql={exec(query,...args){queries.push(query);return storage.sql.exec(query,...args);}};
+  const cloud=new CloudLeaderboard({storage:{sql,transactionSync:storage.transaction},store:{settings:{namespace:'test'}},
+    state:{get:()=>null},vault:{manifest:()=>({format:2,revision:0}),rows:()=>[]},meta:{nextId:0},
+    clock:()=>1000,wake:delay=>wakes.push(delay)});
+  await cloud.work();
+  const session=i=>({guild,user:user(i)}),params=new URLSearchParams();
+  const entries=Array.from({length:480},(_,i)=>slot(i+1,100,{user:user(i%160)}));
+  for(const entry of entries.toReversed())cloud.commit([entry,entry]);
+  await assert.rejects(cloud.page(session(0),params),{status:503});
+  assert.deepEqual(wakes,[1000]);
+  for(const cursor of [128,256,384,480]){
+    await Promise.all([cloud.work(),cloud.work()]);
+    assert.equal(cloud.board.state().cursor,cursor);
+  }
+  queries.length=0;
+  const pages=await Promise.all(Array.from({length:160},(_,i)=>cloud.page(session(i),params)));
+  assert.ok(pages.every(p=>p.count===160&&p.rows.every((r,i)=>r.rank===i+1&&r.amount===300)));
+  assert.equal(queries.filter(query=>query.includes('LIMIT ? OFFSET ?')).length,1);
+  const renamed=await cloud.page({...session(0),profile:{name:'新暱稱'}},params);
+  assert.equal(renamed.rows[0].name,'新暱稱');
+  assert.equal((await cloud.page({...session(0),guild:otherGuild},params)).count,0);
+  assert.equal((await cloud.page(session(0),new URLSearchParams({game:'duel'}))).rows[0].amount,0);
+  assert.equal((await cloud.page(session(0),new URLSearchParams({page:'2'}))).rows[0].rank,11);
+  cloud.commit([slot(481,100,{user:user(159)})]);
+  await cloud.work();
+  assert.equal((await cloud.page(session(0),params)).rows[0].amount,400);
+});
+
+test('a burst exceeding the memory buffer backfills only the evicted documents',async t=>{
+  const storage=memorySql();t.after(storage.close);
+  const entries=Array.from({length:600},(_,i)=>slot(i+1,100,{user:user(i%150)}));
+  const reads=[],reserved=[];
+  const store={settings:{namespace:'test'},root:{collection:()=>({doc:Number})},db:{async batchGet(ids){
+    reads.push(ids);
+    return ids.map(id=>({exists:true,get:()=>JSON.stringify(entries[id-1]),data:()=>entries[id-1]}));
+  }}};
+  const cloud=new CloudLeaderboard({storage:{sql:storage.sql,transactionSync:storage.transaction},store,
+    state:{get:()=>null},vault:{manifest:()=>({format:2,revision:0}),rows:()=>[]},meta:{nextId:0},
+    wake(){},quota:{reserve:cost=>reserved.push(cost),observe(){}}});
+  cloud.commit(entries);
+  for(const cursor of [128,256,384,512,600]){
+    await cloud.work();
+    assert.equal(cloud.board.state().cursor,cursor);
+  }
+  assert.deepEqual(reads,[Array.from({length:88},(_,i)=>i+1)]);
+  assert.deepEqual(reserved,[{reads:88}]);
+  const rows=cloud.board.rows(guild,'all','total',150);
+  assert.equal(rows.length,150);
+  assert.ok(rows.every(row=>row.amount===400));
+});
+
+test('frequent alarms share a failed gap read and resume after the retry deadline',async t=>{
+  const storage=memorySql();t.after(storage.close);
+  const reads=[],reserved=[];
+  let now=1000;
+  const store={settings:{namespace:'test'},root:{collection:()=>({doc:Number})},db:{async batchGet(ids){
+    reads.push(ids);
+    if(reads.length===1)throw new Error('temporarily unavailable');
+    return ids.map(id=>({exists:true,get:()=>JSON.stringify(slot(id,100)),data:()=>slot(id,100)}));
+  }}};
+  const cloud=new CloudLeaderboard({storage:{sql:storage.sql,transactionSync:storage.transaction},store,
+    state:{get:()=>null},vault:{manifest:()=>({format:2,revision:0}),rows:()=>[]},meta:{nextId:1},
+    clock:()=>now,wake(){},quota:{reserve:cost=>reserved.push(cost),observe(){}}});
+  await assert.rejects(cloud.work(),/temporarily unavailable/);
+  cloud.commit([slot(2,200)]);
+  for(now=2000;now<31000;now+=1000)await cloud.work();
+  assert.deepEqual(reads,[[1]]);
+  assert.equal(cloud.board.state().cursor,0);
+  await Promise.all([cloud.work(),cloud.work()]);
+  assert.deepEqual(reads,[[1],[1]]);
+  assert.deepEqual(reserved,[{reads:1},{reads:1}]);
+  assert.equal(all(cloud.board).rows[0].amount,300);
+});
+
 test('archive bootstraps quietly and the live projection recovers missing committed rows after restart',async t=>{
   const {sql,transaction,close}=memorySql();t.after(close);
   const storage={sql,transactionSync:transaction};

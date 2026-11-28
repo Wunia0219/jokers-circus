@@ -3,14 +3,17 @@ import {LeaderboardNotices} from '../server/discord/leaderboard-announcement.js'
 import {unpack} from '../server/firestore/documents.js';
 import {problem} from '../server/wallet/wallet-common.js';
 
-const STEP=128,LIVE_DELAY=1000,NAME_TTL=86400000;
+const STEP=128,LIVE_DELAY=1000,NAME_TTL=86400000,PAGE_CACHE_LIMIT=64,RETRY_DELAY=30000;
 const sourceKey=(store,meta)=>JSON.stringify([store.settings.namespace,meta.walletEpoch??null,meta.importFingerprint??null]);
 
 export class CloudLeaderboard {
-  constructor({storage,state,vault,store,meta,quota,bot,memberBot=bot,wake,activeVisitStart=()=>null}){
-    Object.assign(this,{storage,state,vault,store,quota,memberBot,wake});
+  constructor({storage,state,vault,store,meta,quota,bot,memberBot=bot,wake,clock=Date.now,activeVisitStart=()=>null}){
+    Object.assign(this,{storage,state,vault,store,quota,memberBot,wake,clock});
     this.pending=new Map();
     this.names=new Map();
+    this.pages=new Map();
+    this.retryAt=0;
+    this.syncDue=0;
     this.target=meta.nextId;
     this.source=sourceKey(store,meta);
     const announces=bot?.leaderboardRoleId||bot?.leaderboardText;
@@ -37,7 +40,13 @@ export class CloudLeaderboard {
       this.pending.set(entry.id,entry);
       if(this.pending.size>STEP*4)this.pending.delete(this.pending.keys().next().value);
     }
-    if(entries.length)this.wake(LIVE_DELAY);
+    if(entries.length)this.requestSync();
+  }
+  requestSync(){
+    const now=this.clock(),due=Math.max(now+LIVE_DELAY,this.retryAt);
+    if(this.syncDue>now&&this.syncDue<=due)return;
+    this.wake(due-now);
+    this.syncDue=due;
   }
   remember({guild,user,profile}){
     if(profile?.name&&this.board.name(guild,user)!==profile.name)this.board.remember(guild,user,profile.name,Date.now()+NAME_TTL);
@@ -50,10 +59,9 @@ export class CloudLeaderboard {
     }).finally(()=>{this.memberVerification=null;});
     await this.memberVerification;
   }
-  async name(guild,user){
-    const saved=this.board.name(guild,user);
-    if(saved!==undefined)return saved||null;
-    const previous=this.board.name(guild,user,0)||null;
+  async name(guild,user,saved=this.board.pageNames(guild,[user]).get(user)){
+    if(saved?.expires>Date.now())return saved.name||null;
+    const previous=saved?.name||null;
     if(this.memberBot?.guild!==guild||this.nameLookupAfter>Date.now())return previous;
     const key=guild+':'+user;
     if(!this.names.has(key)){
@@ -82,17 +90,38 @@ export class CloudLeaderboard {
   async page(session,params){
     const query=leaderboardQuery(params),state=this.board.state();
     if(!state.seeded||this.target-state.cursor>STEP){
-      this.wake(LIVE_DELAY);
+      this.requestSync();
       throw problem(503,'排行榜正在同步，請稍後再試。');
     }
     this.remember(session);
-    const page=this.board.page(session.guild,query);
+    if(this.pageCursor!==state.cursor){
+      this.pages.clear();
+      this.pageCursor=state.cursor;
+    }
+    const key=JSON.stringify([session.guild,query.period,query.game,query.page]);
+    let page=this.pages.get(key);
+    if(!page){
+      page=this.board.page(session.guild,query);
+      if(this.pages.size>=PAGE_CACHE_LIMIT)this.pages.delete(this.pages.keys().next().value);
+      this.pages.set(key,page);
+    }
+    const names=this.board.pageNames(session.guild,page.rows.map(row=>row.user));
     return {...page,rows:await Promise.all(page.rows.map(async({user,rank,amount})=>({
-      rank,amount,name:await this.name(session.guild,user)||'Discord 名稱待同步',
+      rank,amount,name:await this.name(session.guild,user,names.get(user)??null)||'Discord 名稱待同步',
     })))};
   }
   work(){
-    this.running??=this.step().finally(()=>{this.running=null;});
+    if(this.running)return this.running;
+    this.syncDue=0;
+    if(this.clock()<this.retryAt){
+      this.requestSync();
+      return Promise.resolve();
+    }
+    this.running=this.step().catch(error=>{
+      this.retryAt=this.clock()+RETRY_DELAY;
+      this.requestSync();
+      throw error;
+    }).finally(()=>{this.running=null;});
     return this.running;
   }
   async step(){
@@ -125,7 +154,7 @@ export class CloudLeaderboard {
     const {cursor}=this.board.state();
     for(const id of this.pending.keys())if(id<=cursor)this.pending.delete(id);
     const moreDepartures=this.notices&&this.board.releaseDepartures(cursor);
-    if(cursor<this.target||moreDepartures)this.wake(LIVE_DELAY);
+    if(cursor<this.target||moreDepartures)this.requestSync();
     await this.notices?.flush();
     const delay=this.notices?.nextDelay();
     if(delay!==null&&delay!==undefined)this.wake(delay);

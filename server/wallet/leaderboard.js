@@ -42,6 +42,8 @@ export class Leaderboard {
       status TEXT NOT NULL DEFAULT 'pending', due INTEGER NOT NULL DEFAULT 0)`);
     sql.exec(`CREATE TABLE IF NOT EXISTS leaderboard_departures (id INTEGER PRIMARY KEY, guild TEXT NOT NULL,
       user TEXT NOT NULL, start INTEGER NOT NULL, time TEXT NOT NULL)`);
+    sql.exec('CREATE INDEX IF NOT EXISTS leaderboard_departures_player ON leaderboard_departures(guild,user,id)');
+    sql.exec('CREATE INDEX IF NOT EXISTS leaderboard_outbox_status ON leaderboard_outbox(status,id)');
     for(const [period,games] of Object.entries(amounts))for(const [game,expression] of Object.entries(games))
       sql.exec(`CREATE INDEX IF NOT EXISTS leaderboard_${period}_${game} ON leaderboard_scores(guild, (${expression}) DESC, user)`);
   }
@@ -101,6 +103,13 @@ export class Leaderboard {
   name(guild,user,now=Date.now()){
     return this.sql.exec('SELECT name FROM leaderboard_names WHERE guild=? AND user=? AND expires>?',guild,user,now).toArray()[0]?.name;
   }
+  pageNames(guild,users){
+    if(!users.length)return new Map();
+    const placeholders=users.map(()=>'?').join(',');
+    const rows=this.sql.exec(`SELECT user,name,expires FROM leaderboard_names
+      WHERE guild=? AND user IN (${placeholders})`,guild,...users).toArray();
+    return new Map(rows.map(row=>[row.user,row]));
+  }
   remember(guild,user,name,expires=Number.MAX_SAFE_INTEGER){
     name=Array.from(String(name??'').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g,'').trim()).slice(0,48).join('');
     this.sql.exec(`INSERT INTO leaderboard_names VALUES(?,?,?,?) ON CONFLICT(guild,user) DO UPDATE SET
@@ -116,11 +125,23 @@ export class Leaderboard {
     const expression=amounts[period][game];
     const row=this.sql.exec(`SELECT ${expression} AS amount FROM leaderboard_scores WHERE guild=? AND user=?`,guild,user).toArray()[0];
     if(!row)return null;
-    const {amount}=row;
+    return this.rankAt(guild,period,game,user,row.amount);
+  }
+  rankAt(guild,period,game,user,amount){
+    const expression=amounts[period][game];
     return this.sql.exec(`SELECT 1 +
       (SELECT COUNT(*) FROM leaderboard_scores WHERE guild=? AND (${expression})>?) +
       (SELECT COUNT(*) FROM leaderboard_scores WHERE guild=? AND (${expression})=? AND user<?) AS rank`,
       guild,amount,guild,amount,user).one().rank;
+  }
+  placesGained(guild,period,game,user,before,after){
+    const expression=amounts[period][game];
+    // Include only the peers this stake passes, respecting the ID tie-break at both ends.
+    return this.sql.exec(`SELECT
+      (SELECT COUNT(*) FROM leaderboard_scores WHERE guild=? AND (${expression})=? AND user<?) +
+      (SELECT COUNT(*) FROM leaderboard_scores WHERE guild=? AND (${expression})>? AND (${expression})<?) +
+      (SELECT COUNT(*) FROM leaderboard_scores WHERE guild=? AND (${expression})=? AND user>?) AS gained`,
+      guild,before,user,guild,before,after,guild,after,user).one().gained;
   }
   page(guild,{period,game,page}){
     const lastReset=this.reset(guild)?.time??null;
@@ -186,16 +207,17 @@ export class Leaderboard {
           (!this.activeVisitStart||this.inVisit(entry));
         const cycle=canAnnounce?this.reset(guild)?.id??null:null;
         const periods=canAnnounce?(cycle===null?['all']:['all','cycle']):[];
-        const boards=periods.flatMap(period=>['total',game].map(game=>({period,game,previous:this.position(guild,period,game,user)})));
+        const scores=canAnnounce?this.sql.exec('SELECT all_slot,all_duel,cycle_slot,cycle_duel FROM leaderboard_scores WHERE guild=? AND user=?',guild,user).toArray()[0]:null;
+        const changes=[];
+        if(scores)for(const period of periods)for(const category of ['total',game]){
+          const before=category==='total'?scores[period+'_slot']+scores[period+'_duel']:scores[period+'_'+game];
+          const previous=this.rankAt(guild,period,category,user,before);
+          const current=previous===1?1:previous-this.placesGained(guild,period,category,user,before,before+amount);
+          if(this.activeVisitStart||current<previous)changes.push({period,game:category,previous,current});
+        }
         this.sql.exec(`INSERT INTO leaderboard_scores (guild,user,all_${game},cycle_${game}) VALUES(?,?,?,?)
           ON CONFLICT(guild,user) DO UPDATE SET all_${game}=all_${game}+excluded.all_${game},
           cycle_${game}=cycle_${game}+excluded.cycle_${game}`,guild,user,amount,amount);
-        const changes=[];
-        for(const {period,game,previous} of boards){
-          if(previous===null)continue;
-          const current=this.position(guild,period,game,user);
-          if(this.activeVisitStart||current<previous)changes.push({period,game,previous,current});
-        }
         if(changes.length)this.sql.exec('INSERT INTO leaderboard_outbox (id,payload,status) VALUES(?,?,?)',entry.id,
           JSON.stringify({user,time:entry.time,sharedPeriod:periods.length===1,cycle,changes}),this.activeVisitStart?'held':'pending');
       }
